@@ -616,7 +616,7 @@ ReadMachineType ENTRY "r0-r12"
 	TEQ	r11, #IOST_7500				; and set EQ if Morris to do conditional stuff below
    |
         LDRB    r0, [r12, #IOMD_ID0]
-        CMP     r0, #&98
+        CMP     r0, #&E7
         LDRB    r0, [r12, #IOMD_ID1]
         CMPEQ   r0, #&5B
         MOVEQ   r11, #IOST_7500                         ;EQ, Morris
