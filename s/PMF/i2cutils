@@ -1452,6 +1452,7 @@ InitCMOSCache	Entry "r1-r6, sb,r12"
 	; Have we got an RTC ?
 	LDR 	R2, =ZeroPage
 	MOV	R4, #0
+     [  RTCSupport
 	MOV	R0, #RTCAddressDAL
 	BL	DummyAccess
 	BVC	%FT13
@@ -1461,6 +1462,9 @@ InitCMOSCache	Entry "r1-r6, sb,r12"
 13
 	STRVCB  R0, [R2, #RTCFitted]
 	BLVC    InitRTC
+     |
+        STRB    R4, [R2, #RTCFitted]
+     ]
 
  [ HAL
         AddressHAL
