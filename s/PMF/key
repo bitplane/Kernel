@@ -785,6 +785,8 @@ GenerateChar ROUT
 
 CallSpecialReturnNChars
         Push    R14
+        CMP     R0, #-1
+        Pull    PC,EQ
 04
         BL      CallSpecialCode
 
