@@ -580,6 +580,7 @@ OfferPostKeyStatusUpCall
         MRS     R11, CPSR
         ORR     R10, R11, #SVC_mode + I32_bit
         MSR     CPSR_c, R10
+        Push    "R14"
         MOV     R3, R5
         MOV     R2, R12
         B       %BT10
@@ -767,10 +768,11 @@ GenerateChar ROUT
         BNE     %FT21
 
         TST     R5, #KBStat_PendingAlt
-        MOVNE   R5, R12
-        BICNE   R5, R5, #KBStat_PendingAlt      ; then cancel pending alt
-        BLNE    OfferPostKeyStatusUpCall        ; don't let them interfere
-        STROSB  R5, KeyBdStatus, R6, NE         ; and store back
+        BEQ     %FT21
+        MOV     R5, R12
+        BIC     R5, R5, #KBStat_PendingAlt      ; then cancel pending alt
+        BL      OfferPostKeyStatusUpCall        ; don't let them interfere
+        STROSB  R5, KeyBdStatus, R6             ; and store back
 
 21      TST     R5, #KBStat_PendingAlt          ; is there a pending Alt ?
         BNE     ProcessPendingAlt
