@@ -16,7 +16,7 @@ Date    SETS    Module_Date      ; version for STB/NC OS
         |
 Version SETA    502
 VString SETS    "5.02"
-Date    SETS    "28 Feb 2003"    ; version for RISC OS on desktop computers
+Date    SETS    "25 Mar 2003"    ; version for RISC OS on desktop computers
         ]
 
         END

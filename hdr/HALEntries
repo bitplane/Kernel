@@ -149,6 +149,8 @@ EntryNo_HAL_KbdScan             #       1
 EntryNo_HAL_KbdScanFinish       #       1
 EntryNo_HAL_KbdScanInterrupt    #       1
 
+EntryNo_HAL_PhysInfo            #       1
+
 ; Various flags and constants
 
 ; NVMemory

@@ -855,11 +855,14 @@ checkboot
 
  [ HAL
         ! 0, "Sort out SetBorder for CMOS reset"
+        TST     R7, #KbdFlag_Copy:OR:KbdFlag_Delete
  |
-     SetBorder  R0, R1, 15, 0, 0        ; flash the border as warning!
+        SetBorder  R0, R1, 15, 0, 0     ; flash the border as warning!
+        ASSERT  (Del_Down_Flag - R_Down_Flag) = 2
+        ASSERT  (Copy_Down_Flag - Del_Down_Flag) = 1
+        MOVS    R3, R7, LSR #16         ; full reset or just system?
  ]
 
-        MOVS    R3, R7, LSR #16         ; full reset or just system?
         MOVNE   R3, #-1                 ; Del or Copy does all RAM
         MOVEQ   R3, #UserCMOS           ; R or T just system
     [ ChecksumCMOS

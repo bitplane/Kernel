@@ -1881,7 +1881,8 @@ osri6_maxvalue * (.-4-osri6_table) :SHR: 2
 ;     1     = PCI expansion card(s)
 ;     2     = additional processor(s)
 ;     3     = software power off
-;     4..31 reserved (currently undefined)
+;     4     = OS in RAM, else executing in ROM
+;     5..31 reserved (currently undefined)
 ;
 80
  [ HAL

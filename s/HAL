@@ -536,6 +536,7 @@ RISCOS_Start
         MOV     a3, #(AP_ROM * L2X_APMult) + L2_C + L2_B
         SUB     a4, v7, v6
         BL      Init_MapIn
+        MOV     a3, v6
         B       %FT75
 
 70
@@ -560,12 +561,14 @@ RISCOS_Start
         SUB     a4, v7, v5
         MOV     a3, #(AP_ROM * L2X_APMult) + L2_C + L2_B
         BL      Init_MapIn
+        MOV     a3, v5
 75
         ; We've now allocated all the pages we're going to before the MMU comes on.
         ; Note the end address (for RAM clear)
         ADD     a1, v3, #DRAMOffset_PageZero - DRAMOffset_L1PT
         STR     v1, [a1, #InitUsedBlock]
         STR     v2, [a1, #InitUsedEnd]
+        STR     a3, [a1, #ROMPhysAddr]
 
         ; Note the HAL flags passed in.
         LDR     a2, [sp, #0]
@@ -795,6 +798,7 @@ MMUon_nol1ptoverlap
 
 ; Remember some stuff that's about to get zapped
         LDR     v8, =ZeroPage
+        LDR     v4, [v8, #ROMPhysAddr]
         LDR     v5, [v8, #RAMLIMIT]
         LDR     v7, [v8, #MaxCamEntry]
 
@@ -805,6 +809,7 @@ MMUon_nol1ptoverlap
         BLEQ    ClearPhysRAM
 
 ; Put it back
+        STR     v4, [v8, #ROMPhysAddr]
         STR     v5, [v8, #RAMLIMIT]
         STR     v7, [v8, #MaxCamEntry]
 
@@ -921,7 +926,7 @@ MMUon_nol1ptoverlap
         LDR     sp, =ABTSTK
         MSR     CPSR_c, #F32_bit+I32_bit+UND32_mode
         LDR     sp, =UNDSTK
-        MSR     CPSR_c, #F32_bit+I32_bit+SVC2632
+        MSR     CPSR_c, #F32_bit+SVC2632
         LDR     sp, =SVCSTK
 
         LDR     ip, =CAM

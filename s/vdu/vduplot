@@ -122,14 +122,14 @@ EntryFromSWIPlot
         TST     R6, #ClipBoxEnableBit
         BLNE    DoPlotClipBox
 
+	BIC	R11, R2, #2_111		; ARMv4 says we have to keep bits 1:0 of PC =0
  [ No26bitCode
         ADR     R14, CTidy              ; set up return address
  |
         ADR     R14, CTidy + SVC_mode   ; set up return address
  ]
                                         ; R0=X, R1=Y, R2=plot code
-        ADD     PC, PC, R2, LSR #1      ; jump to branch (bottom 2 bits of the
-                                        ; result are ignored!)
+        ADD     PC, PC, R11, LSR #1     ; jump to branch
         &       0                       ; dummy word
 
  B LineDrawSolid           ;   0 - Solid line

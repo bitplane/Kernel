@@ -1326,7 +1326,7 @@ MaxCamEntry     #       4       ; maximum index into the cam map, ie
 
 RAMLIMIT        #       4
 
-                #       4       ; spare
+ROMPhysAddr     #       4
 
 HiServ_ws       #       4
 HiServ          #       4

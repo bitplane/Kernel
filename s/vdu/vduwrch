@@ -370,6 +370,7 @@ FastCLS ROUT
         MOV     R13, R11
         TEQ     R4, #GraphicsV_Complete
         Pull    PC, EQ
+        LDR     R0, [WsPtr, #TextBgColour]
 15
  ]
         LDR     R8, [WsPtr, #ScreenStart]
