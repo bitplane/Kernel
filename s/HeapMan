@@ -22,6 +22,7 @@
 ; is returned to at a "it happened in the background" fixup routine. Current
 ; request can then be dealt with! Ta Nick.
 
+
 ; Also has an interlock on the register restore area; otherwise anybody
 ; with an IRQ process doing heap ops with interrupts enabled will cause
 ; trouble.
@@ -420,14 +421,27 @@ inspect_IRQ_stack
          LDMIA  R10, {R0-R3, R10, R11}
          SWI    $RecursiveHeap               ; with interrupts off!
          jeep   R12, HeapReturnedReg_R0
+
    ; Could we poke these into the IRQ stack too...?
    ; would allow interruptible IRQ processes to do heap ops!!!
+  [ StrongARM
+  ;just in case the exact PC address is critical, make sure it is as old way intended,
+  ;on old architecture, or on architecture 4...
+  ;but, for goodness sake, make sure the PSR bits are stored too! (eg. ADD lr,PC,#8
+  ;zaps the PSR bits) (mjs)
+         MOV    lr, PC          ;got address (current PC+8) and PSR bits
+         ADD    lr, lr, #12     ;now also same position as old code would push on old architecture
+         STMIA  R12, {R0-R3, R10, R11, lr}
+         Pull  "R0-R3, lr"
+  |
+  ;old way stores PC address and PSR bits directly, may be assuming that address is PC+12 (mjs)
          STMIA  R12, {R0-R3, R10, R11, PC}
          Pull  "R0-R3, lr"
+  ]
 
 iis_end                                 ; store the registers in the info block
         jeep    R12, HeapSavedReg_R0
-        STMIA   R12, {R0-R4, stack}
+        STMIA   R12, {R0-R4, stack}     ;This is where the stacked PC (lr) points to (WT)
 
 first_heap_address_to_trap              ; because register saveblock now set.
         LDR     R12, [R12, #HeapReturnedReg_PC-HeapSavedReg_R0]
@@ -473,7 +487,7 @@ GoodHeapExit                            ; V cleared on entry to SWI dispatch
         MOV     R12, PC
         ORR     R12, R12, #I_bit        ; IRQs off
         TEQP    PC, R12
-        MOVNV   R0, R0
+        MOV     R0, R0
         Pull    lr
         ORRVS   lr, lr, #V_bit          ; VSet Exit
 
