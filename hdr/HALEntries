@@ -23,6 +23,8 @@ HALDesc_NumEntries      #       4
 HALDesc_Workspace       #       4
 HALDesc_size            #       4
 
+HALFlag_NCNBWorkspace   *       1:SHL:0
+
 ; Entries to the HAL from the OS
 
                                 ^       0
@@ -141,6 +143,11 @@ EntryNo_HAL_ATASetModes         #       1
 EntryNo_HAL_ATACableID          #       1
 
 EntryNo_HAL_InitDevices         #       1
+
+EntryNo_HAL_KbdScanSetup        #       1
+EntryNo_HAL_KbdScan             #       1
+EntryNo_HAL_KbdScanFinish       #       1
+EntryNo_HAL_KbdScanInterrupt    #       1
 
 ; Various flags and constants
 

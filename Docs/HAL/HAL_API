@@ -155,7 +155,9 @@ For example on ARM7500 16->32 bit switch code is required, and on the
 descriptor block, instead of a header, can be placed somewhere in the HAL. A
 pointer to this block is passed by the HAL to the OS in the OS_Start call:
 
-Word 0: Flags (currently should be 0)
+Word 0: Flags
+            bit 0 => uncachable workspace (32K) required
+            bits 1-31 reserved
 Word 1: Offset (bytes) from descriptor to start of HAL (will be <= 0)
 Word 2: HAL size (bytes)
 Word 3: Offset (bytes) from descriptor to table of HAL routine entry points
@@ -424,7 +426,7 @@ Routines in detail
 routines listed in relevant sections with overview. eg. video routines
 with video section, etc.]
 
--- HAL_Init(unsigned int *riscos_header)
+-- HAL_Init(unsigned int *riscos_header, void *uncacheable_ws)
 
 The OS will call HAL_Init after enabling the MMU, and initialising the HAL
 workspace (filled with 0). At this point any initialisation for the main HAL

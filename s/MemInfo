@@ -602,14 +602,13 @@ MemoryAmounts   ROUT
         BEQ     %FT30                   ; Don't understand 0 (so the spec says).
 
         TEQ     lr, #5:SHL:8            ; Check for soft ROM
-        MOV     r1, #OSROM_ImageSize*1024 ; this much soft ROM
-        B       %FT20
+        MOVEQ   r1, #OSROM_ImageSize*1024 ; this much soft ROM
+        BEQ     %FT20
 
 05      TEQ     lr, #1:SHL:8
-        BNE     %FT10
-        MOV     r1, #0
-        LDR     r1, [r1, #RAMLIMIT]     ; assume 0 VRAM
-        B       %FT20
+        MOVEQ   r1, #0
+        LDREQ   r1, [r1, #RAMLIMIT]     ; assume 0 VRAM
+        BEQ     %FT20
 10
         TEQ     lr, #2:SHL:8
         BNE     %FT40                   ; not implementing anything else in this bodge
@@ -998,6 +997,7 @@ ReleasePhysAddr
 ;                               8=Level 2 page tables
 ;                               9=HAL workspace
 ;                               10=Kernel buffers
+;                               11=HAL uncacheable workspace
 ;                       16-31   reserved (set to 0)
 ;
 ;       Out:    r1 = base of area
@@ -1028,6 +1028,7 @@ MAI_TableStart
         B       MAI_L2PT
         B       MAI_HALWs
         B       MAI_Kbuffs
+        B       MAI_HALWsNCNB
 MAI_TableEnd
 
 70
@@ -1090,12 +1091,24 @@ MAI_L2PT
         LDR     r3, [r0, #L2PTUsed]
         EXIT
 
- [ HAL
 MAI_HALWs
+ [ HAL
         MOV     r0, #ZeroPage
         LDR     r1, =HALWorkspace
         MOV     r2, #HALWorkspaceSpace
         LDR     r3, [r0, #HAL_WsSize]
+ ]
+        EXIT
+
+MAI_HALWsNCNB
+ [ HAL
+        MOV     r0, #ZeroPage
+        LDR     r1, =HALWorkspaceNCNB
+        MOV     r2, #32*1024
+        LDR     r3, [r0, #HAL_Descriptor]
+        LDR     r3, [r3, #HALDesc_Flags]
+        ANDS    r3, r3, #HALFlag_NCNBWorkspace
+        MOVNE   r3, r2
  ]
         EXIT
 

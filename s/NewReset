@@ -37,6 +37,20 @@ CMOSLimit       * &F0
 
 ; Keyboard flags
                 ^ 1
+ [ HAL
+KbdScanActive   # 1
+                # 2
+KbdFlags        # 4
+
+KbdFlag_Ctrl    * 1:SHL:0
+KbdFlag_Shift   * 1:SHL:1
+KbdFlag_R       * 1:SHL:4
+KbdFlag_T       * 1:SHL:5
+KbdFlag_Delete  * 1:SHL:6
+KbdFlag_Copy    * 1:SHL:7
+KbdFlag_Present * 1:SHL:30
+KbdFlag_Done    * 1:SHL:31
+ |
 CTRL_Down_Flag  # 1
 SHIFT_Down_Flag # 1
 KB_There_Flag   # 1
@@ -52,6 +66,7 @@ Port2Present    # 1      ; note that these 4 form one word!!
 Port3Present    # 1
 KeyState        # 1
 KeyMSB          # 1
+ ]
 
 ; On ARM600, InitIRQWs is in zero page - check it's big enough
 
@@ -645,16 +660,40 @@ us      * 2
  ]
 
  [ HAL
-        ! 0, "Sort out keyboard boot detection"
+        AddressHAL
+        MOV     r6, #25                 ; Check for keyboard 25 times (5 secs max).
+        MOV     r4, #InitIRQWs
+
+kbdwait
+        CallHAL HAL_KbdScan
+        STR     r0, [r4, #KbdFlags]
+
+        TST     r0, #KbdFlag_Done
+        BNE     kbddone
+
+      [ EmulatorSupport
+        ARM_on_emulator r0
+        MOVEQ   r0, #us
+        LDRNE   r0, =KeyWait*us         ; Wait 1/5 second (give keys down a chance to come in).
+      |
+        LDR     r0, =KeyWait*us         ; Wait 1/5 second (give keys down a chance to come in).
+      ]
+        CallHAL HAL_CounterDelay
+        SUBS    r6, r6, #1              ; else wait a maximum of 5 seconds.
+        BNE     kbdwait
+kbddone
+        MSR     CPSR_c, #I32_bit+SVC32_mode
+        CallHAL HAL_KbdScanFinish
+        MOV     r1, #InitIRQWs
+        MOV     r0, #0
+        STRB    r0, [r1, #KbdScanActive]
+        MSR     CPSR_c, #SVC32_mode
  |
     [ KeyWait <> 0
 ; Check for keyboard there every 1/5 sec. but give up after 2 secs.
         MOV     r2, #IOC
         MOV     r6, #10                 ; Check for keyboard 10 times (2 secs max).
         MOV     r4, #InitKbdWs
-      [ HAL
-        AddressHAL
-      ]
 kbdwait
         LDRB    r5, [r4, #KB_There_Flag]
       [ EmulatorSupport
@@ -664,11 +703,7 @@ kbdwait
       |
         LDR     r0, =KeyWait*us         ; Wait 1/5 second (give keys down a chance to come in).
       ]
-      [ HAL
-        CallHAL HAL_CounterDelay
-      |
         BL      DoMicroDelay
-      ]
         TEQ     r5, #0                  ; If keyboard was there 1/5 second ago then
         BNE     kbdthere                ;   continue reset
         SUBS    r6, r6, #1              ; else wait a maximum of 2 seconds.
@@ -699,16 +734,6 @@ reset_loop
         INC     R1
         TEQ     R1, #SpriteSizeCMOS
         BHI     reset_loop
-
- [ {FALSE}
-; FontCMOS should be <= 32 (128K)
-; What on earth was this about? Why would anyone require FontSize to
-; be less than 128K?
-        MOV     R0, #FontCMOS
-        BL      Read
-        CMP     R0, #32
-        BHI     cmos_reset
- ]
 
  [ {FALSE}
  ; Oh, just leave it be
@@ -805,8 +830,13 @@ checkboot
  ] ; HAL
 
         MOV     R0, #InitIRQWs
+ [ HAL
+        LDR     R7, [R0, #KbdFlags]
+        TST     R7, #KbdFlag_R:OR:KbdFlag_T:OR:KbdFlag_Delete:OR:KbdFlag_Copy
+ |
         LDR     R7, [R0, #R_Down_Flag]
         CMP     R7, #0
+ ]
         BEQ     no_cmos_reset           ; power on bit checked again there
 
         [ :LNOT: STB
@@ -907,10 +937,15 @@ not_full_reset
 
 ; IF R or Delete pressed THEN set sync 0 ELSE set sync Auto
         MOV     R0, #InitIRQWs
+ [ HAL
+        LDR     R1, [R0, #KbdFlags]
+        TST     R1, #KbdFlag_R:OR:KbdFlag_Delete
+ |
         LDRB    R1, [R0, #R_Down_Flag]
         CMP     R1, #0
         LDREQB  R1, [R0, #Del_Down_Flag]
         CMPEQ   R1, #0
+ ]
         MOV     R0, #VduCMOS
         MOVNE   R1, #MonitorTypeAuto :OR: Sync_Auto     ; if R or Del
         MOVEQ   R1, #MonitorTypeAuto :OR: Sync_Separate ; if T or Copy
@@ -1020,11 +1055,12 @@ DefaultCMOSTable ; list of non-zero options wanted :
 ; terminated by offset &FF
         =       KeyDelCMOS,     32
         =       FileLangCMOS,   8
-        =       FontCMOS,       16      ; TMD 15-Dec-93: Changed to 64K from 32K - fixes MED-01774
+        =       FontCMOS,       64      ; KJB 13-Dec-02: Changed to 256K from 64K
         =       PigCMOS,        10
         =       KeyRepCMOS,     8
         =       RMASizeCMOS,    0
         =       SpriteSizeCMOS, 0
+        =       SystemSizeCMOS, 8
         =       MODETVCMOS,     &10     ; TV 0,1
         =       NetFSIDCMOS,    254
         =       NetPSIDCMOS,    235
@@ -1099,9 +1135,10 @@ DefaultCMOSTable ; list of non-zero options wanted :
         ]
 
         [ :LNOT: STB
-        =       FontMaxCMOS,    64      ; 256k
-        =       FontMax2CMOS,   &28     ; 36 point
-        =       FontMax3CMOS,   &3C     ; 36 point
+        =       FontMaxCMOS,    64      ; 4096k
+        =       FontMax2CMOS,   36:EOR:12 ; 36 point
+        =       FontMax3CMOS,   36:EOR:24 ; 36 point
+        =       FontMax4CMOS,   16      ; 16 point
         |
         ;       yes, omitting FontMaxCMOS is deliberate!
         =       FontMax2CMOS,   &2C     ; 32 point
@@ -1109,7 +1146,7 @@ DefaultCMOSTable ; list of non-zero options wanted :
         ]
         =       AlarmAndTimeCMOS,2_00010000 ; !Alarm autosave on
         =       FSLockCMOS+5,   &EA     ; Checksum for no password
-        =       CDROMFSCMOS,    &60     ; drives = 0, buffer size = 32K
+        =       CDROMFSCMOS,    &C1     ; drives = 1, buffer size = 256K
   ]
         =       &FF
         ALIGN
@@ -1694,8 +1731,14 @@ ResetPart1Done                          ; R0 is reset type
         STRB    R0, [R1]
 
         MOV     R1, #InitIRQWs
+ [ HAL
+        LDR     R0, [R1, #KbdFlags]
+        AND     R1, R0, #KbdFlag_Shift
+        AND     R0, R0, #KbdFlag_Present
+ |
         LDRB    R0, [R1, #KB_There_Flag]
         LDRB    R1, [R1, #SHIFT_Down_Flag]
+ ]
         Push    "R0, R1"                ; save until after MOSInit
 
         BL      InitialiseIRQ1Vtable
@@ -1742,6 +1785,12 @@ ResetPart1Done                          ; R0 is reset type
 
         LDR     R1, RealIRQHandler
         STR     R1, [R0, #&18]
+
+        MOV     R2, #InitIRQWs                          ; clear temp ws
+        MOV     R3, #0
+        MOV     R4, #0
+        STMIA   R2!, {R3,R4}
+        STMIA   R2!, {R3,R4}
 
    ;we need to do an IMB type thing for modifying code in vector area,
    ;and for copying irq handler code
@@ -2131,10 +2180,8 @@ PT_lookup
 
         Pull    "R0"                    ; first check kbd there
 
- [ :LNOT: HAL
         CMP     R0, #0
         BEQ     AutoBootCosNoKbd
- ]
 
         MOV     R0, #&FF
         MOV     R1, #0

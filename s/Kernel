@@ -364,6 +364,7 @@ RISCOS_Entries
         DCD     RISCOS_Start     - RISCOS_Entries
         DCD     RISCOS_MapInIO   - RISCOS_Entries
         DCD     RISCOS_AddDevice - RISCOS_Entries
+        DCD     RISCOS_LogToPhys - RISCOS_Entries
 RISCOS_Entries_End
 
   |

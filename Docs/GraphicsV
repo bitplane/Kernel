@@ -58,20 +58,20 @@ out:
 
 Write palette entry
   R4 = 10
-  R0 = type (0 = normal entry, 1 = border, 2 = palette)
+  R0 = type (0 = normal entry, 1 = border, 2 = pointer)
   R1 = palette entry (&BBGGRRSS)
   R2 = palette index
 
 Write palette entries
   R4 = 11
-  R0 = type (0 = normal entry, 1 = border, 2 = palette)
+  R0 = type (0 = normal entry, 1 = border, 2 = pointer)
   R1 -> palette entry table
   R2 = first palette index
   R3 = number of entries
 
 Read palette entry
   R4 = 12
-  R0 = type (0 = normal entry, 1 = border, 2 = palette)
+  R0 = type (0 = normal entry, 1 = border, 2 = pointer)
   R1 = palette entry (&BBGGRRSS)
   R2 = palette index
 Out:

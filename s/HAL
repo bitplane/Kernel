@@ -450,6 +450,14 @@ RISCOS_Start
         STR     ip, [a4, #HAL_Workspace]                ; after our table of entries
         BL      Init_MapInRAM
 
+        LDR     a3, [sp, #8]                            ; recover pushed HAL header
+        LDR     lr, [a3, #HALDesc_Flags]
+        TST     lr, #HALFlag_NCNBWorkspace              ; do they want uncacheable
+        LDRNE   a1, =HALWorkspaceNCNB                   ; workspace?
+        LDRNE   a2, =(AP_None * L2X_APMult)
+        LDRNE   a3, =32*1024
+        BLNE    Init_MapInRAM
+
 ; Bootstrap time. We want to get the MMU on ASAP. We also don't want to have to
 ; clear up too much mess later. So what we'll do is map in the three fixed areas
 ; (L1PT, scratch space and page zero), the CAM, ourselves, and the HAL,
@@ -566,7 +574,7 @@ RISCOS_Start
         ; Set up a reset IRQ handler (used during RAM clear for keyboard
         ; scan, and later for IIC CMOS access)
         MSR     CPSR_c, #IRQ32_mode + I32_bit + F32_bit
-        LDR     sp_irq, =IRQSTK
+        LDR     sp_irq, =ScratchSpace + ScratchSpaceSize/2
         MSR     CPSR_c, #SVC32_mode + I32_bit + F32_bit
         LDR     a2, =Reset_IRQ_Handler
         STR     a2, [a1, #InitIRQHandler]
@@ -757,6 +765,7 @@ MMUon_nol1ptoverlap
         STR     v2, [a1, #InitUsedEnd]
 
         LDR     a1, =RISCOS_Header
+        LDR     a2, =HALWorkspaceNCNB
         AddressHAL
         CallHAL HAL_Init
 
@@ -775,6 +784,14 @@ MMUon_nol1ptoverlap
         MOV     a2, a1
         MOV     a1, #0
         CallHAL HAL_TimerSetPeriod
+
+        MOV     a1, #InitIRQWs
+        MOV     a2, #1
+        STRB    a2, [a1, #KbdScanActive]
+
+        CallHAL HAL_KbdScanSetup
+
+        MSR     CPSR_c, #F32_bit+SVC32_mode             ; enable IRQs for scan
 
 ; Remember some stuff that's about to get zapped
         LDR     v8, =ZeroPage
@@ -917,11 +934,13 @@ MMUon_nol1ptoverlap
 
         BL      CountPageTablePages
 
+ [ {FALSE}
         MOV     a1, #InitIRQWs
         MOV     a2, #0
         MOV     a3, #0
         STMIA   a1!, {a2,a3}
         STMIA   a1!, {a2,a3}
+ ]
 
         B       Continue_after_HALInit
 
@@ -967,22 +986,6 @@ PhysAddrToPageNo
 90      MOV     a1, #-1
         MOV     pc, lr
 
-LogToPhys
-        Push    "lr"
-        LDR     ip, =L1PT
-        MOV     lr, a1, LSR #20
-        LDR     lr, [ip, lr, LSL #2]
-        TST     lr, #1
-        BEQ     %FT80
-        LDR     ip, =L2PT
-        MOV     lr, a1, LSR #12
-        LDR     lr, [ip, lr, LSL #2]
-        TST     lr, #1
-        MOV     lr, lr, LSR #12
-        MOV     lr, lr, LSL #12
-
-
-80
 
 ; A routine to construct the soft CAM from the page tables. This is used
 ; after a soft reset, and also on a hard reset as it's an easy way of
@@ -1524,7 +1527,7 @@ HAL_Write0
 ;
 
 ClearPhysRAM ROUT
-        MSR     CPSR_c, #F32_bit+I32_bit+FIQ32_mode     ; get some extra registers
+        MSR     CPSR_c, #F32_bit+FIQ32_mode             ; get some extra registers
         MOV     r8, #0
         MOV     r9, #0
         MOV     r10, #0
@@ -1532,7 +1535,7 @@ ClearPhysRAM ROUT
         MOV     r12, #0
         MOV     r13, #0
         MOV     r14, #0
-        MSR     CPSR_c, #F32_bit+I32_bit+SVC32_mode
+        MSR     CPSR_c, #F32_bit+SVC32_mode
 
       [ EmulatorSupport
         ARM_on_emulator r0
@@ -1597,7 +1600,7 @@ ClearPhysRAM ROUT
         MOVNE   r1, r2, LSL #20                         ; then stop at end of megabyte
         ADDNE   r1, r1, #&00100000
 
-        MSR     CPSR_c, #F32_bit+I32_bit+FIQ32_mode     ; switch to our bank o'zeros
+        MSR     CPSR_c, #F32_bit+FIQ32_mode             ; switch to our bank o'zeros
         MOV     r2, #0
 
 19      ADD     r5, r5, r0
@@ -1615,7 +1618,7 @@ ClearPhysRAM ROUT
         LDR     r5, [r6], #4                            ; load next skip offset (NB relative to end of last skip)
         B       %BT19
 
-30      MSR     CPSR_c, #F32_bit+I32_bit+SVC32_mode     ; back to supervisor mode
+30      MSR     CPSR_c, #F32_bit+SVC32_mode             ; back to supervisor mode
         MOV     r10, r0
         MOV     r11, r1
         LDMIA   r7, {r0, r1}
@@ -1838,6 +1841,16 @@ RISCOS_MapInIO ROUT
 RISCOS_AddDevice
         ADDS    a1, a2, #0      ; also clears V
         B       HardwareDeviceAdd_Common
+
+; uint32_t RISCOS_LogToPhys(const void *log)
+RISCOS_LogToPhys
+        Push    "r4,r5,r8,r9,lr"
+        MOV     r4, a1
+        LDR     r8, =L2PT
+        BL      logical_to_physical
+        MOVCC   a1, r5
+        MOVCS   a1, #-1
+        Pull    "r4,r5,r8,r9,pc"
 
 
 SetUpHALEntryTable ROUT
@@ -2124,6 +2137,10 @@ Reset_IRQ_Handler
         TST     a2, #IICFlag_Background
         MOVNE   ip, sb
         BLNE    IICIRQ
+        MOV     a1, #InitIRQWs
+        LDRB    a1, [a1, #KbdScanActive]
+        TEQ     a1, #0
+        CallHAL HAL_KbdScanInterrupt,NE
         Pull    "lr"
         MSR     SPSR_cxsf, lr
         Pull    "a1-a4,sb,ip,pc",,^

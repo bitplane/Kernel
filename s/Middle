@@ -155,10 +155,10 @@ VecRdLine ROUT
         CMPCS   R3, R0                  ; and char <= max ?
         ADDCS   R6, R6, #1              ; if so, then inc pointer
         BCS     %FT80
-        TST     R7, #&40000000          ; no reflection
+        TST     R7, #&80000000          ; no reflection
         BNE     %BT10                   ; of non-entered chars
 
-80      TST     R7, #&20000000
+80      TST     R7, #&40000000
         ANDNE   R0, R7, #&FF            ; echo char -> R0
 
         B       %BT05                   ; echo character

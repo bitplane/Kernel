@@ -419,10 +419,12 @@ GetKbdDrA1          SETS  ""
  ]
 
                     GBLS  GetKbdRes
+ [ :LNOT: HAL
  [ Keyboard_Type = "A1A500"
 GetKbdRes           SETS  "GET s.KbdResA1"
  |
 GetKbdRes           SETS  "GET s.KbdRes" :CC: Keyboard_Type
+ ]
  ]
 
 ; control switches for med_00001 (the flood fill routines 1024 line limit).

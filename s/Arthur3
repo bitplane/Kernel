@@ -1475,6 +1475,7 @@ ReadNumParm Entry "r1"
         CMP     r2, #" "
         BEQ     %BT10
         SUB     r1, r0, #1
+        MOV     r0, #10                 ; set base
         SWI     XOS_ReadUnsigned
         EXIT    VS
         MOV     r0, r1
@@ -1500,6 +1501,7 @@ ReadNumAuto Entry "r1,r3,r4"
                                         ;      r3 corrupted in both cases
         MOVEQ   r2, #-1
         BEQ     %FT20
+        MOV     r0, #10                 ; set base
         SWI     XOS_ReadUnsigned
         EXIT    VS
 20
@@ -1521,6 +1523,7 @@ ReadSizeParm ROUT
         CMP     r2, #" "
         BEQ     %BT02
         SUB     r1, r0, #1
+        MOV     r0, #10                 ; set base
         SWI     XOS_ReadUnsigned
         Pull    "r1, r8", VS
         BVS     BadConParm
@@ -2049,6 +2052,7 @@ Config_TV_setcode ROUT
         CMP     r2, #" "
         BEQ     Config_TV_setcode
         SUB     r1, r0, #1
+        MOV     r0, #10                 ; set base
         SWI     XOS_ReadUnsigned
         BVS     %FT01
         CMP     r2, #3
@@ -2112,6 +2116,7 @@ Config_Ignore_setcode ROUT
         CMP     r2, #" "
         BEQ     Config_Ignore_setcode
         SUB     r1, r0, #1
+        MOV     r0, #10                 ; set base
         SWI     XOS_ReadUnsigned
         MOV     r0, r1
         Push    "r2"
@@ -2303,6 +2308,7 @@ Config_MouseStep_setcode ROUT
         CMP     r2, #"-"
         Push    "r2"
         SUBNE   r1, r0, #1
+        MOV     r0, #10                 ; set base
         SWI     XOS_ReadUnsigned
         Pull    "r0"
         BVS     BadConParm
@@ -2341,6 +2347,7 @@ Config_MouseType_setcode ROUT
         CMP     r2, #" "
         BEQ     Config_MouseType_setcode
         SUB     r1, r0, #1
+        MOV     r0, #10          ; set base
         SWI     XOS_ReadUnsigned
         BVS     BadConParm
         CMP     r2, #&100

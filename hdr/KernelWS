@@ -266,6 +266,7 @@ UNDStackAddress     * &FA400000
 PhysicalAccess      * &FAE00000
 DCacheCleanAddress  * &FAF00000 ; eg. for StrongARM, 256k of space, up to FAF40000
 KbuffsBaseAddress   * &FAF40000 ; kernel buffers for long command lines, size KbuffsMaxSize
+HALWorkspaceNCNB    * &FAFE8000 ; 32K of uncacheable HAL workspace (if requested)
  [ {TRUE}
 CursorChunkAddress  * &FAFF0000
  |

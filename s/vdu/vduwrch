@@ -1619,6 +1619,7 @@ GetBoxInfo
 
         LDR     R7, [WsPtr, #ModeFlags]
 
+        MOV     R6, R8, LSL #3                  ; *8
         TST     R7, #Flag_GapMode               ; if gap mode
         ADDNE   R6, R6, R8, LSL #1              ; (+*2) = *10
         TST     R7, #Flag_DoubleVertical        ; if double mode
@@ -2314,16 +2315,8 @@ PlainBit ROUT
 
         LDR     bpp, [WsPtr, #BytesPerChar]
         MOV     R1, #1
-
-; *****Change made by DJS
-; Original code was:
-;        MOV     R1, R1, LSL bpp         ; first form mask for leftmost pixel
-;        SUB     R1, R1, #1              ; = (2^BytesPerChar)-1
-
         RSB     R1, R1, R1, LSL bpp      ; first form mask for leftmost pixel
                                          ; = (2^BytesPerChar)-1
-
-; *****End of change made by DJS
 
         ADD     R3, WsPtr, #RAMMaskTb
 10

@@ -136,7 +136,9 @@ example on ARM7500 16->32 bit switch code is required, and on the 9500 parts
 a special ROM header and checksum must be present. Instead of a header,
 a pointer to the HAL descriptor is passed to the OS in the OS_Start call:
 
-Word 0: Flags (0)
+Word 0: Flags
+            bit 0 => uncachable workspace (32K) required
+            bits 1-31 reserved
 Word 1: Offset from descriptor to start of HAL (will be <= 0)
 Word 2: HAL size
 Word 3: Offset from descriptor to entry table
