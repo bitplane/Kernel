@@ -106,10 +106,12 @@ PV_SetDefaultPalette ROUT
         LDR     r2, [r1, r0, LSL #2]    ; offset from r1 to start of table
         ADD     r0, r0, #1              ; point to next item
         LDR     r5, [r1, r0, LSL #2]    ; offset from r1 to end of table +1
-        ADDS    r2, r2, r1              ; r2 -> start of table
-        BICMI   pc, r2, #&80000000      ; if negative then it's a routine
+        TST     r2, #&80000000          ; if bit 31 set, it's a routine
+        BIC     r2, r2, #&80000000      ; clear that flag
+        ADD     r2, r2, r1              ; r2 -> start of table
+        MOVNE   pc, r2                  ; or call routine
+        BIC     r5, r5, #&80000000      ; clear routine flag
         ADD     r5, r5, r1              ; r5 -> end of table
-        BIC     r5, r5, #&80000000
         MOV     r0, #0                  ; start at palette index 0
         MOV     r1, #3                  ; set both halves
 10

@@ -634,6 +634,7 @@ Write
     	Pull	"R12,sb"
     	Pull	"R0-R4,PC"
 20
+        Pull    "R12,sb"
   ]
 
 
@@ -991,6 +992,7 @@ Read
     	Pull	"R1,R2,PC"
 
 20
+        Pull    "R4, sb"
   ]
 
   [	E2ROMSupport
