@@ -81,6 +81,16 @@ HALDeviceExpBus_Acorn   #       1 :SHL: 24
 HALDeviceExpBus_ISA     #       1 :SHL: 24
 HALDeviceExpBus_PCI     #       1 :SHL: 24
 
+                                ^       0
+HALDeviceID_DMAC_M1535Legacy    #       1
+HALDeviceID_DMAC_M1535IDE       #       1
+
+                                ^       0
+HALDeviceID_DMAB_M1535Legacy    #       1
+
+                                ^       0
+HALDeviceID_DMAL_M1535IDE       #       1
+
  ]
 
         OPT     OldOpt
