@@ -9,7 +9,7 @@
 
 OSVersionID SETA &AA
 
-        [ STB
+        [ Embedded_UI
 Version SETA    Module_Version
 VString SETS    Module_MajorVersion
 Date    SETS    Module_Date      ; version for STB/NC OS
