@@ -163,6 +163,8 @@ EntryNo_HAL_USBPortPower        #       1
 EntryNo_HAL_USBPortStatus       #       1
 EntryNo_HAL_USBPortIRQ          #       1
 
+EntryNo_HAL_Video_IICOp         #       1
+
 KnownHALEntries                 #       0       ; Used inside Kernel
 
 ; Various flags and constants

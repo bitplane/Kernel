@@ -1,6 +1,6 @@
 ;
 ; This file is automatically maintained by srccommit, do not edit manually.
-; Last processed by srccommit version: 1.2.
+; Last processed by srccommit version: 1.68.
 ;
                         GBLS    Module_MajorVersion
                         GBLA    Module_Version
@@ -13,11 +13,11 @@
                         GBLS    Module_ComponentPath
 Module_MajorVersion     SETS    "5.35"
 Module_Version          SETA    535
-Module_MinorVersion     SETS    "4.79.2.78"
-Module_Date             SETS    "13 Oct 2004"
-Module_ApplicationDate  SETS    "13-Oct-04"
+Module_MinorVersion     SETS    "4.79.2.79"
+Module_Date             SETS    "29 Oct 2004"
+Module_ApplicationDate  SETS    "29-Oct-04"
 Module_ComponentName    SETS    "Kernel"
 Module_ComponentPath    SETS    "RiscOS/Sources/Kernel"
-Module_FullVersion      SETS    "5.35 (4.79.2.78)"
-Module_HelpVersion      SETS    "5.35 (13 Oct 2004) 4.79.2.78"
+Module_FullVersion      SETS    "5.35 (4.79.2.79)"
+Module_HelpVersion      SETS    "5.35 (29 Oct 2004) 4.79.2.79"
                         END
