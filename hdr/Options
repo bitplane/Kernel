@@ -113,7 +113,7 @@ RISCPCBurstMode SETL    {FALSE}
   ] ; :LNOT:RO371Timings
 
                 GBLL    DoInitialiseMode
-DoInitialiseMode SETL   {TRUE} :LAND: STB
+DoInitialiseMode SETL   {TRUE} :LAND: Embedded_UI
 
  [ STB
                 GBLL    Select16BitSound        ; STBs and pre-IOMD systems don't have this link

@@ -1851,7 +1851,7 @@ ResetPart1Done                          ; R0 is reset type
         SWI     XOS_Claim
  ]
 
-        [ DoInitialiseMode :LOR: :LNOT: STB
+        [ DoInitialiseMode :LOR: :LNOT: Embedded_UI
         BL      InitialiseMode          ; select correct screen mode, in case any
                                         ; module prints anything in initialisation
         ]
@@ -1939,9 +1939,9 @@ SkipHardResetPart2                      ; code executed on all types of reset
         STRNEB  r0, [r0, #ErrorSemaphore] ; then allow errors to be translated
       ]
 
-    [ DoInitialiseMode :LOR: :LNOT: STB
+    [ DoInitialiseMode :LOR: :LNOT: Embedded_UI
         BL      InitialiseMode
-     [ :LNOT: STB                      ; don't print stuff on STB type products
+     [ :LNOT: Embedded_UI
         SWI     XOS_WriteS
         =       10, "$SystemName ", 0   ; now RISC OS (no +) again
         ALIGN
@@ -1969,7 +1969,7 @@ SkipHardResetPart2                      ; code executed on all types of reset
     ]
 
  [ StrongARM
-  [ STB
+  [ Embedded_UI
    ! 0,"Printing of processor type disabled"
   |
 ;        IMPORT  ARM_PrintProcessorType
@@ -2078,7 +2078,7 @@ HorologicalDelayLoop1
         BL      WriteMultiField
 
 64
-    [ DoInitialiseMode :LOR: :LNOT: STB
+    [ DoInitialiseMode :LOR: :LNOT: Embedded_UI
         BL      InitialiseMode
 
       [ International
@@ -2269,7 +2269,7 @@ str_booterror   DCB     "Boot$Error",0
 
 
 AutoBootCosNoKbd
-    [ :LNOT: STB
+    [ :LNOT: Embedded_UI
       [ International
         SWI     XOS_WriteI+7
         BLVC    WriteS_Translated

@@ -290,7 +290,7 @@ WriteBlock ROUT
         CMP     R0, #CheckSumCMOS       ; are we going to write the checksum byte?
         BHI     %FT03
         CMP     R3, #CheckSumCMOS
-        BHS     %FT05
+        BHI     %FT05
 
 03
 ; we're not writing the checksum byte manually, so we need to update it
@@ -565,7 +565,7 @@ Read
 ; else drop thru into real CMOS reading code
 
   [ HAL
-    	Push	"R3,sb,R12"
+    	Push	"R3,R4,sb,R12"
     	MOV 	R4, R0	    	    	; save address
     	AddressHAL
     	CallHAL	HAL_NVMemoryType
@@ -573,7 +573,7 @@ Read
     	TEQ 	R0, #NVMemoryFlag_None
 
     	; If there's no NVmemory, pretend addresses contain 0
-    	Pull 	"R3,sb,R12", EQ
+    	Pull 	"R3,R4,sb,R12", EQ
     	MOVEQ 	R0, #0
 	Pull	"R1,R2,PC", EQ
 
@@ -587,11 +587,11 @@ Read
     	MOV 	R2, #1
     	CallHAL	HAL_NVMemoryRead
     	LDRB 	R0, [sp], #4	    	; read back from stack and restore
-    	Pull	"R3,sb,R12"
+    	Pull	"R3,R4,sb,R12"
     	Pull	"R1,R2,PC"
 
 20
-        Pull    "R3, sb,R12"
+        Pull    "R3,R4, sb,R12"
   ]
 
   [	E2ROMSupport

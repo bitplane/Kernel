@@ -802,7 +802,7 @@ FillInDefaultIRQ1VDevices
         ADDNE   a1, v1, a1, LSL #2
         STMNEIB a1, {a2, a3}
 
- [ :LNOT:{FALSE}
+ [ CDVPoduleIRQs
 ; Now Podule bits
         MOV     a1, #IRQDesp_Link_Unshared
         LDR     a2, =PIRQ_Chain - (PodDesp_Link-PodDesp_R12Val)
@@ -918,8 +918,10 @@ Default_PFIQasIRQHandler_Node
 ; r3 = interrupt location     or r3 = 0 or (if r4 > 64K)  r3 = routine
 ; r4 = interrupt mask/polarity                            r4 = workspace
  |
+  [ CDVPoduleIRQs
 ; r0 = PFIQ|PIRQ devno -> r3 = interrupt location
 ;                         r4 = interrupt mask
+  ]
  ]
 
 CDV_Flags * &FF000000
@@ -943,9 +945,11 @@ DeviceVector_Claim ROUT
 ;        TEQ     r3, #0
 ;        BNE     SubInterruptClaim
  |
+  [ CDVPoduleIRQs
         CMP     r0, #Podule_DevNo
         CMPNE   r0, #PFIQasIRQ_DevNo
         BEQ     PoduleChainClaim
+  ]
  ]
 
         MOV     r3, #12
@@ -1032,7 +1036,8 @@ AlreadySubbed
         STR     r10, [r5, #IRQDesp_R12Val]
         Pull    "r5"
         B       DV_Exit
- |
+ ]
+ [ CDVPoduleIRQs
 PoduleChainClaim
         MOV     r3, #PodDesp_NodeSize
         BL      ClaimSysHeapNode
@@ -1072,7 +1077,7 @@ DeviceVector_Release ROUT
         BHS     DV_Fail_NaffDevNo
 
         WritePSRc SVC_mode + I_bit, r12 ; IRQs off while holding context
- [ :LNOT:(HAL:LAND:{FALSE})
+ [ CDVPoduleIRQs
         CMP     r0, #Podule_DevNo
         CMPNE   r0, #PFIQasIRQ_DevNo
         BEQ     PoduleChainRelease
@@ -1182,7 +1187,8 @@ SubInterruptRelease
         BL      FreeSysHeapNode         ; free sub-interrupt
         BVS     DV_Exit
         B       %BT02                   ; then go back to delink top level
- |
+ ]
+ [ CDVPoduleIRQs
 PoduleChainRelease
         CMP     r0, #Podule_DevNo
         LDREQ   r0, =PIRQ_Chain-PodDesp_Link
