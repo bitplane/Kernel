@@ -66,7 +66,8 @@ EXPORTS   = ${EXP_HDR}.EnvNumbers \
             ${EXP_HDR}.HALDevice \
             ${EXP_HDR}.OSEntries \
             ${C_EXP_HDR}.RISCOS \
-            ${C_EXP_HDR}.HALEntries
+            ${C_EXP_HDR}.HALEntries \
+            ${C_EXP_HDR}.HALDevice
 
 #
 # Generic rules:
@@ -172,5 +173,15 @@ ${C_EXP_HDR}.RISCOS: hdr.RISCOS
 ${C_EXP_HDR}.HALEntries: hdr.HALEntries
 	${MKDIR} ${C_EXP_HDR}
 	perl Build:Hdr2H hdr.HALEntries $@
+
+${C_EXP_HDR}.HALDevice: o.Global.h.HALDevice h.HALDevice
+	${CP} h.HALDevice $@ ${CPFLAGS}
+	print o.Global.h.HALDevice { >> $@ }
+
+o.Global.h.HALDevice: hdr.HALDevice
+	${MKDIR} o.Global.h
+	dir o
+	perl Build:Hdr2H ^.hdr.HALDevice Global.h.HALDevice
+	back
 
 # Dynamic dependencies:

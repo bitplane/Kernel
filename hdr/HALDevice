@@ -30,14 +30,14 @@ HALDevice_Location      #       4
 HALDevice_Version       #       4
 HALDevice_Description   #       4
 HALDevice_Address       #       4
-                        #       12
+HALDevice_Reserved1     #       12
 HALDevice_Activate      #       4
 HALDevice_Deactivate    #       4
 HALDevice_Reset         #       4
 HALDevice_Sleep         #       4
 HALDevice_Device        #       4
 HALDevice_TestIRQ       #       4
-                        #       8
+HALDevice_Reserved2     #       8
 HALDeviceSize           *       :INDEX: @
 
 
@@ -47,7 +47,8 @@ HALDeviceVideo_VDU      #       1       ; VDU display
 
 HALDeviceType_Audio     *       2 :SHL: 8
                         ^       1
-HALDeviceAudio_PCM16    #       1       ; 16-bit PCM sound output
+HALDeviceAudio_AudC     #       1       ; 16-bit sound input/output controller
+HALDeviceAudio_Mixer    #       1       ; Sound I/O mixer
 
 HALDeviceType_SysPeri   *       3 :SHL: 8
                         ^       1
@@ -62,34 +63,46 @@ HALDeviceComms_UART     #       1       ; UART
 
 
 HALDeviceBus_Pro        *       0 :SHL: 28
-                        ^       0
-HALDeviceProBus_Core    #       1 :SHL: 24
-HALDeviceProBus_CoPro   #       1 :SHL: 24
+
+HALDeviceProBus_Core    *       0 :SHL: 24
+HALDeviceProBus_CoPro   *       1 :SHL: 24
 
 HALDeviceBus_Sys        *       1 :SHL: 28
-                        ^       0
-HALDeviceSysBus_AHB     #       1 :SHL: 24
-HALDeviceSysBus_ASB     #       1 :SHL: 24
+
+HALDeviceSysBus_AHB     *       0 :SHL: 24
+HALDeviceSysBus_ASB     *       1 :SHL: 24
+HALDeviceSysBus_PXBus   *       2 :SHL: 24
 
 HALDeviceBus_Peri       *       2 :SHL: 28
-                        ^       0
-HALDevicePeriBus_APB    #       1 :SHL: 24
+
+HALDevicePeriBus_APB    *       0 :SHL: 24
 
 HALDeviceBus_Exp        *       3 :SHL: 28
-                        ^       0
-HALDeviceExpBus_Acorn   #       1 :SHL: 24
-HALDeviceExpBus_ISA     #       1 :SHL: 24
-HALDeviceExpBus_PCI     #       1 :SHL: 24
+
+HALDeviceExpBus_Acorn   *       0 :SHL: 24
+HALDeviceExpBus_ISA     *       1 :SHL: 24
+HALDeviceExpBus_PCI     *       2 :SHL: 24
+
+HALDeviceBus_Ser        *       4 :SHL: 28
+
+HALDeviceSerBus_ACLink  *       0 :SHL: 24
+
 
                                 ^       0
-HALDeviceID_DMAC_M1535Legacy    #       1
-HALDeviceID_DMAC_M1535IDE       #       1
+HALDeviceID_AudC_M5451          #       1
 
                                 ^       0
-HALDeviceID_DMAB_M1535Legacy    #       1
+HALDeviceID_Mixer_STAC9750      #       1
 
                                 ^       0
-HALDeviceID_DMAL_M1535IDE       #       1
+HALDeviceID_DMAC_M1535          #       1
+HALDeviceID_DMAC_M5229          #       1
+
+                                ^       0
+HALDeviceID_DMAB_M1535          #       1
+
+                                ^       0
+HALDeviceID_DMAL_M5229          #       1
 
  ]
 

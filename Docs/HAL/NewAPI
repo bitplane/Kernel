@@ -96,9 +96,10 @@ of the computer. Again, it is grouped by bytes.
 
    Bits 31-28: Bus type
                      0 => processor (0 = core, 1 = coprocessor)
-                     1 => main system bus (0 = AHB, 1 = ASB)
+                     1 => main system bus (0 = AHB, 1 = ASB, 2 = PXBus)
                      2 => peripheral bus (0 = APB)
                      3 => expansion bus (0 = Acorn Expansion Card, 1 = ISA, 2 = PCI)
+                     4 => serial bus (0 = AC-Link)
    Bits 27-24: Bus sub-type (see above)
    Bits 23-16: Bus number
    Bits 15-8:  Card number (PCI, expansion card etc) / chip select number

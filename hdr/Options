@@ -186,6 +186,10 @@ ShadowROM       SETL    {FALSE}                 ; &FF800000
 Interruptible32bitModes SETL {TRUE}             ;if true, limited 32-bit mode code support (interrupt handler does not assume
                                                 ; 26-bit foreground), also allows faster, 32-bit APCS version of FPEmulator
 
+                 GBLL   GSWorkspaceInKernelBuffers      ; Move gstrans workspace into the kernel buffers area to fix redirection
+GSWorkspaceInKernelBuffers SETL   {TRUE}		; and everything else that suffers from the dodgy use of scratch space.
+
+
                 GBLL    EarlierReentrancyInDAShrink
 EarlierReentrancyInDAShrink SETL {TRUE}         ; fix for RAMFS and new FileCore (causes reentrant DA shrink/remove)
 
@@ -332,6 +336,9 @@ LCDSupport      SETL    {TRUE} :LAND: :LNOT: STB
 
                 GBLL    FixR9CorruptionInExtensionSWI   ; whether R9 corruption by ExtensionSWI handler is fixed
 FixR9CorruptionInExtensionSWI   SETL    No26bitCode     ; currently FALSE as CC's !SpellMod (possibly others) rely on it being broken
+
+                GBLL    FixCallBacks            ; see Docs.CallbackChange
+FixCallBacks    SETL    {TRUE}                  ; also addresses some atomicity problems
 
                 GBLL    InterlacedPointer
 InterlacedPointer SETL {TRUE} :LAND: STB                ; enable code to do proper interlaced pointer

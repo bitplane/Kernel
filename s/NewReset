@@ -1060,7 +1060,7 @@ DefaultCMOSTable ; list of non-zero options wanted :
         =       KeyRepCMOS,     8
         =       RMASizeCMOS,    0
         =       SpriteSizeCMOS, 0
-        =       SystemSizeCMOS, 8
+        =       SysHeapCMOS,    8
         =       MODETVCMOS,     &10     ; TV 0,1
         =       NetFSIDCMOS,    254
         =       NetPSIDCMOS,    235

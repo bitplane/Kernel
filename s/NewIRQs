@@ -94,7 +94,7 @@ Initial_IRQ_Code ROUT
         BIC      r0, r0, #IRQ32_mode :EOR: SVC32_mode
         MSR      CPSR_c, r0
         Pull     "r10-r12"                      ; SPSR, R0, LR really
- [ No26bitCode
+ [ No26bitCode :LOR: FixCallBacks
         ORR      r0, r0, #SVC32_mode
  |
         BIC      r0, r0, #&1F
@@ -106,7 +106,11 @@ Initial_IRQ_Code ROUT
         MOV      r0, r11                        ; restore original R0
         MOV      r10, #0
         LDRB     r11, [r10, #CallBack_Flag]
+      [ FixCallBacks
+        B        Do_CallBack_postpone_already_clear
+      |
         B        Do_CallBack
+      ]
 
         LTORG
 

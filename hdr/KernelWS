@@ -1659,10 +1659,15 @@ Export_ScratchSpace            #       ScratchSpaceSize
 
 ; Tidying the RMA uses ScratchSpace while all modules are dead
 
+ [ GSWorkspaceInKernelBuffers
+; the GSTrans workspace has now moved to the kernel buffers area
+; GSInit and GSRead may now safely be called from USR mode wahey...
+ |
 ; GSTRANS workspace: GSINIT puts state into the workspacem and GSREAD uses it.
 ; DO NOT do any operations between GSINIT/GSREAD SWIS.
 ; SWIs called: OSWord in time var code
 ;              BinaryToDecimal, ReadUnsigned
+ ]
 
 ; LVR: ADFS uses scratch space to format floppies on 1772 based machines
 
@@ -1670,13 +1675,20 @@ Export_ScratchSpace            #       ScratchSpaceSize
 ;      ColourTrans_SelecTable/RetrunColourNumber and also whilst generating
 ;      stipple pattterns.
 
+ [ GSWorkspaceInKernelBuffers
+; GSVarWSpace is now in kernel buffers
+ |
 GSVarWSpace             *       ScratchSpace
+ ]
 
                         ^       0
 GSNameBuff              #       &100
 GS_Stack                #       &200
 GS_StackPtr_Lim         *       &200 / 4        ; Number of words in stack.
 GS_StackPtr             #       4
+ [ GSWorkspaceInKernelBuffers
+GSVarWSpace_Size	#	0
+ ]
 
                         ^      @ + ScratchSpace
 
@@ -1903,6 +1915,12 @@ OscliNoBuffs          *  16
 RedirectBuff          #  OscliBuffSize
 OscliCircBuffStart    #  OscliBuffSize * OscliNoBuffs
 OscliCircBuffLimit    #  0
+
+ [ GSWorkspaceInKernelBuffers
+GSVarWSpace           #  GSVarWSpace_Size
+
+SysVarWorkSpace	      #  40		; used by the sys$* variables for reading the current time into
+ ]
 
 KbuffsEnd             #  0
 KbuffsSize            *  KbuffsEnd - KbuffsBaseAddress  ;size of Kernel buffers area

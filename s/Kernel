@@ -547,6 +547,9 @@ Local_SLVK
 
         LDR     r12, [sp], #4
         MOV     r10, #0
+      [ FixCallBacks
+        MSR     CPSR_c, #I32_bit + SVC32_mode           ; IRQs off makes CallBackFlag atomic; 32bit so ready for SPSR use
+      ]
         LDRB    r11, [r10, #CallBack_Flag]
 
         TST     lr, #V_bit
@@ -557,7 +560,9 @@ SWIReturnWithCallBackFlag * {PC}-SWIRelocation
 
 40      TEQ     r11, #0
 
+      [ :LNOT: FixCallBacks
         MSREQ   CPSR_c, #I32_bit + SVC32_mode           ; IRQs off for SPSR use
+      ]
         MSREQ   SPSR_cxsf, lr
         LDREQ   lr, [sp], #4
         Pull    "r10-r12", EQ
@@ -567,7 +572,12 @@ SWIReturnWithCallBackFlag * {PC}-SWIRelocation
 
  ! 0,"VSetReturn at ":CC:(:STR:({PC}-SWIRelocation))
 50      TST     r12, #Auto_Error_SWI_bit
+      [ FixCallBacks
+        BNE     callback_checking + SWIRelocation       ; we need to do this for X errors even if the callback flags
+                                                        ; are all clear, so that the postpone flag can be set
+      |
         BNE     %BT40
+      ]
 
         B       VSet_GenerateError + SWIRelocation
 
@@ -815,6 +825,11 @@ CallASWIR12 ROUT
 VSet_GenerateError ROUT
 
         Push    lr
+      [ FixCallBacks
+        BIC     lr, lr, #&0F
+        ORR     lr, lr, #SVC_mode
+        MSR     CPSR_c, lr              ; Set caller's interrupt state and 26/32bitness
+      ]
         MOV     r1, #Service_Error
         BL      Issue_Service
 
@@ -825,6 +840,9 @@ VSet_GenerateError ROUT
         BIC     lr, lr, #V_bit          ; return with V clear: error claimed!
 
         MOV     r10, #0                 ; set up r10 and r11 as required
+      [ FixCallBacks
+        MSR     CPSR_c, #I32_bit + SVC32_mode   ; IRQs off makes CallBackFlag atomic; 32bit so ready for SPSR use
+      ]
         LDRB    r11, [r10, #CallBack_Flag]
         B       SWIReturnWithCallBackFlag
 
@@ -874,13 +892,21 @@ ErrHandler ROUT
         STR     r14, [r10, #Curr_Active_Object]
         LDR     r0,  [r10, #ErrHan_ws]  ; r0 is his wp
 
+      [ :LNOT: FixCallBacks
         LDRB    r11, [r10, #CallBack_Flag]
         CMP     r11, #0
+      ]
 
         MRS     r12, CPSR
         BIC     r12, r12, #I32_bit+F32_bit+&0F  ; USR26/32 mode, ARM, IRQs enabled
 
+      [ FixCallBacks
+        MSR     CPSR_c, #I32_bit+SVC32_mode ; disable interrupts for SPSR use and CallBackFlag atomicity
+        LDRB    r11, [r10, #CallBack_Flag]
+        CMP     r11, #0
+      |
         MSREQ   CPSR_c, #I32_bit+SVC32_mode ; disable interrupts for SPSR use
+      ]
         MSREQ   SPSR_cxsf, r12
 
         Pull    "r10-r12", EQ
@@ -898,7 +924,9 @@ ErrHandler ROUT
 callback_checking
 
         TST     lr, #I32_bit+&0F        ; user 26/32 mode, ints enabled?
+      [ :LNOT: FixCallBacks             ; already entered with this CPSR
         MSRNE   CPSR_c, #I32_bit + SVC32_mode
+      ]
         MSRNE   SPSR_cxsf, lr
         LDRNE   lr, [sp], #4
         Pull    "r10-r12", NE
@@ -906,10 +934,13 @@ callback_checking
 
 ; Further checks: postpone callback if returning V set and R0->RAM
 
-        TST     lr, #V_bit
+        TST     lr, #V_bit              ; if no error then do callbacks
         BEQ     Do_CallBack
-        TST     r11, #CBack_Postpone    ; only one postponement
-        BNE     Do_CallBack             ; allowed.
+        TST     r11, #CBack_Postpone
+      [ FixCallBacks
+        TSTNE   r11, #CBack_OldStyle :OR: CBack_VectorReq ; can only postpone if not already or if no callbacks pending
+      ]
+        BNE     Do_CallBack
  [ ROMatTop
         CMP     r0, #ROM
         BHS     Do_CallBack
@@ -918,13 +949,16 @@ callback_checking
         RSBHIS  r12, r0, #ROMLimit
         BHI     Do_CallBack
  ]
-
+      [ :LNOT: FixCallBacks
         MSR     CPSR_c, #I32_bit + SVC32_mode  ; ints off while flag updated
         LDRB    r11, [r10, #CallBack_Flag]
+      ]
         ORR     r11, r11, #CBack_Postpone      ; signal to IRQs
         STRB    r11, [r10, #CallBack_Flag]
 back_to_user
+      [ :LNOT: FixCallBacks                    ; already entered with this CPSR
         MSR     CPSR_c, #I32_bit + SVC32_mode
+      ]
 back_to_user_irqs_already_off
         MSR     SPSR_cxsf, lr
         LDR     lr, [sp], #4
@@ -932,11 +966,21 @@ back_to_user_irqs_already_off
         MOVS    pc, lr
 
 Do_CallBack                                    ; CallBack allowed:
+      [ FixCallBacks
+        ; Entered in SVC32 mode with IRQs off, r10 = 0
+        TST     r11, #CBack_Postpone
+        BICNE   r11, r11, #CBack_Postpone
+        STRNEB  r11, [r10, #CallBack_Flag]
+Do_CallBack_postpone_already_clear
+      ]
         TST     r11, #CBack_VectorReq          ; now process any vector entries
         MOV     r12,lr
         BLNE    process_callback_chain
         MOV     lr,r12
 
+      [ FixCallBacks
+        LDRB    r11, [r10, #CallBack_Flag]     ; non-transient callback may have been set during transient callbacks
+      ]
         TST     r11, #CBack_OldStyle
         BEQ     back_to_user
  [ :LNOT:No26bitCode
@@ -946,13 +990,20 @@ Do_CallBack                                    ; CallBack allowed:
  [ {TRUE}                                       ; LRust, Fix RP-0609
 ; Check that SVC_sp is empty (apart from r14,r10-r12), i.e. system truly is idle
 
-        LDR     r11, =SVCSTK-4*4                ; What SVC_sp should be if system idle
-        CMP     sp, r11                         ; Stack empty?
+        LDR     r12, =SVCSTK-4*4                ; What SVC_sp should be if system idle
+        CMP     sp, r12                         ; Stack empty?
         BLO     back_to_user                    ; No then no call back
  ]
+      [ FixCallBacks
+      [ :LNOT: No26bitCode
+        MSR     CPSR_c, #I32_bit + SVC2632      ; back to 26-bit mode
+      ]
+        BIC     r11, r11, #CBack_OldStyle
+      |
         MSR     CPSR_c, #I32_bit + SVC2632      ; ints off while flag updated
         LDRB    r11, [r10, #CallBack_Flag]
         BIC     r11, r11, #CBack_Postpone+CBack_OldStyle
+      ]
         STRB    r11, [r10, #CallBack_Flag]
 
         MOV     r12, #0
@@ -985,6 +1036,10 @@ Do_CallBack                                    ; CallBack allowed:
 process_callback_chain ROUT
 
         Push   "r0-r6, r10-r12, lr"             ; save some for the callee too.
+      [ FixCallBacks :LAND: No26bitCode
+        MRS     r0, CPSR
+        Push   "r0"
+      ]
         MOV     r10, #0
 
         MSR     CPSR_c, #I32_bit + SVC2632      ; ints off while flag updated
@@ -998,7 +1053,12 @@ process_callback_chain ROUT
         LDR     r2, [r2, #CallBack_Vector]
         TEQ     r2, #0
       [ No26bitCode
+      [ FixCallBacks
+        Pull   "r0", EQ
+        MSREQ   CPSR_c, r0                      ; restore original interrupt state and 32bitness
+      |
         MSREQ   CPSR_c, #SVC2632                ; ensure exit with ints on
+      ]
         Pull   "r0-r6, r10-r12, PC",EQ
       |
         Pull   "r0-r6, r10-r12, PC",EQ,^
