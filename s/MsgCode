@@ -28,6 +28,8 @@
 ;       V Set.
 ;
 
+;        EXPORT  Write0_Translated
+
         GBLL    countmsgusage
 countmsgusage SETL {FALSE}
      [ countmsgusage
