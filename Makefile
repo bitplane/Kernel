@@ -62,6 +62,8 @@ EXPORTS   = ${EXP_HDR}.EnvNumbers \
             ${EXP_HDR}.RISCOS \
             ${EXP_HDR}.Variables \
             ${EXP_HDR}.VduExt \
+            ${EXP_HDR}.HALEntries \
+            ${EXP_HDR}.OSEntries \
             ${C_EXP_HDR}.RISCOS
 
 #
@@ -117,7 +119,7 @@ ${AIFDBG}: ${OBJECTS}
 	${LD} -aif -bin -d -o ${AIFDBG} ${OBJECTS}
 
 ${GPADBG}: ${AIFDBG}
-	ToGPA ${AIFDBG} ${GPADBG}
+	ToGPA -s ${AIFDBG} ${GPADBG}
 
 s.TMOSHelp: ${TOKENS} HelpStrs
 	${TOKENISE} ${TOKENS} HelpStrs $@
@@ -144,6 +146,12 @@ ${EXP_HDR}.VduExt: hdr.VduExt
 
 ${EXP_HDR}.Variables: hdr.Variables
 	${CP} hdr.Variables $@ ${CPFLAGS}
+	
+${EXP_HDR}.HALEntries: hdr.HALEntries
+	${CP} hdr.HALEntries $@ ${CPFLAGS}
+	
+${EXP_HDR}.OSEntries: hdr.OSEntries
+	${CP} hdr.OSEntries $@ ${CPFLAGS}
 	
 ${C_EXP_HDR}.RISCOS: hdr.RISCOS
 	${MKDIR} ${C_EXP_HDR}

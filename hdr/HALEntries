@@ -1,0 +1,65 @@
+; Copyright 2000 Pace Micro Technology plc
+;
+; Licensed under the Apache License, Version 2.0 (the "License");
+; you may not use this file except in compliance with the License.
+; You may obtain a copy of the License at
+;
+;     http://www.apache.org/licenses/LICENSE-2.0
+;
+; Unless required by applicable law or agreed to in writing, software
+; distributed under the License is distributed on an "AS IS" BASIS,
+; WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+; See the License for the specific language governing permissions and
+; limitations under the License.
+;
+; The layout of the HAL descriptor
+
+                        ^       0
+HALDesc_Flags           #       4
+HALDesc_Start           #       4
+HALDesc_Size            #       4
+HALDesc_Entries         #       4
+HALDesc_NumEntries      #       4
+HALDesc_Workspace       #       4
+HALDesc_size            #       4
+
+; Entries to the HAL from the OS
+
+                                ^       0
+EntryNo_HAL_Init                #       1
+
+EntryNo_HAL_Timers              #       1
+EntryNo_HAL_TimerDevice         #       1
+EntryNo_HAL_TimerGranularity    #       1
+EntryNo_HAL_TimerMaxPeriod      #       1
+EntryNo_HAL_TimerSetPeriod      #       1
+EntryNo_HAL_TimerPeriod         #       1
+EntryNo_HAL_TimerReadCountdown  #       1
+
+EntryNo_HAL_CounterRate         #       1
+EntryNo_HAL_CounterPeriod       #       1
+EntryNo_HAL_CounterRead         #       1
+EntryNo_HAL_CounterDelay        #       1
+
+EntryNo_HAL_NVMemoryType        #       1
+EntryNo_HAL_NVMemorySize        #       1
+EntryNo_HAL_NVMemoryProtectedSize #     1
+EntryNo_HAL_NVMemoryProtection  #       1
+EntryNo_HAL_NVMemoryIICAddress  #       1
+EntryNo_HAL_NVMemoryRead        #       1
+EntryNo_HAL_NVMemoryWrite       #       1
+
+EntryNo_HAL_IICBuses            #       1
+EntryNo_HAL_IICType             #       1
+EntryNo_HAL_IICSetLines         #       1
+EntryNo_HAL_IICReadLines        #       1
+
+; Various flags and constants
+
+; IIC
+
+IICFlag_LowLevel        * 1:SHL:0
+IICFlag_HighLevel       * 1:SHL:1
+IICFlag_Fast            * 1:SHL:16
+
+        END
