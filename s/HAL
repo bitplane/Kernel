@@ -440,6 +440,8 @@ RISCOS_Start
         LDR     a2, =(AP_Read * L2X_APMult) + L2_C + L2_B
         LDR     lr, [a3, #HALDesc_Workspace]            ; their workspace
         LDR     ip, [a3, #HALDesc_NumEntries]           ; plus 1 word per entry
+        CMP     ip, #KnownHALEntries
+        MOVLO   ip, #KnownHALEntries
         ADD     lr, lr, ip, LSL #2
         MOV     a3, lr, LSR #12                         ; round workspace up to whole
         MOV     a3, a3, LSL #12                         ; number of pages
@@ -1884,12 +1886,20 @@ SetUpHALEntryTable ROUT
         MOV     a2, a4                                  ; a2 -> entry table (increments)
 10      SUBS    ip, ip, #1                              ; decrement counter
         LDRCS   a1, [a2], #4
-        MOVCC   pc, lr
+        BCC     %FT20
         TEQ     a1, #0
         ADREQ   a1, NullHALEntry
         ADDNE   a1, a4, a1                              ; convert offset to absolute
         STR     a1, [a3, #-4]!                          ; store backwards below HAL workspace
         B       %BT10
+20      LDR     a1, =ZeroPage                           ; pad table with NullHALEntries
+        LDR     a4, =HALWorkspace                       ; in case where HAL didn't supply enough
+        ADR     a1, NullHALEntry
+30      CMP     a3, a4
+        STRHI   a1, [a3, #-4]!
+        BHI     %BT30
+        MOV     pc, lr
+
 
 NullHALEntry
         MOV     pc, lr

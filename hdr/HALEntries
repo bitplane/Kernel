@@ -159,6 +159,8 @@ EntryNo_HAL_MonitorLeadID       #       1
 
 EntryNo_HAL_Video_Render        #       1
 
+KnownHALEntries                 #       0       ; Used inside Kernel
+
 ; Various flags and constants
 
 ; NVMemory
