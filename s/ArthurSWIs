@@ -619,7 +619,7 @@ Application_Delink ROUT
 
       MOV   R3, #NVECTORS-1
       LDR   R4, [R3, #AplWorkSize-(NVECTORS-1)]
-      SETPSR I_bit, R3           ; IRQs off while holding context.
+      SETPSR I_bit, R2           ; IRQs off while holding context.
 
 03    LDR   R11, =VecPtrTab         ; Point at table of head pointers
       ADD   R10, R11, R3, LSL #2
