@@ -684,8 +684,15 @@ DumpyTheRegisters  ROUT
 
         AND     R2, R1, #&0F
         EORS    R2, R2, #FIQ_mode       ; Was we in FIQ ? Zero if so
+      [ HAL
+        BNE     UNDEF2
+        MSR     CPSR_c, #I32_bit+F32_bit+SVC32_mode ; into SVC mode so we have a stack
+        AddressHAL R2
+        CallHAL HAL_FIQDisableAll
+      |
         MOVEQ   R3, #IOC
         STREQB  R2, [R3, #IOCFIQMSK]    ; Blow away all FIQ sources
+      ]
 UNDEF2
         MSR     CPSR_c, #I32_bit+F32_bit+SVC32_mode ; into SVC mode
 
@@ -704,8 +711,16 @@ UNDEF1
         TEQP    PC, #SVC_mode :OR: I_bit :OR: F_bit
         AND     R1, R1, #SVC_mode
         EORS    R2, R1, #FIQ_mode       ; Was we in FIQ ? Zero if so
+      [ HAL
+        BNE     UNDEF1
+        MOV     R4, R14                 ; R14_SVC will be corrupted by the HAL call
+        AddressHAL R2
+        CallHAL HAL_FIQDisableAll
+        MOV     R14, R4
+      |
         MOVEQ   R3, #IOC
         STREQB  R2, [R3, #IOCFIQMSK]    ; Blow away all FIQ sources
+      ]
         B       UNDEF1
 
 02      STMIA   R0, {R8-R14}
