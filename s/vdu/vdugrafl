@@ -274,6 +274,10 @@ SwitchOutputToMask ROUT
         TEQ     R0, #2                  ; if (1<<2=4) bits per pixel
         MOVEQ   R7, #&77                ; then use colour 7 for cursor
         MOVNE   R7, #&FF                ; else use colour 15
+      [ TTX256
+        TST     R6, #Flag_Teletext      ; unless it's teletext
+        MOVNE   R7, #&07                ; in which case still use colour 7
+      ]
 70
         ORR     R7, R7, R7, LSL #8      ; fill out to whole word
         ORR     R7, R7, R7, LSL #16

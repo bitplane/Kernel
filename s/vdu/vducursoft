@@ -176,6 +176,15 @@ Cursor2loop
         MOV     PC, R14
 
 CursorTeletext
+    [ TTX256
+        ASSERT  HiResTTX
+        Push    "R0, R1, R14"
+        ADD     R0, R0, #320*1024               ; go to other screen
+        ADD     R1, R1, #320*1024
+        BL      Cursor16bit
+        Pull    "R0, R1, R14"
+        B       Cursor16bit
+    |
       [ HiResTTX
         Push    "R0, R1, R14"
         ADD     R0, R0, #160*1024               ; go to other screen
@@ -192,6 +201,7 @@ CursorTeletext
 
 ; and drop thru to ...
       ]
+    ]
 
 Cursor4bit
         LDR     R8, [R0, R2]!
@@ -359,11 +369,16 @@ TeletextFlashTest ROUT
         BNE     %FT20                           ; count not expired
 
         LDR     R1, [WsPtr, #TeletextOffset]
+    [ TTX256
+        ASSERT  HiResTTX
+        EORS    R1, R1, #320*1024               ; switch to other flash bank
+    |
       [ HiResTTX
         EORS    R1, R1, #160*1024               ; switch to other flash bank
       |
         EORS    R1, R1, #40*1024                ; switch to other flash bank
       ]
+    ]
         STR     R1, [WsPtr, #TeletextOffset]
         MOVEQ   R3, #OnFlashTime
         MOVNE   R3, #OffFlashTime

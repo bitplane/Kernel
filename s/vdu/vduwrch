@@ -339,6 +339,9 @@ FastCLS ROUT
 
         BL      TTXFastCLS                      ; else clear teletext map
         MOV     R0, #0                          ; and clear to zero
+ [ UseGraphicsV
+        B       %FT15
+ ]
 10
  [ UseGraphicsV
         BL      CheckAcceleration
@@ -1616,7 +1619,6 @@ GetBoxInfo
 
         LDR     R7, [WsPtr, #ModeFlags]
 
-        MOV     R6, R8, LSL #3                  ; *8
         TST     R7, #Flag_GapMode               ; if gap mode
         ADDNE   R6, R6, R8, LSL #1              ; (+*2) = *10
         TST     R7, #Flag_DoubleVertical        ; if double mode
@@ -1657,12 +1659,21 @@ TextWindowToGraphics
 TextBoxToGraphics
         SUB     R5, R2, R0
         ADD     R5, R5, #1                      ; number of chars horiz
+      [ HiResTTX
+        LDR     R6, [WsPtr, #CharWidth]         ; bytes/char (not log2)
+        LDR     R7, [WsPtr, #Log2BPP]           ; log2 bits/pixel
+
+        MUL     R0, R6, R0                      ; number of bytes horiz
+        MUL     R5, R6, R5
+        SUB     R7, R7, #3                      ; log2 bytes/pixel
+      |
         LDR     R6, [WsPtr, #Log2BPC]           ; should be log2 bytes/char
         LDR     R7, [WsPtr, #Log2BPP]           ; should be log2 bits/pixel
         ADD     R6, R6, #3
 
         MOV     R0, R0, LSL R6                  ; number of bits horiz
         MOV     R5, R5, LSL R6
+      ]
         MOV     R0, R0, LSR R7                  ; number of pixels horiz
         MOV     R5, R5, LSR R7
         ADD     R2, R0, R5                      ; recalculate right coord
@@ -1788,6 +1799,8 @@ ClearBottomScreenLine
 
 HardScrollSpriteUp
         Push    R14
+        TST     R6, #TeletextMode
+        BNE     TTXSoftScrollUp
  [ UseGraphicsV
         BL      TryCopyScreenUp
         Pull    R14,EQ
@@ -1989,6 +2002,8 @@ ClearTopScreenLine
 
 HardScrollSpriteDown
         Push    R14
+        TST     R6, #TeletextMode
+        BNE     TTXSoftScrollDown
         BL      GetScreenInfo           ; get box info for whole 'screen'
 
         MOV     R0, #0

@@ -23,7 +23,7 @@ ExtraRMANeeded * 24*1024 ; Amount you get extra on top of what you configured
 ModHand_IntrinsicBI  SETL {TRUE} :LAND: ChocolateOSMod  ;base module incarnation 'node' is in module node
 
                         GBLL ModHand_InitDieServices
-ModHand_InitDieServices SETL {TRUE} :LAND: ModHand_IntrinsicBI
+ModHand_InitDieServices SETL {FALSE} :LAND: ModHand_IntrinsicBI
 
 ; Test version, incorporating multiple incarnation attempt
 

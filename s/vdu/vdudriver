@@ -630,7 +630,11 @@ ModePromoTable
       DCB    1,    1     ;  4
       DCB    2,    2     ;  5
       DCB    1,   13     ;  6
+    [ TTX256
+      DCB    8,  &FF     ;  7
+    |
       DCB    4,   13     ;  7
+    ]
       DCB    2,   12     ;  8
       DCB    4,   13     ;  9
       DCB    8,  &FF     ; 10
@@ -747,6 +751,7 @@ mchsub_2
         Pull    "r3, r4"
 ;
 mchsub_3
+; BKPT &600D
         MOV     R1, #Service_PreModeChange
         IssueService
         TEQ     R1, #0                  ; was service claimed ?
