@@ -2458,6 +2458,7 @@ UndPreVeneer    ROUT
 PAbPreVeneer    ROUT
         Push    "r0-r7, lr"               ; wahey, we have an abort stack
         SUB     r0, lr_abort, #4          ; aborting address
+        MOV     r1,#1
         BL      AMB_LazyFixUp             ; can trash r0-r7, returns NE status if claimed and fixed up
         Pull    "r0-r7, lr", NE           ; restore regs and
         SUBNES  pc, lr_abort, #4          ; restart aborting instruction if fixed up
@@ -2524,17 +2525,13 @@ DAbPreVeneer    ROUT
         STR     lr_abort, [r13_abort, #15*4]    ; save old PC, ie instruction address
 
   [ ChocolateAMB
-        ARM_read_FSR r0
-        AND     r0, r0, #&F
-        TEQ     r0, #7
-        BNE     DAb_NotTranslationFault
         ARM_read_FAR r0                         ; aborting address
+        MOV     r1,#0
         BL      AMB_LazyFixUp                   ; can trash r0-r7, returns NE status if claimed and fixed up
         LDR     lr_abort, [r13_abort, #15*4]    ; restore lr_abort
         LDMIA   r13_abort, {r0-r7}              ; restore regs
         ADDNE   r13_abort, r13_abort, #17*4     ; if fixed up, restore r13_abort
         SUBNES  pc, lr_abort, #8                ; and restart aborting instruction
-DAb_NotTranslationFault
   ]
 
         MRS     r0, SPSR                        ; r0 = PSR when we aborted

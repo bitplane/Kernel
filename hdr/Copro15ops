@@ -98,16 +98,28 @@ C15 CN 15
         MCR$cond ARM_config_cp,0,$reg,ARM_control_reg,C0,0
         MEND
 
-;read MMU fault status
+;read MMU/external fault status
         MACRO
         ARM_read_FSR $reg,$cond
         MRC$cond ARM_config_cp,0,$reg,ARM_FSR_reg,C0,0
         MEND
 
-;read MMU fault address
+;set MMU/external fault status
+        MACRO
+        ARM_write_FSR $reg,$cond
+        MCR$cond ARM_config_cp,0,$reg,ARM_FSR_reg,C0,0
+        MEND
+
+;read MMU/external fault address
         MACRO
         ARM_read_FAR $reg,$cond
         MRC$cond ARM_config_cp,0,$reg,ARM_FAR_reg,C0,0
+        MEND
+
+; set MMU/external fault address
+        MACRO
+        ARM_write_FAR $reg,$cond
+        MCR$cond ARM_config_cp,0,$reg,ARM_FAR_reg,C0,0
         MEND
 
 ;read ID register to register $id

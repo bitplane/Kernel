@@ -56,7 +56,10 @@
 ;
 ; entry: r0 = aborting address (data address for data abort, instruction address
 ;        for prefetch abort), r1-r7 trashable, no stack
+;        r1 = 1 for prefetch abort, 0 for data abort
+;        FSR valid for data aborts, unpredictable for prefetch aborts
 ; exit:  r0 = non-zero (NE status) if abort was expected and fixed up, zero (EQ status) if not
+;        FAR,FSR,SPSR_abt,lr_abt preserved
 ;
 AMB_LazyFixUp ROUT
         MOV     r7,r12
@@ -64,13 +67,18 @@ AMB_LazyFixUp ROUT
         LDR     r12,[r12]
         CMP     r12,#0
         BEQ     %FT90                                    ;not initialised!
-        LDR     r1,AMBFlags
-        TST     r1,#AMBFlag_LazyMapIn_disable :OR: AMBFlag_LazyMapIn_suspend
+        LDR     r2,AMBFlags
+        TST     r2,#AMBFlag_LazyMapIn_disable :OR: AMBFlag_LazyMapIn_suspend
         BNE     %FT90                                    ;not active
-        LDR     r1,AMBMappedInNode
-        CMP     r1,#0
+        LDR     r2,AMBMappedInNode
+        CMP     r2,#0
         BEQ     %FT90                                    ;no current node
-        LDR     r2,[r1,#AMBNode_Npages]
+        ARM_read_FSR r6                                  ;hang onto FSR in case we have to preserve it
+        TEQ     r1,#1                                    ;if data abort
+        ANDNE   r3,r6,#&F
+        TEQNE   r3,#7                                    ; and not a page translation fault
+        BNE     %FT20                                    ; then not a lazy abort (and FAR may be invalid anyway)
+        LDR     r2,[r2,#AMBNode_Npages]
         SUBS    r0,r0,#ApplicationStart
         BMI     %FT20                                    ;abort not in current app space
         MOV     r0,r0,LSR #Log2PageSize                  ;address now in terms of pages from ApplicationStart
@@ -132,6 +140,8 @@ AMB_LazyFixUp ROUT
         BEQ     %FT90
         MRS     r0,SPSR                                  ;preserve SPSR_abort for original abort details
         MOV     r4,lr                                    ;preserve lr_abort so we can return properly (!)
+        ARM_read_FAR r5                                  ;preserve FAR in case client abort handler wants to read it
+                                                         ;preserve FSR (already in r6) similarly
 30
         LDR     r3,[r1]                                  ;bring that page in by the magic of aborts
         SUBS    r2,r2,#1
@@ -139,6 +149,8 @@ AMB_LazyFixUp ROUT
         BNE     %BT30
         MSR     SPSR_cxsf,r0                             ;SPSR for original abort
         MOV     lr,r4                                    ;restore return address
+        ARM_write_FAR r5                                 ;restore FAR
+        ARM_write_FSR r6                                 ;restore FSR
 ;
 90
         MOVS    r0,#0
