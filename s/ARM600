@@ -297,7 +297,10 @@ BangCam ROUT
         ADD     r6, r6, r4, LSR #12     ; put back the ones which were too many
         ADD     r0, r0, r6, LSL #12     ; move on address by the number of pages left
 BangCamAltEntry
+        LDR     r4, =DuffEntry          ; check for requests to map a page to nowhere
         ADR     r1, PPLTrans
+        TEQ     r4, r3                  ; don't actually map anything to nowhere
+        MOVEQ   pc, lr
         AND     r4, r11, #3             ; first use PPL bits
         LDR     r1, [r1, r4, LSL #2]    ; get PPL bits and SmallPage indicator
 
