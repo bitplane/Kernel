@@ -63,6 +63,14 @@ Initial_IRQ_Code ROUT
         Pull     r0
         STR      r0, [r11, #IRQsema]
 
+        TEQ      r0, #0
+        BNE      %F10
+        Push     "r10"
+        MOV      r10, #UnthreadV
+        BL       CallVector
+        Pull     "r10"
+10
+
   [ :LNOT:No26bitCode
         MRS      r0, CPSR
         ORR      r0, r0, #&10

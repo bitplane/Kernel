@@ -585,9 +585,9 @@ defaultvectab
  |
    & 0, 0, NaffVector           ; GraphicsV * &2a
  ]
+   & 0, 0, NaffVector           ; UnthreadV * &2b
 
  ; the spares
-   & 0, 0, NaffVector           ; &2b
    & 0, 0, NaffVector           ; &2c
    & 0, 0, NaffVector           ; &2d
    & 0, 0, NaffVector           ; &2e
