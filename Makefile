@@ -64,13 +64,14 @@ EXPORTS   = ${EXP_HDR}.EnvNumbers \
             ${EXP_HDR}.VduExt \
             ${EXP_HDR}.HALEntries \
             ${EXP_HDR}.OSEntries \
-            ${C_EXP_HDR}.RISCOS
+            ${C_EXP_HDR}.RISCOS \
+            ${C_EXP_HDR}.HALEntries
 
 #
 # Generic rules:
 #
 .SUFFIXES: .o .s
-.s.o:; ${ARMASM} ${ARMASMFLAGS} -o $@ $<
+.s.o:; ${ARMASM} ${ARMASMFLAGS} -o $@ $< -list list.$*
 
 rom: ${TARGET}
 	@echo ${COMPONENT}: rom module built
@@ -156,5 +157,9 @@ ${EXP_HDR}.OSEntries: hdr.OSEntries
 ${C_EXP_HDR}.RISCOS: hdr.RISCOS
 	${MKDIR} ${C_EXP_HDR}
 	perl Build:Hdr2H hdr.RISCOS $@
+
+${C_EXP_HDR}.HALEntries: hdr.HALEntries
+	${MKDIR} ${C_EXP_HDR}
+	perl Build:Hdr2H hdr.HALEntries $@
 
 # Dynamic dependencies:
