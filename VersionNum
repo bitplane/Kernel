@@ -5,19 +5,19 @@
  *
  */
 #define Module_MajorVersion_CMHG        5.35
-#define Module_MinorVersion_CMHG        4.79.2.63
-#define Module_Date_CMHG                05 Jan 2004
+#define Module_MinorVersion_CMHG        4.79.2.64
+#define Module_Date_CMHG                17 Feb 2004
 
 #define Module_MajorVersion             "5.35"
 #define Module_Version                  535
-#define Module_MinorVersion             "4.79.2.63"
-#define Module_Date                     "05 Jan 2004"
+#define Module_MinorVersion             "4.79.2.64"
+#define Module_Date                     "17 Feb 2004"
 
-#define Module_ApplicationDate          "05-Jan-04"
+#define Module_ApplicationDate          "17-Feb-04"
 
 #define Module_ComponentName            "Kernel"
 #define Module_ComponentPath            "RiscOS/Sources/Kernel"
 
-#define Module_FullVersion              "5.35 (4.79.2.63)"
-#define Module_HelpVersion              "5.35 (05 Jan 2004) 4.79.2.63"
+#define Module_FullVersion              "5.35 (4.79.2.64)"
+#define Module_HelpVersion              "5.35 (17 Feb 2004) 4.79.2.64"
 #define Module_LibraryVersionInfo       "5:35"
