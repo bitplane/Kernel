@@ -133,6 +133,7 @@ arm600stuff_startofstuff
   ! 0, "-- start of (4k aligned) ARM600+ stuff at ":CC::STR:(arm600stuff_startofstuff)
  ]
 
+ [ :LNOT: HAL
 ;note that we use the R bit if supported (not 610), so that we can write protect ROM space
 ;fully (user and supervisor)
 ;
@@ -176,9 +177,12 @@ ARM_cacheoff_MMU_CR_table
          DCD  2_0001001110001
 ;
 
+ ]
 
 OneMByte                EQU     (1024*1024)
 SixteenMByte            EQU     (1024*1024 * 16)
+
+        KEEP
 
 ; *****************************************************************************
 
@@ -2725,6 +2729,8 @@ AI_Low  #       4
 AI_High #       4
 AI_WS   #       4
 AI_Addr #       4
+
+        EXPORT DAbPreVeneer
 
 DAbPreVeneer    ROUT
 
