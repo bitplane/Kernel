@@ -140,6 +140,29 @@ EntryNo_HAL_ATAControllerInfo   #       1
 EntryNo_HAL_ATASetModes         #       1
 EntryNo_HAL_ATACableID          #       1
 
+EntryNo_HAL_InitDevices         #       1
+
+; Quick bodge until devices are working...
+EntryNo_HAL_DMA_Activate              #       1
+EntryNo_HAL_DMA_Deactivate            #       1
+EntryNo_HAL_DMA_Reset                 #       1
+EntryNo_HAL_DMA_Sleep                 #       1
+EntryNo_HAL_DMA_TestIRQ               #       1
+EntryNo_HAL_DMA_DMA_EnumeratePhysical #       1
+EntryNo_HAL_DMA_DMA_EnumerateLogical  #       1
+EntryNo_HAL_DMA_DMA_Allocate          #       1
+EntryNo_HAL_DMA_DMA_Deallocate        #       1
+EntryNo_HAL_DMA_DMA_Features          #       1
+EntryNo_HAL_DMA_DMA_SetOptions        #       1
+EntryNo_HAL_DMA_DMA_SetCurrentTransfer #      1
+EntryNo_HAL_DMA_DMA_SetNextTransfer   #       1
+EntryNo_HAL_DMA_DMA_TransferState     #       1
+EntryNo_HAL_DMA_DMA_SetCurrentTransfer2 #     1
+EntryNo_HAL_DMA_DMA_SetNextTransfer2  #       1
+EntryNo_HAL_DMA_DMA_TransferState2    #       1
+EntryNo_HAL_DMA_DMA_IRQClear          #       1
+EntryNo_HAL_DMA_DMA_Status            #       1
+
 ; Various flags and constants
 
 ; NVMemory

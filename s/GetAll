@@ -40,6 +40,7 @@ ShowWS  SETL    {TRUE}                          ; Make KernelWS be verbose
         GET     Hdr:PublicWS
         GET     Hdr:KernelWS
         GET     Hdr:HALEntries
+        GET     Hdr:HALDevice
         GET     Hdr:OSEntries
         GET     Hdr:Services
         GET     Hdr:FSNumbers

@@ -356,10 +356,11 @@ RISCOS_Header
         DCD     (RISCOS_Entries_End - RISCOS_Entries) / 4
 
 RISCOS_Entries
-        DCD     RISCOS_InitARM - RISCOS_Entries
-        DCD     RISCOS_AddRAM  - RISCOS_Entries
-        DCD     RISCOS_Start   - RISCOS_Entries
-        DCD     RISCOS_MapInIO - RISCOS_Entries
+        DCD     RISCOS_InitARM   - RISCOS_Entries
+        DCD     RISCOS_AddRAM    - RISCOS_Entries
+        DCD     RISCOS_Start     - RISCOS_Entries
+        DCD     RISCOS_MapInIO   - RISCOS_Entries
+        DCD     RISCOS_AddDevice - RISCOS_Entries
 RISCOS_Entries_End
 
   |

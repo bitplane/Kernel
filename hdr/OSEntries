@@ -19,6 +19,9 @@ OS_InitARM      #       1
 OS_AddRAM       #       1
 OS_Start        #       1
 OS_MapInIO      #       1
+OS_AddDevice    #       1
+
+HighestOSEntry  *       :INDEX: @ - 1
 
 ; The layout of the OS header
                 ^       0

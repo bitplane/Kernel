@@ -1806,6 +1806,12 @@ RISCOS_MapInIO ROUT
         EXIT
 
 
+; void RISCOS_AddDevice(unsigned int flags, struct device *d)
+RISCOS_AddDevice
+        ADDS    a1, a2, #0      ; also clears V
+        B       HardwareDeviceAdd_Common
+
+
 SetUpHALEntryTable ROUT
         LDR     a1, =ZeroPage
         LDR     a2, [a1, #HAL_Descriptor]
@@ -1830,8 +1836,14 @@ NullHALEntry
 HardwareSWI
         AND     ip, v5, #&FF
         CMP     ip, #1
-        BHI     HardwareBadReason
+        BLO     HardwareCall
         BEQ     HardwareLookup
+        CMP     ip, #3
+        BLO     HardwareDeviceAdd
+        BEQ     HardwareDeviceRemove
+        CMP     ip, #5
+        BLO     HardwareDeviceEnumerate
+        BHS     HardwareBadReason
 
 HardwareCall
         Push    "v1-v4,sb,lr"
@@ -1865,6 +1877,110 @@ HardwareLookup
         TEQ     a1, v7
         BEQ     HardwareBadEntry
         MOV     a2, sb
+        ExitSWIHandler
+
+HardwareDeviceAdd
+        Push    "lr"
+        BL      HardwareDeviceAdd_Common
+        Pull    "lr"
+        B       SLVK_TestV
+
+HardwareDeviceRemove
+        Push    "lr"
+        BL      HardwareDeviceRemove_Common
+        Pull    "lr"
+        B       SLVK_TestV
+
+HardwareDeviceAdd_Common
+        Entry   "r1-r3"
+        BL      HardwareDeviceRemove_Common             ; first try to remove any device already at the same address
+        EXIT    VS
+        MOV     lr, #0
+        LDR     r1, [lr, #DeviceCount]
+        LDR     r2, [lr, #DeviceTable]
+        TEQ     r2, #0
+        BEQ     %FT80
+        LDR     lr, [r2, #-4]                           ; word before heap block is length
+        TEQ     r1, lr, LSR #2                          ; block already full?
+        BEQ     %FT81
+10      ADD     lr, r2, r1, LSL #2
+11      LDR     r1, [lr, #-4]!                          ; copy existing devices up, so new ones get enumerated first
+        STR     r1, [lr, #4]
+        CMP     lr, r2
+        BHI     %BT11
+        STR     r0, [r2]
+        MOV     r2, r0
+        MOV     r1, #Service_Device
+        MOV     r0, #0
+        BL      Issue_Service
+        ADDS    r0, r2, #0                              ; exit with V clear
+        EXIT
+
+80      ; Claim a system heap block for the device table
+        MOV     r3, #16
+        BL      ClaimSysHeapNode
+        EXIT    VS
+        MOV     r1, #0
+        STR     r2, [r1, #DeviceTable]
+        B       %BT10
+
+81      ; Extend the system heap block
+        MOV     r0, #HeapReason_ExtendBlock
+        MOV     r3, #16
+        BL      DoSysHeapOpWithExtension
+        EXIT    VS
+        MOV     lr, #0
+        LDR     r1, [lr, #DeviceCount]
+        STR     r2, [lr, #DeviceTable]
+        B       %BT10
+
+HardwareDeviceRemove_Common
+        Entry   "r1-r4"
+        MOV     lr, #0
+        LDR     r3, [lr, #DeviceCount]
+        LDR     r4, [lr, #DeviceTable]
+        TEQ     r3, #0
+        EXIT    EQ                                      ; no devices registered
+01      LDR     r2, [r4], #4
+        TEQ     r2, r0
+        SUBNES  r3, r3, #1
+        BNE     %BT01
+        TEQ     r2, r0
+        EXIT    NE                                      ; this device not registered
+        MOV     r0, #1
+        MOV     r1, #Service_Device
+        BL      Issue_Service
+        CMP     r1, #0                                  ; if service call claimed
+        CMPEQ   r1, #1:SHL:31                           ; then set V
+        EXIT    VS                                      ; and exit
+        MOV     r0, r2
+        SUBS    r3, r3, #1
+02      LDRNE   r2, [r4], #4                            ; copy down remaining devices
+        STRNE   r2, [r4, #-8]
+        SUBS    r3, r3, #1
+        BNE     %BT02
+        EXIT
+
+HardwareDeviceEnumerate
+        Push    "r3-r4,lr"
+        MOV     lr, #0
+        LDR     r2, [lr, #DeviceCount]
+        LDR     r3, [lr, #DeviceTable]
+        SUBS    r4, r2, r1
+        MOVLS   r1, #-1
+        BLS     %FT90                                   ; if r1 is out of range then exit
+        ADD     r3, r3, r1, LSL #2
+10      ADD     r1, r1, #1
+        LDR     r2, [r3], #4
+        LDR     lr, [r2, #HALDevice_Type + 2]
+        MOV     lr, lr, LSR #16
+        TEQ     lr, r0
+        SUBNES  r4, r4, #1
+        BNE     %BT10
+        TEQ     lr, r0
+        MOVNE   r1, #-1
+90
+        Pull    "r3-r4,lr"
         ExitSWIHandler
 
 HardwareBadReason

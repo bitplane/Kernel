@@ -1804,7 +1804,13 @@ ResetPart1Done                          ; R0 is reset type
         BEQ     SkipHardResetPart2
 
 ; HardResetPart2
- [ :LNOT: HAL
+ [ HAL
+        AddressHAL
+        MOV     R0, #0
+        STR     R0, [R0, #DeviceCount]
+        STR     R0, [R0, #DeviceTable]
+        CallHAL HAL_InitDevices         ; get HAL to register any devices it has
+ |
         BL      L1L2PTenhancements      ; little tricks on cacheability etc for performance
  ]
         BL      InitVariables
@@ -1842,22 +1848,14 @@ ResetPart1Done                          ; R0 is reset type
         BL      Issue_Service
 
 ; New code added here by TMD 01-Apr-92
-; Go into user mode, issue a dummy SWI, then go back into SVC mode
+; Changed to use OS_LeaveOS 16-Oct-02
 
   [ DebugROMInit
         SWI     XOS_WriteS
         =       "callbacks",0
         SWI     XOS_NewLine
   ]
-        WritePSRc 0, R14                ; enter USR mode (IRQs, FIQs enabled)
-        NOP                             ; wait for it to take effect
-        SWI     XOS_WriteI+0            ; I hope it doesn't generate an error
-                                        ; otherwise the callback will get deferred!
-  [ DebugROMInit
-        SWI     XOS_WriteS
-        =       "EnterOS!",0
-        SWI     XOS_NewLine
-  ]
+        SWI     XOS_LeaveOS
         SWI     XOS_EnterOS             ; switch back to SVC mode (IRQs, FIQs enabled)
   [ :LNOT: HAL :LAND: RO371Timings
         BL      finalmemoryspeed

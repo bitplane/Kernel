@@ -46,12 +46,12 @@ struct device
     const char *description;
     void *address;
     uint32_t reserved[3];
-    int (*Activate)(struct peripheral *);
-    void (*Deactivate)(struct peripheral *)
-    void (*Reset)(struct peripheral *);
-    int (*Sleep)(struct peripheral *, state);
-    int (*Claim)(struct peripheral *, int intno, myfunc, handle);
-    void (*Release)(struct peripheral *, int intno, myfunc, handle);
+    bool (*Activate)(struct device *);
+    void (*Deactivate)(struct device *);
+    void (*Reset)(struct device *);
+    int32_t (*Sleep)(struct device *, int32_t state);
+    int32_t devicenumber;
+    bool (*TestIRQ)(struct device *);
     uint32_t reserved[2];
 
 };
@@ -60,8 +60,8 @@ struct device
 struct serial
 {
     struct device dev;
-    int (*ReadByte)(struct serial *);
-    void (*WriteByte)(struct serial *, int c);
+    uint8_t (*ReadByte)(struct serial *);
+    void (*WriteByte)(struct serial *, uint8_t c);
 
     // private data
 }
@@ -71,16 +71,23 @@ device pointer.
 
 Type
 ----
-The type word describes what the device is. It is grouped into sub-words as follows:
+The type word describes what the device is.
 
-   Bits 31-24: Top level type (eg video, sound, system peripheral, comms port)
-   Bits 23-16: Second level type (eg VDU display, 16-bit PCM sound output,
-               interrupt controller, UART).
-   Bits 15-0:  Product code - a unique identifier for this particular device.
+   Bits 15-8: Top level type (eg video, sound, system peripheral, comms port)
+              Defined values are: 1 = video
+                                  2 = sound
+                                  3 = system peripheral
+                                  4 = comms port
+   Bits 7-0:  Second level type (eg VDU display, 16-bit PCM sound output,
+              interrupt controller, UART). Allocated independently within each top
+              level type.
 
-A device driver will normally search for devices with a specific value in bits 31-16,
-and not care about bits 15-0. Bits 31-16, together with the version number, indicate
-which device specific calls are available.
+This half-word, together with the version number, indicate which device specific calls
+are available.
+
+ID
+--
+16-bit product code - a unique identifier for this particular device.
 
 Location
 --------
@@ -128,7 +135,7 @@ depends on the exact device in question.
 Activate
 --------
 A device driver must call the Activate entry point before using a device. A
-success/failure indication is returned: 0 indicates successful activation, -1 indicates
+success/failure indication is returned: 1 indicates successful activation, 0 indicates
 unsuccessful. Devices may ignore activate/deactivate calls, count them, or
 may alternatively provide full locking to allow only one activation. Typically this
 would be called by in a driver's module initialisation routine. Alternatively, it might
@@ -145,11 +152,25 @@ The Kernel will call the Reset entry point of every device on the system
 before performing a software reset (eg OS_Reset or Ctrl-Break), after it has
 issued Service_PreReset. All devices must enter a quiescent state.
 
-Claim
+Sleep
 -----
-Claim is a front-end to OS_ClaimDeviceVector. The device should set up interrupt
-parameters appropriately for the interrupt in question, and call OS_ClaimDeviceVector.
+This call reads or sets a device's power-down state. If the second parameter is -1,
+then the current state is returned; otherwise the second parameter must be a value in
+the range 0-255 giving sleepiness (0 = full power, 255 = off) and the old sleepiness
+is returned. Note that the value returned does not have to match the last value
+programmed: for example, if a device cannot power down, it will always return 0.
 
+DeviceNumber
+------------
+If this is -1, then the device has no associated interrupt. Otherwise, bits 0-30 give
+the device number and bit 31 flags that the device vector is shared, ie this is the R0
+that should be passed to OS_ClaimDeviceVector. If bit 31 is set then the TestIRQ
+routine must be used to determine whether the vector should be claimed or passed on.
+
+TestIRQ
+-------
+Returns 0 if the device is not interrupting, or 1 if the device is interrupting.
+When DeviceNumber is -1, this must be a null pointer.
 
 
 
@@ -164,9 +185,13 @@ On entry: R0 -> device descriptor
           R8 = 2
 On exit:  All registers preserved
 
-void OS_AddDevice(device *d);
+void OS_AddDevice(uint32_t flags, struct device *d);
 
-Declare a new device to the system.
+void HAL_InitDevices(uint32_t flags);
+
+Declare a new device to the system. OS_AddDevice must not be called until
+HAL_InitDevices is called.
+
 
 Devices are removed by calling OS_Hardware 3. There is no HAL->OS equivalent.
 
@@ -176,13 +201,32 @@ On entry: R0 -> device descriptor
           R8 = 3
 On exit:  All registers preserved
 
+
 The Kernel tracks all present devices, issuing service calls as devices come and go, and
 providing a call to enumerate devices of a particular type.
 
 SWI OS_Hardware 4 (SWI &7A)
 ---------------------------
-On entry: R0 = type
+On entry: R0 = type to match
+          R1 = 0 to start an enumeration, else preserved from last call
           R8 = 4
-On exit:
+On exit:  R1 = -1 if there are no (more) devices of this type
+          R2 -> device descriptor (undefined if R1 = -1)
+          Other registers preserved
 
 
+Service_Device  (Service Call &??)
+----------------------------------
+On entry: R0 bits 0-7 = sub-reason code, bits 8-31 flags (undefined, ignore)
+          R1 = reason code (&??)
+          R2 -> device
+On exit:  Depends on sub-reason code
+
+          Sub-reason code 0: Device added
+On exit:  All registers must be preserved
+
+          Sub-reason code 1: Device being removed
+On exit:  R1 = 0 => we object to device being removed
+                    R0 -> error block
+                    other registers must be preserved
+          else all registers must be preserved

@@ -1276,6 +1276,10 @@ FreePoolDANode     #    DANode_NodeSize ; Area node for free pool
 SysHeapDANode      #    DANode_NodeSize ; Area node for system heap
 CDASemaphore       #    4               ; Semaphore for OS_ChangeDynamicArea - non-zero => routine threaded
 MMUControlSoftCopy #    4               ; Soft copy of ARM control register
+ [ HAL
+DeviceCount     #       4       ; size of our table of devices in the system heap
+DeviceTable     #       4       ; pointer to table
+ ]
 
 AplWorkSize * AppSpaceDANode + DANode_Size
 
