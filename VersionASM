@@ -13,11 +13,11 @@
                         GBLS    Module_ComponentPath
 Module_MajorVersion     SETS    "5.35"
 Module_Version          SETA    535
-Module_MinorVersion     SETS    "4.79.2.82"
+Module_MinorVersion     SETS    "4.79.2.83"
 Module_Date             SETS    "04 Nov 2004"
 Module_ApplicationDate  SETS    "04-Nov-04"
 Module_ComponentName    SETS    "Kernel"
 Module_ComponentPath    SETS    "RiscOS/Sources/Kernel"
-Module_FullVersion      SETS    "5.35 (4.79.2.82)"
-Module_HelpVersion      SETS    "5.35 (04 Nov 2004) 4.79.2.82"
+Module_FullVersion      SETS    "5.35 (4.79.2.83)"
+Module_HelpVersion      SETS    "5.35 (04 Nov 2004) 4.79.2.83"
                         END
