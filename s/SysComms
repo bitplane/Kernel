@@ -1267,10 +1267,9 @@ Build_Code ALTENTRY
 
         MOV     r0, sp             ; Get a line from Joe Punter
         MOV     r1, #256-1         ; -1 for terminator
-        ORR     r1, r1, #&80000000 ; yep, new API
         MOV     r2, #" "
         MOV     r3, #&FF
-        SWI     XOS_ReadLine
+        SWI     XOS_ReadLine32
         MOVVS   r1, r5
         BVS     UtilityExitCloseR1_256
         MOV     r3, #CR                 ; Terminate source string

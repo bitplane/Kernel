@@ -866,24 +866,35 @@ Determine the framestore buffer alignment required by the hardware.
 
 -- unsigned int64 HAL_MachineID(void)
 
-Returns a 64-bit unique machine identifier. What does it mean? ...
+Returns a 64-bit unique machine identifier,this may later be used to
+form the ethernet MAC address but otherwise has no great significance on non
+networked machines.
 
--- void *HAL_ControllerAddress(unsigned flags, unsigned controller)
+The top 8 bits are a CRC,based on the same algorithm the original DS2401 
+used - if the CRC fails zero will be substituted
 
-Maps to RISC OS' OS_Memory 9 call - provides a way for people who must poke
-the hardware to find it. Bits 0-7 of controller are the sequence number
-(starting at zero), and bits 8-31 are the controller type. Currently
-allocated types are:
+-- void *HAL_ControllerAddress(unsigned controller)
 
-      0 = EASI card access speed control register (sequence no = card)
-      1 = EASI space (sequence no = card)
-      2 = VIDC1
-      3 = VIDC20
-      4 = IOMD
+Asks the HAL where various controllers might or might not be.
+Podule manager uses this information to determine at run time whether or not
+to bother doing anything.
 
-        HALEntry HAL_HardwareInfo
-        HALEntry HAL_SuperIOInfo
+Returns r0=logical address of the chosen controller,or zero
 
+   0 = EASI card access speed control
+   1 = EASI space(s)
+   2 = VIDC1
+   3 = VIDC20
+   4 = S space base (IOMD,podules,NICs,blah blah)
+   5 = Extension ROM(s)
+
+-- HALEntry HAL_HardwareInfo
+
+See OS_ReadSysInfo reason code 2
+
+--  HALEntry HAL_SuperIOInfo
+
+See OS_ReadSysInfo reason code 3
 
 RISC OS entry points from HAL init
 ----------------------------------
@@ -927,6 +938,7 @@ This entry must not be called after RISCOS_Start.
                        uintptr_t sigbits, void *ref)
    flags
         bit 0: video memory (only first contiguous range will be used)
+        bit 1: video memory is not suitable for general use
         bits 8-11: speed indicator (arbitrary, higher => faster)
         other bits reserved (SBZ)
    start

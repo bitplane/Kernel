@@ -14,19 +14,61 @@
 ;
         TTL     => Middle
 
+; Compatibility fudgery for OS_ReadLine and ReadLineV with 32-bit addresses
+
+ [ No26bitCode
+ReadLineSWI
+        Push    "r4,lr"
+        MOV     r4, #0
+        SWI     XOS_ReadLine32
+        Pull    "r4,lr"
+        ; Pass back NZCV bits
+        MRS     r11, CPSR
+        BIC     lr,  lr,  #N_bit+Z_bit+C_bit+V_bit
+        AND     r11, r11, #N_bit+Z_bit+C_bit+V_bit
+        ORR     lr, lr, r11
+        B       SLVK
+
+ReadLine32SWI
+        MOV     r11, #OS_ReadLine
+        B       VecSwiDespatch
+ |
+ReadLine32SWI
+        TST     r0, #ARM_CC_Mask-3
+        BNE     %FT90
+        AND     r11, r4, #ARM_CC_Mask
+        ORR     r0, r0, r11
+        Push    "r4,lr"
+        AND     r4, r4, #&FF
+        SWI     XOS_ReadLine
+        Pull    "r4,lr"
+        B       SLVK_TestV
+
+90      Push    "lr"
+        BL      SetErrorBadAddress
+        Pull    "lr"
+        B       SLVK_SetV
+ ]
+
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ; VecRdLine - Read line from input stream (OSWORD 0 equivalent)
 
-;mjs June 2001, API redefined to support full 32-bit addresses
-
 ; In    r0 -> buffer for characters
-;       r1 =  max length of line (excluding carriage return), and flags in top 3 bits
-;               bit 31 *must* be set to indicate new API supporting 32-bit addresses
-;               bit 30 set means don't reflect characters that don't go in the buffer
-;               bit 29 set means reflect with the character in R4
+ [ :LNOT:No26bitCode
+;               bit 31 set means don't reflect characters that don't go in the buffer
+;               bit 30 set means reflect with the character in R4
+ ]
+;       r1 =  max length of line (excluding carriage return)
 ;       r2 = lowest character put into buffer
 ;       r3 = highest character put into buffer
-;       r4 = character to echo if r1 bit 29 is set
+ [ No26bitCode
+;       r4 = flags
+;               bit 31 set means don't reflect characters that don't go in the buffer
+;               bit 30 set means reflect with the character in R4
+;               bits 7-0 = character to echo if r4 bit 30 is set
+ |
+;       r4 = character to echo if r1 bit 30 is set
+ ]
 ;       wp -> OsbyteVars
 
 ; Out   r0, r2, r3 corrupted
@@ -34,28 +76,22 @@
 ;       C=0 => line terminated by return (CR or LF)
 ;       C=1 => line terminated by ESCAPE
 
-; For backward compatibility, supports old API, assuming address in r0 is
-; safe (has top 2 bits clear). The old API uses bits 31,30 of r0 to
-; specify flags as in bits 30,29 of r1 above.
-
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 VecRdLine ROUT
 
         Push    "R4-R7"
 
-        TST     R1, #&80000000          ; check for old API
-        ANDEQ   R7, R0, #&C0000000
-        ORREQ   R1, R1, R7, LSR #1
-        ORREQ   R1, R1, #&80000000
-        BICEQ   R0, R0, #&C0000000      ; if so, munge into new API
-
-        AND     R7, R1, #&E0000000      ; extract flags
+ [ No26bitCode
+        MOV     R7, R4                  ; R7 = flags + echo byte
+        MOV     R4, R0                  ; R4 -> buffer
+ |
+        AND     R7, R0, #&C0000000      ; extract flags
         AND     R4, R4, #&FF
         ORR     R7, R7, R4              ; got flags, potential echo byte in R7
 
-        BIC     R1, R1, #&E0000000      ; zap flags
-        MOV     R4, R0                  ; R4 -> buffer
+        BIC     R4, R0, #ARM_CC_Mask-3  ; R4 -> buffer
+ ]
 
         MOV     R6, #0                  ; R6 = index into buffer
         STRB    R6, PageModeLineCount   ; reset page lines
@@ -479,11 +515,12 @@ ERRORH ROUT
 99
         SWI     XOS_NewLine
 
+        SWI     XOS_EnterOS
         MOV     R0, #0
         STRB    R0, [R0, #ErrorSemaphore]                 ; Enable error translation, in case we got here in the
                                                         ; middle of looking up an error
 
-        B       GOSUPV
+        B       GOSUPV                          ; switches back to User mode for us
 
 ErrorToken      =       "Error:"
 ErrorText       =       "Error: %0 (Error Number &%1)",0
@@ -857,6 +894,20 @@ RESET1 ROUT
         MOV     R1, #0
         LDR     R1, [R1, #ExceptionDump]
         STMIA   R1, {R0-R14}
+ [ XScaleJTAGDebug
+        MRS     R0, CPSR
+        AND     R0, R0, #&1F
+        TEQ     R0, #&15        ; Debug mode?
+        BNE     %FT20
+        MOV     R13, #0
+        LDR     R0, [R13, #ProcessorFlags]
+        ORR     R0, R0, #CPUFlag_XScaleJTAGconnected
+        STR     R0, [R13, #ProcessorFlags]
+        LDR     R0, [R1, #0]
+        LDR     R1, [R0, -R0]
+        B       DebugStub
+20
+ ]
  [ No26bitCode
         MOV     R0, #0
         STR     R0, [R1, #15*4]
@@ -885,6 +936,35 @@ BranchThroughZeroInstruction
         B       .+(RESET1-0)
  ]
 
+ [ XScaleJTAGDebug
+        ; Magic from the Multi-ICE User Guide
+        ALIGN   32
+DebugStub ROUT
+        ARM_read_control R13
+        AND     R13, R13, #MMUC_I
+        ORR     R14, R14, R13, LSR #12
+        ARM_read_control R13
+        ORR     R13, R13, #MMUC_I
+        ARM_write_control R13
+        ADR     R13, DebugStubLine2
+        MCR     p15, 0, R13, C7, C5, 1
+        MCR     p15, 0, R13, C7, C5, 6
+10      MRC     p14, 0, R15, C14, C0
+        BVS     %BT10
+        MOV     R13, #&00B00000
+        MCR     p14, 0, R13, C8, C0
+20      MRC     p14, 0, R15, C14, C0
+        BPL     %BT20
+        ARM_read_control R13
+        TST     R14, #1
+        BICEQ   R13, R13, #MMUC_I
+        ARM_write_control R13
+        MRC     p14, 0, R13, C9, C0
+        MOV     PC, R13
+        ALIGN   32
+DebugStubLine2
+        SPACE   32
+ ]
 
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ; SWI to call the UpCall vector
@@ -1165,24 +1245,22 @@ dhte
 ; Out   r0 = sysinfo for r0in
 
 ReadSysInfo_Code ROUT
-        CMP     r0, #1
-        BCC     %FT00                   ; r0 = 0
-        BEQ     %FT10                   ; r0 = 1
-        CMP     r0, #3
-        BCC     %FT20                   ; r0 = 2
-        BEQ     %FT30                   ; R0 = 3
-        CMP     r0, #5
-        BCC     %FT40                   ; R0 = 4
-        BEQ     %FT50                   ; R0 = 5
-        CMP     r0, #7
-        BCC     %FT60                   ; R0 = 6
-        BEQ     %FT70                   ; R0 = 7
-        CMP     r0, #9
-        BCC     %FT80                   ; R0 = 8
-                                        ; R0 = 9 not allocated yet (BEQ %FT90)
+        CMP     r0,#10 ;R0 > 9, so illegal value
+        ADDLO   PC, PC, R0,LSL #2
+        B       ReadSysInfo_InvalidReason
 
-        ;       R0 > 8, so illegal value
+        B       %FT00
+        B       %FT10
+        B       %FT20
+        B       %FT30
+        B       %FT40
+        B       %FT50
+        B       %FT60
+        B       %FT70
+        B       %FT80
+        B       %FT90
 
+ReadSysInfo_InvalidReason
         ADR     r0, ErrorBlock_BadReadSysInfo
       [ International
         Push    "lr"
@@ -1310,6 +1388,10 @@ IOST_BATMAN     * 64    ;Stork keyboard/battery controller seems to be present
         MOV     r12, #0
         LDR     r3, [r12, #RawMachineID+0]
         LDR     r4, [r12, #RawMachineID+4]
+        MOV     r3, r3, LSR #8                  ; lose first 8 bits
+        ORR     r3, r3, r4, LSL #24             ; and put bits 0..7 of r3 into bits 24..31 of r2
+        MOV     r4, r4, LSL #8                  ; lose CRC bits
+        MOV     r4, r4, LSR #16                 ; and move the rest down to the bottom
         Pull    "r0-r2,r9,r14"
         ExitSWIHandler
  |
@@ -1409,12 +1491,12 @@ IOST_BATMAN     * 64    ;Stork keyboard/battery controller seems to be present
         ExitSWIHandler
  ]
 
-; OS_ReadSysInfo 4 (SWI &58)
+; ReadSysInfo(4)
 ;
 ; On entry:       r0 = 4 (reason code)
 ;
-; On exit:        r0 = LSW of Ethernet Network Address (or 0)
-;                 r1 = MSW of Ethernet Network Address (or 0)
+; On exit:        r0 = LS32bits of Ethernet Network Address (or 0)
+;                 r1 = MS16bits of Ethernet Network Address (or 0)
 ;
 ; Use:            Code loaded from the dedicated Network Expansion Card or
 ;                 from a normal Expansion Card should use the value returned
@@ -1423,24 +1505,18 @@ IOST_BATMAN     * 64    ;Stork keyboard/battery controller seems to be present
 40
         MOV     r0, #0
         LDRB    r1, [ r0, #RawMachineID ]               ; The family byte
-        TEQ     r1, #&81                                ; Is this a custom part?
+        TEQ     r1, #&81                                ; Excellent,a custom part - we'll use it
         BNE     ExitNoEthernetAddress
         LDR     r1, [ r0, #RawMachineID+4 ]             ; Acorn's ID and part#
-  [  True
         BIC     r1, r1, #&FF000000                      ; Remove the CRC
         LDR     r0, =&0050A4                            ; Acorn's ID is &005
-  | ; Version for no checking of Manufacture's ID
-        MOV     r1, r1, LSL #20
-        MOV     r1, r1, LSR #20                         ; Remove CRC and ID
-        LDR     r0, =&0A4
-  ]
-        TEQ     r1, r0                                  ; Is this one of our chips?
-        BNE     ExitNoEthernetAddress
+        TEQ     r1, r0                                  ; Is this an Acorn part?
         MOV     r0, #0
+        BNE     %FT45
         LDR     r0, [ r0, #RawMachineID ]
         MOV     r0, r0, LSR #8                          ; Lose family byte
-        LDR     r1, =&0000A4100000                      ; Base Ethernet address
-        ADD     r0, r1, r0                              ; Add Dallas part to base
+        LDR     r1, =&0000A4100000
+        ADD     r0, r1, r0                              ; Add Acorn base Ethernet address to number from Dallas
         [ STB
         TST     r0, #1:SHL:23                           ; Check not overflowed into secondary range
         BNE     ExitNoEthernetAddress
@@ -1448,7 +1524,16 @@ IOST_BATMAN     * 64    ;Stork keyboard/battery controller seems to be present
         TEQ     r1, #&A4
         BNE     ExitNoEthernetAddress
         ]
-        MOV     r1, #0                                  ; Top 16 bits are zero
+        MOV     r1, #0                                  ; Top 16 bits are zero in Acorn's MAC address allocation
+        ExitSWIHandler
+45
+        MOV     r1, r1, LSR #8                          ; It's unique,but not an Acorn part - extract MAC address verbatim
+        Push    "r2"
+        LDR     r2, [ r0, #RawMachineID ]
+        MOV     r2, r2, LSR #8
+        LDRB    r0, [r0, #RawMachineID+4]
+        ORR     r0, r2, r0, LSL#24
+        Pull    "r2"
         ExitSWIHandler
 
 ExitNoEthernetAddress
@@ -1470,9 +1555,9 @@ ExitNoEthernetAddress
  [ STB
 
 NVRAM_TAG_MACAddress
-	= "MACAddress", 0
+        = "MACAddress", 0
 NVRAM_TAG_MACAddressChecksum
-	= "MACAddressChecksum", 0
+        = "MACAddressChecksum", 0
 NVRAM_TAG_MACAddress2nd
         = "MACAddress2nd", 0
 NVRAM_TAG_MACAddressChecksum2nd
@@ -1603,50 +1688,50 @@ GetMachineAddressCMOS
 CheckOneCopyOfMachineAddressCMOS
         Entry   ,8
 
-	MOV	r1, sp
-	MOV	r2, #6
-	SWI	XNVRAM_Read
-	MOVVS	r0, #&ffffffff
-	TST	r0, #&80000000				; Check for errors
+        MOV     r1, sp
+        MOV     r2, #6
+        SWI     XNVRAM_Read
+        MOVVS   r0, #&ffffffff
+        TST     r0, #&80000000                          ; Check for errors
         BNE     MachineAddressNVRAMError
 
         MOV     r0, r3
-	ADD	r1, sp, #6
-	MOV	r2, #1
+        ADD     r1, sp, #6
+        MOV     r2, #1
         SWI     XNVRAM_Read
-	MOVVS	r0, #&ffffffff
-	TST	r0, #&80000000				; Check for errors
+        MOVVS   r0, #&ffffffff
+        TST     r0, #&80000000                          ; Check for errors
         BNE     MachineAddressNVRAMError
 
-	MOV	r0, #0
-	MOV	r1, #0
+        MOV     r0, #0
+        MOV     r1, #0
 
-	LDRB	r3, [sp, #0]				; Get the first byte into checksum
-	MOV	r1, r3, ASL #8				; Store into result
+        LDRB    r3, [sp, #0]                            ; Get the first byte into checksum
+        MOV     r1, r3, ASL #8                          ; Store into result
 
-	LDRB	r2, [sp, #1]				; Get the next byte
-	ADD	r3, r3, r2				; Add to the checksum
-	ORR	r1, r1, r2, ASL #0			; Store into the result
+        LDRB    r2, [sp, #1]                            ; Get the next byte
+        ADD     r3, r3, r2                              ; Add to the checksum
+        ORR     r1, r1, r2, ASL #0                      ; Store into the result
 
-	LDRB	r2, [sp, #2]				; Get the next byte
-	ADD	r3, r3, r2				; Add to the checksum
-	MOV	r0, r2, ASL #24				; Store into the result
+        LDRB    r2, [sp, #2]                            ; Get the next byte
+        ADD     r3, r3, r2                              ; Add to the checksum
+        MOV     r0, r2, ASL #24                         ; Store into the result
 
-	LDRB	r2, [sp, #3]				; Get the next byte
-	ADD	r3, r3, r2				; Add to the checksum
-	ORR	r0, r0, r2, ASL #16			; Store into the result
+        LDRB    r2, [sp, #3]                            ; Get the next byte
+        ADD     r3, r3, r2                              ; Add to the checksum
+        ORR     r0, r0, r2, ASL #16                     ; Store into the result
 
-	LDRB	r2, [sp, #4]				; Get the next byte
-	ADD	r3, r3, r2				; Add to the checksum
-	ORR	r0, r0, r2, ASL #8			; Store into the result
+        LDRB    r2, [sp, #4]                            ; Get the next byte
+        ADD     r3, r3, r2                              ; Add to the checksum
+        ORR     r0, r0, r2, ASL #8                      ; Store into the result
 
-	LDRB	r2, [sp, #5]				; Get the next byte
-	ADD	r3, r3, r2				; Add to the checksum
-	ORR	r0, r0, r2, ASL #0			; Store into the result
+        LDRB    r2, [sp, #5]                            ; Get the next byte
+        ADD     r3, r3, r2                              ; Add to the checksum
+        ORR     r0, r0, r2, ASL #0                      ; Store into the result
 
-	LDRB	r2, [sp, #6]				; Get the checksum
-	AND	r3, r3, #&FF
-	EOR	r3, r3, #&FF
+        LDRB    r2, [sp, #6]                            ; Get the checksum
+        AND     r3, r3, #&FF
+        EOR     r3, r3, #&FF
         ORR     r1,r1,r2,LSL#16                            ;put stored checksum in byte 2
         ORR     r1,r1,r3,LSL#24                            ;put calculated checksum in byte 3
 49
@@ -1659,12 +1744,12 @@ MachineAddressNVRAMError
 
  ]
 
-; OS_ReadSysInfo 5
+; ReadSysInfo(5)
 ;
 ; On entry:       r0 = 5 (reason code)
 ;
-; On exit:        r0 = LSW of Raw data from Dallas Chip
-;                 r1 = MSW of Raw data from Dallas Chip
+; On exit:        r0 = LSW of Raw data from unique id chip
+;                 r1 = MSW of Raw data from unique id chip
 
 50
         MOV     r0, #0
@@ -1672,7 +1757,7 @@ MachineAddressNVRAMError
         LDR     r0, [r0, #RawMachineID+0]
         ExitSWIHandler
 
-; OS_ReadSysInfo 6  - read kernel values (Acorn use only; eg. SoftLoad, ROMPatch)
+; ReadSysInfo(6) - read kernel values (Acorn use only; eg. SoftLoad, ROMPatch)
 ;
 ; On entry:       r0 =  6 (reason code)
 ;                 r1 -> input block, 1 word per entry, giving number of value required, terminated by -1
@@ -1736,8 +1821,8 @@ osri6_table
 osri6_maxvalue * 17
 
 
-; OS_ReadSysInfo 7  - read 32-bit Abort information for last unexpected abort
-;                     (prefetch or data)
+; ReadSysInfo(7)  - read 32-bit Abort information for last unexpected abort
+;                      (prefetch or data)
 ;
 ; On entry:       r0 =  6 (reason code)
 ;
@@ -1754,7 +1839,7 @@ osri6_maxvalue * 17
         Pull    "r0"
         ExitSWIHandler
 
-; OS_ReadSysInfo 8 - Returns summary information on host platform.
+; ReadSysInfo(8) - Returns summary information on host platform.
 ;
 ; On entry:
 ;    r0 = 8 (reason code 8)
@@ -1767,6 +1852,7 @@ osri6_maxvalue * 17
 ;            2 = Morris   (currently returned for A7000 only)
 ;            3 = Morris+  (currently returned for A7000+ only)
 ;            4 = Phoebe   (currently returned for Risc PC 2 only)
+;            5 = HAL      (returned for machines running a HAL)
 ;            all other values currently reserved
 ;    r1 = 32 additional platform specifier flags (if defined)
 ;         bits 0..31 = value of flags 0..31 if defined, 0 if undefined
@@ -1806,14 +1892,46 @@ osri6_maxvalue * 17
         Pull    "r3-r5"
         ExitSWIHandler
 86
-        DCD     IOMD_Original :AND: &FF,   1, &00000001, &0000000F
+        DCD     IOMD_Original :AND: &FF,   1, &00000005, &0000000F
         DCD     IOMD_7500     :AND: &FF,   2, &00000001, &0000000F
         DCD     IOMD_7500FE   :AND: &FF,   3, &00000001, &0000000F
         DCD     IOMD_IOMD2    :AND: &FF,   4, &0000000F, &0000000F
         DCD     &80000000,                 0,         0,         0  ;terminator
  ]
 
+; OS_ReadSysInfo 9 - Read ROM info
+;
+; On entry:
+;    r0 = 9 (reason code 9)
+;    r1 = item number to return
+;
+; On exit:
+;    r0 = pointer to requested string (NULL terminated) or NULL if it wasn't found
+;
+; Currently defined item numbers are:
+;
+;    0   = OS name
+;    1   = Part number
+;    2   = Build date
+;    3   = Dealer name
+;    4   = User name
+;    5   = User address
 
+90
+        CMP     R1, #0
+        ADREQ   R0, RSI9_OSname     ; The OS name
+        BEQ     %FT95
+        CMP     R1, #2
+        ADREQ   R0, RSI9_Builddate  ; The build date (dynamically generated)
+        MOVNE   R0, #0              ; Other ones are unimplemented
+95
+        ExitSWIHandler
+
+        GET    s.Time+Date
+RSI9_OSname    = "$SystemName $VString",0
+RSI9_Builddate = "$Builddate",0
+
+        ALIGN
         LTORG
 
         END

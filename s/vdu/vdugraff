@@ -103,7 +103,12 @@ OsByte_QuitA
         LDMIA $Ecf,{$a,$b}
         AND $a,$a,$Msk
         AND $b,$b,$Msk
+ [ AvoidScreenReads
+        CMP $a,#&FFFFFFFF
+        LDRNE $c,[$Adr]
+ |
         LDR $c,[$Adr]
+ ]
         ORR $c,$c,$a
         EOR $c,$c,$b
         STR $c,[$Adr]
@@ -279,7 +284,12 @@ SolidLine ROUT
                                         ; may involve advancing X afterwards
 45
         AND     R14, R9, R12                    ; R14 = zgora AND pixmask
+ [ AvoidScreenReads
+        CMP     R14, #&FFFFFFFF
+        LDRNE   R11, [R7]                       ; R11 = word from screen
+ |
         LDR     R11, [R7]                       ; R11 = word from screen
+ ]
         ORR     R11, R11, R14                   ; OR with screen
         AND     R14, R10, R12                   ; R14 = zgeor AND pixmask
         EOR     R11, R11, R14                   ; EOR with screen
@@ -310,13 +320,28 @@ SolidLine ROUT
         BEQ     %BT30                   ; and loop
 
 57
+ [ AvoidScreenReads
+        TEQ     R12, #0
+        BEQ     %FT58
+ ]
         AND     R14, R9, R12                    ; R14 = zgora AND pixmask
+ [ AvoidScreenReads
+ 	MVNS	R11, R14
+        LDRNE   R11, [R7]                       ; R11 = word from screen
+ |
         LDR     R11, [R7]                       ; R11 = word from screen
+ ]
         ORR     R11, R11, R14                   ; OR with screen
         AND     R14, R10, R12                   ; R14 = zgeor AND pixmask
         EOR     R11, R11, R14                   ; EOR with screen
+ [ AvoidScreenReads
+        STR     R11, [R7]                       ; and store back
+58      SUBCC   R7, R7, #4                      ; increment or decrement
+        ADDCS   R7, R7, #4
+ |
         STRCC   R11, [R7], #-4                  ; and store back
         STRCS   R11, [R7], #4                   ; incrementing or decrementing
+ ]
 
         MOV     R12, R8                 ; reset total pixel mask
 
@@ -326,6 +351,7 @@ SolidLine ROUT
         TEQ     R2, #0                  ; test Bres again
         BPL     %BT55
         B       %BT45
+
 
 ; come here when ECF wraps (ie every eight Y coords)
 

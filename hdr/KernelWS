@@ -243,13 +243,13 @@ KbuffsMaxSize       *  64*1024
 DCacheCleanSize     * 256*1024  ;should be multiple of 64k
 
 AplWorkMaxSize      * &01C00000 ; 28M - temporary (need to decide this at boot time)
-ScreenEndAdr        * &24000000 ; temporary - run time allocate
+;ScreenEndAdr        * &24000000 ; temporary - run time allocate
 FreePoolAddress     * &28000000 ; ditto
 
 RMAAddress          * &02100000 ; temporary - run time allocate
 ScreenMaxSize       * 480*1024
 
-RMAMaxSize          * &00F00000 ; temporary - should be max
+RMAMaxSize          * &01700000 ; temporary - should be max
 
 IOLimit             * &BA000000 ; initial lower limit on room for IO space (DA creation may move limit up)
 IO                  * &FA000000 ; works downwards
@@ -711,7 +711,7 @@ TotalScreenSize # 4     ; Amount configured for screen (in bytes)
 
 MaxMode # 4             ; Maximum mode number allowed (20 for now)
 
-        # 4             ; SPARE
+ScreenEndAddr # 4       ; Logical address of screen (start of 2nd copy)
 
 CursorFlags # 4 ; Silly Master cursor movement flags
 
@@ -789,10 +789,14 @@ PointerY           # 4
   ! 0, "PointerShapes @ ":CC::STR:(PointerShapes)
  ]
 
+ [ :LNOT: UseGraphicsV
 HWPixelFormats     # 4               ; pixel formats word from HAL
 HWVideoFeatures    # 4               ; features word from HAL
 HWBufferAlign      # 4               ; buffer alignment word from HAL
                 # 40*4 - 6*PointerBlkSize ; SPARE (avoiding changes of exported addresses for now)
+ |
+                # 43*4 - 6*PointerBlkSize ; SPARE (avoiding changes of exported addresses for now)
+ ]
 
 TextFgColour    # 4             ; Fg/Bg colour stored as a colour number, computed on VDU 18 and re-poked!
 TextBgColour    # 4             ;
@@ -881,6 +885,7 @@ TTXFlag_BgTransBIC      * 1:SHL:24
 BeepBlock # 8           ; OSWORD block for VDU 7
 
 ScreenMemoryClaimed # 1 ; NZ => memory has been claimed or is unusable
+ExternalFramestore # 1  ; NZ => using external framestore rather than screen memory DA
 
  [ AssemblingArthur :LAND: :DEF: ShowWS
  ! 0,"16 ":CC::STR:@
@@ -987,8 +992,8 @@ VDWSSize # 0
 ; cleared later (just before DEFHAN).
 
                 ^       ZeroPage+&80    ; steer clear of FIQ code
-InitKbdHandler  #       4               ; pointer to IRQ handler (LDR PC'ed from IRQ HW vector)
-InitKbdWs       #       16              ; workspace for IRQ handler
+InitIRQHandler  #       4               ; pointer to IRQ handler (LDR PC'ed from IRQ HW vector)
+InitIRQWs       #       16              ; workspace for IRQ handler
 InitUsedStart   #       4               ; start of used pages (L2PT etc) not to be cleared
 InitUsedEnd     #       4               ; end of used pages
 InitUsedBlock   #       4               ; can't remember
@@ -1126,7 +1131,9 @@ DRAMPhysTableSize *     (PhysRamTableEnd-DRAMPhysAddrA) / 8
  ! 0, "VideoPhysAddr held at  ":CC::STR:(VideoPhysAddr)
  ]
 
- [ :LNOT: HAL
+ [ HAL
+VRAMFlags       #       4       ; Flags of VRAM block (from HAL's AddRAM call)
+ |
 VRAMSize        #       4       ; Amount of VRAM (in bytes) (may be more than 2M) (at &200 last time I checked)
 VideoBandwidth  #       4       ; video bandwidth in bytes/sec
 L2PTSize        #       4       ; Amount of memory (in bytes) used for static L2PT
@@ -1189,6 +1196,8 @@ ProcessorArch            #  1
 
                 AlignSpace
 
+MMU_PCBTrans             #  4
+
 Proc_Cache_CleanInvalidateAll     #       4
 Proc_Cache_CleanAll               #       4
 Proc_Cache_InvalidateAll          #       4
@@ -1250,25 +1259,28 @@ Export_DebuggerSpace    #       16*8    ; Debugger module needs some zero page
 
 ; NVRAM support
 
-NVRamSize       #       1               ; Size of NVRam (E2ROM & CMOS) fitted in 256byte units
-RTCFitted       #       1               ; flag =1 iff RTC is fitted
-NVRamBase       #       1               ; Base of NVRam
-NVRamSpeed      #       1               ; Clock hold time in 0.5µs units
-NVRamPageSize   #       1               ; Page size for writing (log2)
-NVRamWriteSize  #       1               ; Size of writable region (256byte units)
+NVRamSize          #    1               ; Size of NVRam (E2ROM & CMOS) fitted in 256byte units
+RTCFitted          #    1               ; flag non zero if RTC is fitted
+NVRamBase          #    1               ; Base of NVRam
+NVRamSpeed         #    1               ; Clock hold time in 0.5µs units
+NVRamPageSize      #    1               ; Page size for writing (log2)
+NVRamWriteSize     #    1               ; Size of writable region (256byte units)
 
-                AlignSpace
+                   AlignSpace
 
-AppSpaceDANode  #       DANode_NodeSize ; Dummy area node for application space (not on list)
-FreePoolDANode  #       DANode_NodeSize ; Area node for free pool
-SysHeapDANode   #       DANode_NodeSize ; Area node for system heap
-CDASemaphore    #       4               ; Semaphore for OS_ChangeDynamicArea - non-zero => routine threaded
+IICType            #    4
+IICStatus          #    4
+
+AppSpaceDANode     #    DANode_NodeSize ; Dummy area node for application space (not on list)
+FreePoolDANode     #    DANode_NodeSize ; Area node for free pool
+SysHeapDANode      #    DANode_NodeSize ; Area node for system heap
+CDASemaphore       #    4               ; Semaphore for OS_ChangeDynamicArea - non-zero => routine threaded
 MMUControlSoftCopy #    4               ; Soft copy of ARM control register
 
 AplWorkSize * AppSpaceDANode + DANode_Size
 
   [ :LNOT: LongCommandLines
-EnvString         #     256
+EnvString          #    256
   ]
 
  [ :DEF: ShowWS
@@ -1765,9 +1777,9 @@ Export_SvcTable                |#|     &400
  ASSERT SvcTable = &01F033FC ; Required for SVC table pokers, 1.20 compatible
  ]
  [ No26bitCode
-SWIDespatch_Size        *       33*4
+SWIDespatch_Size        *       32*4
  |
-SWIDespatch_Size        *       31*4    ; can save 2 instructions if 26-bit (no Thumb)
+SWIDespatch_Size        *       30*4    ; can save 2 instructions if 26-bit (no Thumb)
  ]
 SWIDespatch             |#|     SWIDespatch_Size
 

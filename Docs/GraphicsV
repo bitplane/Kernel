@@ -1,0 +1,79 @@
+GraphicsV
+---------
+R4 = reason code
+
+
+
+VSync interrupt occured (Driver -> Kernel)
+  R4 = 1
+out: R0-R3 corrupt
+
+Set mode
+  R4 = 2
+  R0 -> VIDC list type 3
+
+Set interlace
+  R4 = 3
+  R0 = 0 or 1 (off or on)
+
+Set blank
+  R4 = 4
+  R0 = 0 or 1 (unblank or blank)
+  R1 = DPMS state (0 -3)
+
+Update pointer
+  R4 = 5
+  R0 = flags (bit 0 => enable, bit 1 => shape changed)
+  R1 = x pos
+  R2 = y pos
+  R3 -> shape descriptor
+
+Set DAG
+  R4 = 6
+  R0 = DAG
+  R1 = physical address
+
+Vet mode (reserved)
+  R4 = 7
+  R0 = VIDC list
+  R1 = workspace ?
+out: R0 = 0 if OK
+  
+Features
+  R4 = 8
+out:
+  R0 = flags word (bit 0 => hardware scroll)
+                  (bit 1 => hardware pointer)
+                  (bit 2 => interlace with progressive framestore)
+                  (bit 3 => separate framestore)
+  R1 = pixel formats (bits 0-5 => 2^n bpp supported)
+  R2 = buffer alignment requirement in bytes (power of 2)
+
+Framestore information
+  R4 = 9
+out:
+  R0 = framestore physical base address
+  R1 = framestore size
+  R4 = 0 if external framestore used, preserved if not
+
+Write palette entry
+  R4 = 10
+  R0 = type (0 = normal entry, 1 = border, 2 = palette)
+  R1 = palette entry (&BBGGRRSS)
+  R2 = palette index
+
+Write palette entries
+  R4 = 11
+  R0 = type (0 = normal entry, 1 = border, 2 = palette)
+  R1 -> palette entry table
+  R2 = first palette index
+  R3 = number of entries
+
+Read palette entry
+  R4 = 12
+  R0 = type (0 = normal entry, 1 = border, 2 = palette)
+  R1 = palette entry (&BBGGRRSS)
+  R2 = palette index
+Out:
+  R1 = palette updated
+  

@@ -14,9 +14,6 @@
 ;
 ; > $.Source.VduSWIs
 
-        GBLL    FixRemovePages
-FixRemovePages  SETL {TRUE}
-
         MACRO
         BranchNotJustUs $label, $vector, $tmp1, $tmp2
         MOV     R11, #0
@@ -791,13 +788,31 @@ FindOKMode ROUT
         LDR   r2,[r0,#VIDCList3_PixelDepth]
         MOV   r3,#1
         MOV   r3,r3,LSL r2                 ; bits per pixel
+ [ UseGraphicsV
+        Push  "r0-r2,r4"
+        MOV   r4,#GraphicsV_DisplayFeatures
+        BL    CallGraphicsV
+        TEQ   r4,#0
+        TSTEQ r3,r1
+        Pull  "r0-r2,r4"
+ |
         LDR   r2,[WsPtr,#HWPixelFormats]
         TST   r3,r2
+ ]
         MOVEQ r0,#1
         BEQ   %FT04                        ; not supported
         ;now any vet the HAL might want to do
+ [ UseGraphicsV
+        Push  "r4"
+        MOV   r4, #GraphicsV_VetMode
+        BL    CallGraphicsV
+        TEQ   r4, #0
+        MOVNE r0, #0
+        Pull  "r4"
+ |
         mjsAddressHAL
         mjsCallHAL    HAL_Video_VetMode
+ ]
 04
         CMP   r0,#0
         Pull "r0-r3,r9,r12"
@@ -920,13 +935,26 @@ FindSubstitute Entry
         ADD     r13, r13, #PushedInfoSize
         CMP     r11, #4
         MOVCS   r11, #0
+ [ UseGraphicsV
+        Push    "r0-r4"
+        MOV     r4, #GraphicsV_DisplayFeatures
+        BL      CallGraphicsV
+        TEQ     r4, #0
+        MOVEQ   r2, r1
+        MOVNE   r2, #2_111111
+ |
         Push    "r2, r3"
         LDR     r2, [WsPtr, #HWPixelFormats]    ; see if h/w supports this BPP
+ ]
         MOV     r3, #1
         MOV     r3, r3, LSL r11
         TST     r2, r3
         MOVEQ   r11, #3                         ; if not, use 8 BPP (assumed best chance for a mode number)
+ [ UseGraphicsV
+        Pull    "r0-r4"
+ |
         Pull    "r2, r3"
+ ]
         LDRB    r1, [r1, r11]
         CLRV
         EXIT
@@ -978,6 +1006,10 @@ SWIClaimScreenMemory ROUT
         MOVNE   R1, #0                  ; indicate you could have zero bytes
         BNE     %FT10                   ; failure exit
 
+        LDRB    R10, [WsPtr, #ExternalFramestore]
+        TEQ     R10, #0
+        BNE     %FT15
+
         LDR     R10, [WsPtr, #TotalScreenSize]
         LDR     R11, [WsPtr, #ScreenSize]
         SUB     R10, R10, R11           ; amount available
@@ -996,6 +1028,27 @@ SWIClaimScreenMemory ROUT
 
 10
         ORR     R14, R14, #C_bit
+        ExitSWIHandler
+
+; using external framestore - they can have the whole screen memory DA
+15
+        Push    "R0,R1,R14"
+        MOV     R0, #2
+        SWI     XOS_ReadDynamicArea     ; R0 -> start, R1 = len
+        MOVVC   R10, R0
+        MOVVC   R11, R1
+        MOVVS   R11, #0
+        Pull    "R0,R1,R14"
+        CMP     R1, R11                 ; is this enough
+        MOV     R1, R11                 ; tell him how much he could have
+        BHI     %BT10                   ; if not enough, then exit
+
+        MOV     R11, #1                 ; indicate now claimed
+        STRB    R11, [WsPtr, #ScreenMemoryClaimed]
+
+        MOV     R2, R10
+
+        BIC     R14, R14, #C_bit
         ExitSWIHandler
 
 ; *****************************************************************************
@@ -1328,6 +1381,7 @@ SWIWriteS ROUT
 ;                     amount of screen memory
 ;
 ; in:   R0 = - number of bytes being removed
+;       R4 = current size
 ;
 ; out:  All registers preserved
 ;
@@ -1335,19 +1389,16 @@ SWIWriteS ROUT
 RemovePages ROUT
         Push    "R0-R8,R12,R14"
         BL      InsertRemovePagesCommon
-        ADD     R2, R0, #ScreenEndAdr   ; end of remaining screen memory
- [ :LNOT: FixRemovePages
-        CMP     R3, R2
-        BCS     %FT50                   ; display starts in disappearing pages
- ]
+        BNE     RemovePages_ExternalFramestore
+        LDR     R14, [WsPtr, #ScreenEndAddr]
+        ADD     R2, R0, R14             ; end of remaining screen memory
 
 ; display starts in pages that remain
 
         SUB     R5, R3, R0              ; new DisplayStart
 
- [ FixRemovePages
 05
-        CMP     R5, #ScreenEndAdr       ; if off end of 1st copy
+        CMP     R5, R14                 ; if off end of 1st copy
         SUBCS   R5, R5, R4              ; then repeatedly subtract off new size
         BCS     %BT05                   ; until in range
 
@@ -1356,9 +1407,6 @@ RemovePages ROUT
         BL      SetVinit                ; this updates DisplayStart
         Pull    "R0-R2"
 
- |
-        STR     R5, [WsPtr, #DisplayStart]
- ]
         ADD     R3, R3, R4              ; end of area to copy +1
         CMP     R3, R2
         BLS     %FT20                   ; nothing to copy
@@ -1372,36 +1420,41 @@ RemovePages ROUT
 
 20
 InsertRemovePagesExit
+        LDR     R14, [WsPtr, #ScreenEndAddr]
         LDR     R4, [WsPtr, #DisplayScreenStart]
         SUB     R0, R4, R0
- [ FixRemovePages
         LDR     R3, [WsPtr, #TotalScreenSize]
 25
-        CMP     R0, #ScreenEndAdr       ; ensure displayscreenstart in range too
+        CMP     R0, R14                 ; ensure displayscreenstart in range too
         SUBCS   R0, R0, R3
         BCS     %BT25
- ]
         BL      NewScreenStart
 30
         BL      SetVendDefault
 
         Pull    "R0-R8,R12,PC"
 
- [ :LNOT: FixRemovePages
+; in:   R0 = - number of bytes being removed
+;       R4 = current size
+RemovePages_ExternalFramestore
 
-; display starts in disappearing pages
+ [ {FALSE}
+; Should do the copy, but need access to address
+        ADD     R3, R3, R4              ; end of area to copy +1
+        CMP     R3, R2
+        BLS     %FT20                   ; nothing to copy
 
-50
-        ADD     R4, R3, R0              ; destination start
-        MOV     R0, R3
-        BL      SetVinit                ; set vinit and DisplayStart
-60
-        LDMIA   R3!, {R5-R8}
-        STMIA   R4!, {R5-R8}
-        TEQ     R3, #ScreenEndAdr
-        BNE     %BT60
-        B       %BT30
+        SUB     R4, R3, R0              ; destination end
+10
+        LDMDB   R3!, {R5-R8}            ; load 4 words (minimum amount)
+        STMDB   R4!, {R5-R8}            ; store 4 words
+        TEQ     R3, R2
+        BNE     %BT10
+
+20
  ]
+InsertRemovePages_ExternalFramestoreExit
+        Pull    "R0-R8,R12,PC"
 
 ; *****************************************************************************
 ;
@@ -1409,16 +1462,18 @@ InsertRemovePagesExit
 ;                     amount of screen memory
 ;
 ; in:   R0 = number of bytes being added
+;       R4 = new size
 ;
 
 InsertPages ROUT
         Push    "R0-R8,R12,R14"
         BL      InsertRemovePagesCommon
+        BNE     InsertPages_ExternalFramestore
         SUB     R5, R3, R0              ; new DisplayStart
         STR     R5, [WsPtr, #DisplayStart]
         ADD     R2, R3, R1              ; end of block to copy
 
-        MOV     R3, #ScreenEndAdr
+        LDR     R3, [WsPtr, #ScreenEndAddr]
         SUB     R4, R3, R0
 10
         TEQ     R3, R2
@@ -1427,10 +1482,18 @@ InsertPages ROUT
         BNE     %BT10
         B       InsertRemovePagesExit
 
+InsertPages_ExternalFramestore
+; Should do copy here
+        B       InsertRemovePages_ExternalFramestoreExit
+
 ; *****************************************************************************
 
 InsertRemovePagesCommon ROUT
         VDWS    WsPtr
+        LDR     R1, [WsPtr, #ExternalFramestore]
+        TEQ     R1, #0
+        MOVNE   PC, R14
+
         LDR     R1, [WsPtr, #TotalScreenSize]   ; old size
 
         MOV     R4, #0
@@ -1443,7 +1506,8 @@ InsertRemovePagesCommon ROUT
 
         ADD     R4, R1, R0              ; length of remaining screen memory
         STR     R4, [WsPtr, #TotalScreenSize] ; new size
-        RSB     R5, R4, #ScreenEndAdr   ; start of remaining screen memory
+        LDR     R3, [WsPtr, #ScreenEndAddr]
+        RSB     R5, R4, R3              ; start of remaining screen memory
         STR     R5, [WsPtr, #DriverBankAddr]
         STR     R5, [WsPtr, #DisplayBankAddr]
 

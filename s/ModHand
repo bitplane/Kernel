@@ -1237,8 +1237,8 @@ Module_GetNames  ROUT
 Module_ExtendBlock ROUT
          Push   "R0, r1, R3, lr"
 
-         ADD     R3, R3, #15
-         BIC     R3, R3, #15
+         ADD     R3, R3, #31
+         BIC     R3, R3, #31
 
          MOV     R0, #HeapReason_ExtendBlock
          BL      DoRMAHeapOpWithExtension
@@ -2135,6 +2135,27 @@ CheckHeader ROUT
         LDR     R3, [R1, #Module_Init]
         TST     R3, #&80000000
         BLEQ    %FT10                           ; only check init offset if an unsqueezed module
+ [ No26bitCode
+; Need to go through extra checks to see that (a) we have a module
+; flags table, and (b) it says that we're 32-bit
+        LDR     R3, [R1, #Module_SWIChunk]
+        TST     R3, #&FF000000
+        TSTEQ   R3, #Module_SWIChunkSize-1
+        BNE     %FT88
+        LDR     R3, [R1, #Module_SWIEntry]
+        BL      %FT20
+        LDR     R3, [R1, #Module_NameTable]
+        BL      %FT21
+        LDR     R3, [R1, #Module_NameCode]
+        BL      %FT20
+        LDR     R3, [R1, #Module_MsgFile]
+        BL      %FT20
+        LDR     R3, [R1, #Module_FlagTable]
+        BL      %FT20
+        LDR     R3, [R1, R3]
+        TST     R3, #ModuleFlag_32bit
+        BEQ     %FT88
+ ]
         CLRV
         Pull   "R3, PC"
 
@@ -2143,16 +2164,30 @@ CheckHeader ROUT
 11      CMP     R3, R2
         MOVLO   PC, lr
 99
-        Pull   "R3, lr"
         ADR     R0, ErrorBlock_BadRMHeaderField
       [ International
-        Push    "lr"
         BL      TranslateError
-        Pull    "lr"
       |
         SETV
       ]
-        MOV     PC, lr
+        Pull   "R3, PC"
+
+ [ No26bitCode
+20      TST     R3, #3
+        BNE     %FT88
+21      CMP     R3, R2
+        MOVLO   PC, lr
+88
+        ADR     R0, ErrorBlock_RMNot32bit
+      [ International
+        BL      TranslateError
+      |
+        SETV
+      ]
+        Pull   "R3, PC"
+        MakeErrorBlock RMNot32bit
+ ]
+
         MakeErrorBlock BadRMHeaderField
 
 ;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -3364,15 +3399,15 @@ Module_CopyError ROUT
 
 ;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ;  Claim chunk from RMA : increase RMA if can,
-;  force size to multiple of 16 -4 to keep alignment OK
+;  force size to multiple of 32 -4 to keep alignment OK
 
 RMAClaim_Chunk   ROUT
          MOV     R0, #HeapReason_Get
          Push   "R0, R3, lr"
 
-         ADD     R3, R3, #15+4               ; now force size to 16*n-4
-         BIC     R3, R3, #15                 ; so heap manager always has
-         SUB     R3, R3, #4                  ;  4-word aligned blocks
+         ADD     R3, R3, #31+4               ; now force size to 32*n-4
+         BIC     R3, R3, #31                 ; so heap manager always has
+         SUB     R3, R3, #4                  ;  8-word aligned blocks
 
          B       IntoRMAHeapOp
 

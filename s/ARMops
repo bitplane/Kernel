@@ -99,10 +99,22 @@ FindARMloop
         MOV     a1, a1, LSR #CT_ctype_pos
         STRB    a1, [v6, #Cache_Type]
 
+        [ No26bitCode
+        MOV     v5, #CPUFlag_32bitOS
+        |
         MOV     v5, #0
+        ]
 
         TST     v2, #CT_S
-        ORRNE   v5, v5, #CPUFlag_SplitCache
+        ORRNE   v5, v5, #CPUFlag_SplitCache+CPUFlag_SynchroniseCodeAreas
+
+        [ CacheOff
+        ORR     v5, v5, #CPUFlag_SynchroniseCodeAreas
+        |
+        ARM_read_control a1                     ; if Z bit set then we have branch prediction,
+        TST     a1, #MMUC_Z                     ; so we need OS_SynchroniseCodeAreas even if not
+        ORRNE   v5, v5, #CPUFlag_SynchroniseCodeAreas   ; split caches
+        ]
 
         ; Test abort timing (base restored or base updated)
         MOV     a1, #&8000
@@ -138,6 +150,18 @@ FindARMloop
         BL      Init_ARMarch
         STRB    a1, [v6, #ProcessorArch]
 
+        TEQ     a1, #ARMv3                      ; assume long multiply available
+        ORRNE   v5, v5, #CPUFlag_LongMul        ; if v4 or later
+        TEQNE   a1, #ARMv4                      ; assume 26-bit available
+        ORRNE   v5, v5, #CPUFlag_No26bitMode    ; iff v3 or v4 (not T)
+        TEQNE   a1, #ARMv5                      ; assume Thumb available
+        ORRNE   v5, v5, #CPUFlag_Thumb          ; iff not v3,v4,v5
+
+        MSR     CPSR_f, #Q32_bit
+        MRS     lr, CPSR
+        TST     lr, #Q32_bit
+        ORRNE   v5, v5, #CPUFlag_DSP
+
         LDRB    v4, [v6, #ProcessorType]
 
         TEQ     v4, #ARMunk                     ; Modify deduced flags
@@ -146,6 +170,19 @@ FindARMloop
         LDMNEIA lr, {a2, a3}
         ORRNE   v5, v5, a2
         BICNE   v5, v5, a3
+
+ [ XScaleJTAGDebug
+        TST     v5, #CPUFlag_XScale
+        BEQ     %FT40
+
+        MRC     p14, 0, a2, c10, c0             ; Read debug control register
+        TST     a2, #&80000000
+        ORRNE   v5, v5, #CPUFlag_XScaleJTAGconnected
+        MOVEQ   a2, #&C000001C                  ; enable hot debug
+        MCREQ   p14, 0, a2, c10, c0
+        BNE     %FT40
+40
+ ]
 
         STR     v5, [v6, #ProcessorFlags]
 
@@ -166,6 +203,9 @@ FindARMloop
 
         TEQ     a2, #CT_ctype_WB_Crd
         BEQ     Analyse_WB_Crd                  ; eg. StrongARM
+
+        TEQ     a2, #CT_ctype_WB_Cal_LD
+        BEQ     Analyse_WB_Cal_LD               ; assume XScale
 
         ; others ...
 
@@ -203,6 +243,9 @@ Analyse_ARMv3
         STR     a1, [v6, #Proc_MMU_ChangingEntries]
         STR     a2, [v6, #Proc_MMU_ChangingUncachedEntries]
         STR     a3, [v6, #Proc_Cache_RangeThreshold]
+
+        ADRL    a1, XCBTableWT
+        STR     a1, [v6, #MMU_PCBTrans]
         B       %FT90
 
 Analyse_WriteThroughUnified
@@ -238,6 +281,9 @@ Analyse_WriteThroughUnified
         STR     a1, [v6, #Proc_MMU_ChangingEntries]
         STR     a2, [v6, #Proc_MMU_ChangingUncachedEntries]
         STR     a3, [v6, #Proc_Cache_RangeThreshold]
+
+        ADRL    a1, XCBTableWT
+        STR     a1, [v6, #MMU_PCBTrans]
         B       %FT90
 
 Analyse_WB_CR7_LDa
@@ -314,6 +360,9 @@ Analyse_WB_CR7_LDa_L1
         MOV     a2, #64*1024                         ; arbitrary-ish
         STR     a2, [a1, #DCache_RangeThreshold]
 
+        ADRL    a1, XCBTableWBR                      ; assume read-allocate WB/WT cache
+        STR     a1, [v6, #MMU_PCBTrans]
+
         B       %FT90
 
 Analyse_WB_Crd
@@ -372,8 +421,96 @@ Analyse_WB_Crd
         MOV     a2, #64*1024                       ;arbitrary-ish threshold
         STR     a2, [a1, #DCache_RangeThreshold]
 
+        LDRB    a2, [a1, #ProcessorType]
+        TEQ     a2, #SA110
+        ADREQL  a2, XCBTableSA110
+        BEQ     Analyse_WB_Crd_finish
+        TEQ     a2, #SA1100
+        TEQNE   a2, #SA1110
+        ADREQL  a2, XCBTableSA1110
+        ADRNEL  a2, XCBTableWBR
+Analyse_WB_Crd_finish
+        STR     a2, [a1, #MMU_PCBTrans]
         B       %FT90
 
+Analyse_WB_Cal_LD
+        TST     v5, #CPUFlag_SplitCache
+        BEQ     WeirdARMPanic             ; currently, only support harvard
+
+        ADRL    a1, Cache_CleanInvalidateAll_WB_Cal_LD
+        STR     a1, [v6, #Proc_Cache_CleanInvalidateAll]
+
+        ADRL    a1, Cache_CleanAll_WB_Cal_LD
+        STR     a1, [v6, #Proc_Cache_CleanAll]
+
+        ADRL    a1, Cache_InvalidateAll_WB_Cal_LD
+        STR     a1, [v6, #Proc_Cache_InvalidateAll]
+
+        ADRL    a1, Cache_RangeThreshold_WB_Cal_LD
+        STR     a1, [v6, #Proc_Cache_RangeThreshold]
+
+        ADRL    a1, TLB_InvalidateAll_WB_Cal_LD
+        STR     a1, [v6, #Proc_TLB_InvalidateAll]
+
+        ADRL    a1, TLB_InvalidateEntry_WB_Cal_LD
+        STR     a1, [v6, #Proc_TLB_InvalidateEntry]
+
+        ADRL    a1, WriteBuffer_Drain_WB_Cal_LD
+        STR     a1, [v6, #Proc_WriteBuffer_Drain]
+
+        ADRL    a1, IMB_Full_WB_Cal_LD
+        STR     a1, [v6, #Proc_IMB_Full]
+
+        ADRL    a1, IMB_Range_WB_Cal_LD
+        STR     a1, [v6, #Proc_IMB_Range]
+
+        ADRL    a1, MMU_Changing_WB_Cal_LD
+        STR     a1, [v6, #Proc_MMU_Changing]
+
+        ADRL    a1, MMU_ChangingEntry_WB_Cal_LD
+        STR     a1, [v6, #Proc_MMU_ChangingEntry]
+
+        ADRL    a1, MMU_ChangingUncached_WB_Cal_LD
+        STR     a1, [v6, #Proc_MMU_ChangingUncached]
+
+        ADRL    a1, MMU_ChangingUncachedEntry_WB_Cal_LD
+        STR     a1, [v6, #Proc_MMU_ChangingUncachedEntry]
+
+        ADRL    a1, MMU_ChangingEntries_WB_Cal_LD
+        STR     a1, [v6, #Proc_MMU_ChangingEntries]
+
+        ADRL    a1, MMU_ChangingUncachedEntries_WB_Cal_LD
+        STR     a1, [v6, #Proc_MMU_ChangingUncachedEntries]
+
+        MOV     a1, #0
+        LDR     a2, =DCacheCleanAddress
+        STR     a2, [a1, #DCache_CleanBaseAddress]
+        STR     a2, [a1, #DCache_CleanNextAddress]
+
+  [ XScaleMiniCache
+        !       1, "You need to arrange for XScale mini-cache clean area to be mini-cacheable"
+        LDR     a2, =DCacheCleanAddress + 4 * 32*1024
+        STR     a2, [a1, #MCache_CleanBaseAddress]
+        STR     a2, [a1, #MCache_CleanNextAddress]
+  ]
+
+
+  ; arbitrary-ish values, mini cache makes global op significantly more expensive
+  [ XScaleMiniCache
+        MOV     a2, #128*1024
+  |
+        MOV     a2, #32*1024
+  ]
+        STR     a2, [a1, #DCache_RangeThreshold]
+
+        ; enable full coprocessor access
+        LDR     a2, =&3FFF
+        MCR     p15, 0, a2, c15, c1
+
+        ADRL    a2, XCBTableXScaleWA ; choose between RA and WA here
+        STR     a2, [a1, #MMU_PCBTrans]
+
+        B       %FT90
 
 90
         Pull    "v1,v2,v5,v6,v7,pc"
@@ -474,6 +611,7 @@ KnownCPUTable
         CPUDesc ARM920T,       &029200, &0FFFF0, ARMv4T,  WB_CR7_LDa, 1, 16K, 64, 8, 16K, 64, 8
         CPUDesc ARM922T,       &029220, &0FFFF0, ARMv4T,  WB_CR7_LDa, 1,  8K, 64, 8,  8K, 64, 8
         CPUDesc X80200,        &052000, &0FFFF0, ARMv5TE, WB_Cal_LD,  1, 32K, 32, 8, 32K, 32, 8
+        CPUDesc X80321,    &69052400, &FFFFF700, ARMv5TE, WB_Cal_LD,  1, 32K, 32, 8, 32K, 32, 8
         DCD     -1
 
 
@@ -485,16 +623,17 @@ KnownCPUFlags
         DCD     0,                            0    ; ARM 700
         DCD     0,                            0    ; ARM 710
         DCD     0,                            0    ; ARM 710a
-        DCD     CPUFlag_AbortRestartBroken,   0    ; SA 110 pre revT
-        DCD     0,                            0    ; SA 110 revT or later
+        DCD     CPUFlag_AbortRestartBroken+CPUFlag_InterruptDelay,   0    ; SA 110 pre revT
+        DCD     CPUFlag_InterruptDelay,       0    ; SA 110 revT or later
         DCD     0,                            0    ; ARM 7500
         DCD     0,                            0    ; ARM 7500FE
-        DCD     0,                            0    ; SA 1100
-        DCD     0,                            0    ; SA 1110
+        DCD     CPUFlag_InterruptDelay,       0    ; SA 1100
+        DCD     CPUFlag_InterruptDelay,       0    ; SA 1110
         DCD     CPUFlag_NoWBDrain,            0    ; ARM 720T
         DCD     0,                            0    ; ARM 920T
         DCD     0,                            0    ; ARM 922T
-        DCD     0,                            0    ; X80200
+        DCD     CPUFlag_ExtendedPages+CPUFlag_XScale,  0    ; X80200
+        DCD     CPUFlag_XScale,               0    ; X80321
 
 ; --------------------------------------------------------------------------
 ; ----- ARMops -------------------------------------------------------------
@@ -1126,6 +1265,321 @@ MMU_ChangingUncachedEntries_WB_Crd ROUT
         MOV     pc, lr
 
 
+; ARMops for XScale, mjs Feb 2001
+;
+; WB_Cal_LD is writeback, clean with allocate, lockdown
+;
+; If the mini data cache is used (XScaleMiniCache true), it is assumed to be
+; configured writethrough (eg. used for RISC OS screen memory). This saves an ugly/slow
+; mini cache clean for things like IMB_Full.
+;
+; Sadly, for global cache invalidate with mini cache, things are awkward. We can't clean the
+; main cache then do the global invalidate MCR, unless we tolerate having _all_ interrupts
+; off (else the main cache may be slightly dirty from interrupts, and the invalidate
+; will lose data). So we must reluctantly 'invalidate' the mini cache by the ugly/slow
+; mechanism as if we were cleaning it :-( Intel should provide a separate global invalidate
+; (and perhaps a line allocate) for the mini cache.
+;
+; We do not use lockdown.
+;
+; For simplicity, we assume cacheable pages are mostly writeback. Any writethrough
+; pages will be invalidated as if they were writeback, but there is little overhead
+; (cleaning a clean line or allocating a line from cleaner area are both fast).
+
+; Global cache cleaning requires address space for private cleaner areas (not accessed
+; for any other reason). Cleaning is normally with interrupts enabled (to avoid a latency
+; hit), which means that the cleaner data is not invalidated afterwards. This is fine for
+; RISC OS - where the private area is not used for anything else, and any re-use of the
+; cache under interrupts is safe (eg. a page being moved is *never* involved in any
+; active interrupts).
+
+; Mostly, cleaning toggles between two separate cache-sized areas, which gives minimum
+; cleaning cost while guaranteeing proper clean even if previous clean data is present. If
+; the clean routine is re-entered, an independent, double sized clean is initiated. This
+; guarantees proper cleaning (regardless of multiple re-entrancy) whilst hardly complicating
+; the routine at all. The overhead is small, since by far the most common cleaning will be
+; non-re-entered. The upshot is that the cleaner address space available must be at least 4
+; times the cache size:
+;   1 : used alternately, on 1st, 3rd, ... non-re-entered cleans
+;   2 : used alternately, on 2nd, 4th, ... non-re-entered cleans
+;   3 : used only for first half of a re-entered clean
+;   4 : used only for second half of a re-entered clean
+;
+; If the mini cache is used, it has its own equivalent cleaner space and algorithm.
+; Parameters for each cache are:
+;
+;    Cache_CleanBaseAddress   : start address of total cleaner space
+;    Cache_CleanNextAddress   : start address for next non-re-entered clean, or 0 if re-entered
+
+
+                 GBLL XScaleMiniCache  ; *must* be configured writethrough if used
+XScaleMiniCache  SETL {FALSE}
+
+
+; MACRO to do Intel approved CPWAIT, to guarantee any previous MCR's have taken effect
+; corrupts a1
+;
+        MACRO
+        CPWAIT
+        MRC      p15, 0, a1, c2, c0, 0               ; arbitrary read of CP15
+        MOV      a1, a1                              ; wait for it
+        ; SUB pc, pc, #4 omitted, because all ops have a pc load to return to caller
+        MEND
+
+
+Cache_CleanAll_WB_Cal_LD ROUT
+;
+; - cleans main cache (and invalidates as a side effect)
+; - if mini cache is in use, will be writethrough so no clean required
+; - can be used with interrupts enabled (to avoid latency over time of clean)
+; - can be re-entered
+; - see remarks at top of XScale ops for discussion of strategy
+;
+        Push    "a2-a4, v1, v2, lr"
+        MOV     lr, #0
+        LDR     a1, [lr, #DCache_CleanBaseAddress]
+        LDR     a2, =DCache_CleanNextAddress
+        LDR     a3, [lr, #DCache_Size]
+        LDRB    a4, [lr, #DCache_LineLen]
+        MOV     v2, #0
+        SWP     v1, v2, [a2]                        ; read current CleanNextAddr, zero it (semaphore)
+        TEQ     v1, #0                              ; but if it is already zero, we have re-entered
+        ADDEQ   v1, a1, a3, LSL #1                  ; if re-entered, start clean at Base+2*Cache_Size
+        ADDEQ   v2, v1, a3, LSL #1                  ; if re-entered, do a clean of 2*Cache_Size
+        ADDNE   v2, v1, a3                          ; if not re-entered, do a clean of Cache_Size
+10
+        MCR     p15, 0, v1, c7, c2, 5               ; allocate address from cleaner space
+        ADD     v1, v1, a4
+        TEQ     v1, v2
+        BNE     %BT10
+        ADD     v2, a1, a3, LSL #1                  ; compare end address with Base+2*Cache_Size
+        CMP     v1, v2
+        MOVEQ   v1, a1                              ; if equal, not re-entered and Next wraps back
+        STRLS   v1, [a2]                            ; if lower or same, not re-entered, so update Next
+        MCR     p15, 0, a1, c7, c10, 4              ; drain WBuffer (waits, so no need for CPWAIT)
+        Pull    "a2-a4, v1, v2, pc"
+
+  [ XScaleMiniCache
+
+Cache_MiniInvalidateAll_WB_Cal_LD ROUT
+;
+; similar to Cache_CleanAll_WB_Cal_LD, but must do direct reads (cannot use allocate address MCR), and
+; 'cleans' to achieve invalidate as side effect (mini cache will be configured writethrough)
+;
+        Push    "a2-a4, v1, v2, lr"
+        MOV     lr, #0
+        LDR     a1, [lr, #MCache_CleanBaseAddress]
+        LDR     a2, =MCache_CleanNextAddr
+        LDR     a3, [lr, #MCache_Size]
+        LDRB    a4, [lr, #MCache_LineLen]
+        MOV     v2, #0
+        SWP     v1, v2, [a2]                        ; read current CleanNextAddr, zero it (semaphore)
+        TEQ     v1, #0                              ; but if it is already zero, we have re-entered
+        ADDEQ   v1, a1, a3, LSL #1                  ; if re-entered, start clean at Base+2*Cache_Size
+        ADDEQ   v2, v1, a3, LSL #1                  ; if re-entered, do a clean of 2*Cache_Size
+        ADDNE   v2, v1, a3                          ; if not re-entered, do a clean of Cache_Size
+10
+        LDR     lr, [v1], a4                        ; read a line of cleaner data
+        TEQ     v1, v2
+        BNE     %BT10
+        ADD     v2, a1, a3, LSL #1                  ; compare end address with Base+2*Size
+        CMP     v1, v2
+        MOVEQ   v1, a1                              ; if equal, not re-entered and Next wraps back
+        STRLS   v1, [a2]                            ; if lower or same, not re-entered, so update Next
+        ; note, no drain WBuffer, since we are really only invalidating a writethrough cache
+        Pull    "a2-a4, v1, v2, pc"
+
+  ] ; XScaleMiniCache
+
+
+Cache_CleanInvalidateAll_WB_Cal_LD ROUT
+;
+; - cleans main cache (and invalidates wrt OS stuff as a side effect)
+; - if mini cache in use (will be writethrough), 'cleans' in order to invalidate as side effect
+;
+        Push    "lr"
+        BL      Cache_CleanAll_WB_Cal_LD
+  [ XScaleMiniCache
+        BL      Cache_MiniInvalidateAll_WB_Cal_LD
+  ]
+        MCR     p15, 0, a1, c7, c5, 0                ; invalidate ICache and BTB
+        CPWAIT
+        Pull    "pc"
+
+
+Cache_InvalidateAll_WB_Cal_LD ROUT
+;
+; no clean, assume caller knows what's happening
+;
+        MCR     p15, 0, a1, c7, c7, 0           ; invalidate DCache, (MiniCache), ICache and BTB
+        CPWAIT
+        MOV     pc, lr
+
+
+Cache_RangeThreshold_WB_Cal_LD ROUT
+        MOV     a1, #0
+        LDR     a1, [a1, #DCache_RangeThreshold]
+        MOV     pc, lr
+
+
+TLB_InvalidateAll_WB_Cal_LD ROUT
+MMU_ChangingUncached_WB_Cal_LD
+        MCR     p15, 0, a1, c8, c7, 0           ; invalidate ITLB and DTLB
+        CPWAIT
+        MOV     pc, lr
+
+
+TLB_InvalidateEntry_WB_Cal_LD ROUT
+MMU_ChangingUncachedEntry_WB_Cal_LD
+        MCR     p15, 0, a1, c8, c5, 1           ; invalidate ITLB entry
+        MCR     p15, 0, a1, c8, c6, 1           ; invalidate DTLB entry
+        CPWAIT
+        MOV     pc, lr
+
+
+WriteBuffer_Drain_WB_Cal_LD ROUT
+        MCR     p15, 0, a1, c7, c10, 4          ; drain WBuffer (waits, so no need for CPWAIT)
+        MOV     pc, lr
+
+
+IMB_Full_WB_Cal_LD
+        Push    "lr"
+        BL      Cache_CleanAll_WB_Cal_LD             ; clean DCache (wrt to non-interrupt stuff)
+        MCR     p15, 0, a1, c7, c5, 0                ; invalidate ICache and BTB
+        CPWAIT
+        Pull    "pc"
+
+
+IMB_Range_WB_Cal_LD ROUT
+        SUB     a2, a2, a1
+        CMP     a2, #32*1024                     ; arbitrary-ish range threshold
+        ADD     a2, a2, a1
+        BHS     IMB_Full_WB_Cal_LD
+        Push    "lr"
+        MOV     lr, #0
+        LDRB    lr, [lr, #DCache_LineLen]
+10
+        MCR     p15, 0, a1, c7, c10, 1           ; clean DCache entry
+ [ :LNOT:XScaleJTAGDebug
+        MCR     p15, 0, a1, c7, c5, 1            ; invalidate ICache entry
+ ]
+        ADD     a1, a1, lr
+        CMP     a1, a2
+        BLO     %BT10
+ [ XScaleJTAGDebug
+        MCR     p15, 0, a1, c7, c5, 0            ; invalidate ICache and BTB
+ |
+        MCR     p15, 0, a1, c7, c5, 6            ; invalidate BTB
+ ]
+        MCR     p15, 0, a1, c7, c10, 4           ; drain WBuffer (waits, so no need for CPWAIT)
+        Pull    "pc"
+
+
+MMU_Changing_WB_Cal_LD ROUT
+        Push    "lr"
+        BL      Cache_CleanAll_WB_Cal_LD
+        MCR     p15, 0, a1, c7, c5, 0           ; invalidate ICache and BTB
+        MCR     p15, 0, a1, c8, c7, 0           ; invalidate ITLB and DTLB
+        CPWAIT
+        Pull    "pc"
+
+MMU_ChangingEntry_WB_Cal_LD ROUT
+;
+;there is no clean&invalidate DCache instruction, however we can do clean
+;entry followed by invalidate entry without an interrupt hole, because they
+;are for the same virtual address (and that virtual address will not be
+;involved in interrupts, since it is involved in remapping)
+;
+        Push    "a2, lr"
+        ADD     a2, a1, #PageSize
+        MOV     lr, #0
+        LDRB    lr, [lr, #DCache_LineLen]
+10
+        MCR     p15, 0, a1, c7, c10, 1          ; clean DCache entry
+        MCR     p15, 0, a1, c7, c6, 1           ; invalidate DCache entry
+ [ :LNOT:XScaleJTAGDebug
+        MCR     p15, 0, a1, c7, c5, 1           ; invalidate ICache entry
+ ]
+        ADD     a1, a1, lr
+        CMP     a1, a2
+        BLO     %BT10
+        MCR     p15, 0, a1, c7, c10, 4          ; drain WBuffer
+ [ XScaleJTAGDebug
+        MCR     p15, 0, a1, c7, c5, 0           ; invalidate ICache and BTB
+ |
+        MCR     p15, 0, a1, c7, c5, 6           ; invalidate BTB
+ ]
+        SUB     a1, a1, #PageSize
+        MCR     p15, 0, a1, c8, c6, 1           ; invalidate DTLB entry
+        MCR     p15, 0, a1, c8, c5, 1           ; invalidate ITLB entry
+        CPWAIT
+        Pull    "a2, pc"
+
+
+MMU_ChangingEntries_WB_Cal_LD ROUT
+;
+;same comments as MMU_ChangingEntry_WB_Cal_LD
+;
+        Push    "a2, a3, lr"
+        MOV     a2, a2, LSL #Log2PageSize
+        MOV     a3, #0
+        LDR     a3, [a3, #DCache_RangeThreshold]   ;check whether cheaper to do global clean
+        CMP     a2, a3
+        BHS     %FT30
+        ADD     a2, a2, a1                         ;clean end address (exclusive)
+        MOV     a3, #0
+        LDRB    a3, [a3, #DCache_LineLen]
+        MOV     lr, a1
+10
+        MCR     p15, 0, a1, c7, c10, 1             ; clean DCache entry
+        MCR     p15, 0, a1, c7, c6, 1              ; invalidate DCache entry
+ [ :LNOT:XScaleJTAGDebug
+        MCR     p15, 0, a1, c7, c5, 1              ; invalidate ICache entry
+ ]
+        ADD     a1, a1, a3
+        CMP     a1, a2
+        BLO     %BT10
+        MCR     p15, 0, a1, c7, c10, 4             ; drain WBuffer
+ [ XScaleJTAGDebug
+        MCR     p15, 0, a1, c7, c5, 0              ; invalidate ICache and BTB
+ |
+        MCR     p15, 0, a1, c7, c5, 6              ; invalidate BTB
+ ]
+        MOV     a1, lr                             ; restore start address
+20
+        MCR     p15, 0, a1, c8, c6, 1              ; invalidate DTLB entry
+        MCR     p15, 0, a1, c8, c5, 1              ; invalidate ITLB entry
+        ADD     a1, a1, #PageSize
+        CMP     a1, a2
+        BLO     %BT20
+        CPWAIT
+        Pull    "a2, a3, pc"
+;
+30
+        BL      Cache_CleanInvalidateAll_WB_Cal_LD
+        MCR     p15, 0, a1, c8, c7, 0              ; invalidate ITLB and DTLB
+        CPWAIT
+        Pull    "a2, a3, pc"
+
+MMU_ChangingUncachedEntries_WB_Cal_LD ROUT
+        CMP     a2, #32                            ; arbitrary-ish threshold
+        BHS     %FT20
+        Push    "lr"
+        MOV     lr, a2
+10
+        MCR     p15, 0, a1, c8, c6, 1              ; invalidate DTLB entry
+        MCR     p15, 0, a1, c8, c5, 1              ; invalidate ITLB entry
+        SUBS    lr, lr, #1
+        ADD     a1, a1, #PageSize
+        BNE     %BT10
+        CPWAIT
+        Pull    "pc"
+;
+20
+        MCR     p15, 0, a1, c8, c7, 0              ; invalidate ITLB and DTLB
+        CPWAIT
+        MOV     pc, lr
+
 ; --------------------------------------------------------------------------
 
 
@@ -1163,6 +1617,7 @@ PNameTable
         DCW     PName_ARM920T   - PNameTable
         DCW     PName_ARM922T   - PNameTable
         DCW     PName_X80200    - PNameTable
+        DCW     PName_X80321    - PNameTable
 
 PName_ARM600
         =       "600:ARM 600 Processor",0
@@ -1192,6 +1647,86 @@ PName_ARM922T
         =       "922T:ARM 922T Processor",0
 PName_X80200
         =       "X80200:80200 Processor",0
+PName_X80321
+        =       "X80321:80321 Processor",0
         ALIGN
+
+
+; Lookup tables from DA flags PCB (bits 14:12,5,4, packed down to 4:2,1,0)
+; to XCB bits in page table descriptors.
+
+XCB_NB  *       1:SHL:0
+XCB_NC  *       1:SHL:1
+XCB_P   *       1:SHL:2
+
+        ALIGN 32
+
+; WT read-allocate cache (eg ARM720T)
+XCBTableWT                                      ; C+B        CNB   NCB         NCNB
+        = L2_C+L2_B, L2_C, L2_B, 0              ;        Default
+        = L2_C+L2_B, L2_C, L2_B, 0              ; WT,         X,  Non-merging, X
+        = L2_C+L2_B, L2_C, L2_B, 0              ; WB/RA,      X,  Merging,     X
+        = L2_C+L2_B, L2_C, L2_B, 0              ; WB/WA,      X,  X,           X
+        = L2_C+L2_B, L2_C, L2_B, 0              ; Alt DCache, X,  X,           X
+        = L2_C+L2_B, L2_C, L2_B, 0              ; X,          X,  X,           X
+        = L2_C+L2_B, L2_C, L2_B, 0              ; X,          X,  X,           X
+        = L2_C+L2_B, L2_C, L2_B, 0              ; X,          X,  X,           X
+
+; SA-110 in Risc PC - WB only read-allocate cache, non-merging WB
+XCBTableSA110
+        = L2_C+L2_B,    0, L2_B, 0              ;        Default
+        =      L2_B,    0, L2_B, 0              ; WT,         X,  Non-merging, X
+        = L2_C+L2_B,    0, L2_B, 0              ; WB/RA,      X,  Merging,     X
+        = L2_C+L2_B,    0, L2_B, 0              ; WB/WA,      X,  X,           X
+        = L2_C+L2_B,    0, L2_B, 0              ; Alt DCache, X,  X,           X
+        = L2_C+L2_B,    0, L2_B, 0              ; X,          X,  X,           X
+        = L2_C+L2_B,    0, L2_B, 0              ; X,          X,  X,           X
+        = L2_C+L2_B,    0, L2_B, 0              ; X,          X,  X,           X
+
+; ARMv5 WB/WT read-allocate cache, non-merging WB (eg ARM920T)
+XCBTableWBR
+        = L2_C+L2_B,    0, L2_B, 0              ;        Default
+        = L2_C     ,    0, L2_B, 0              ; WT,         X,  Non-merging, X
+        = L2_C+L2_B,    0, L2_B, 0              ; WB/RA,      X,  Merging,     X
+        = L2_C+L2_B,    0, L2_B, 0              ; WB/WA,      X,  X,           X
+        = L2_C+L2_B,    0, L2_B, 0              ; Alt DCache, X,  X,           X
+        = L2_C+L2_B,    0, L2_B, 0              ; X,          X,  X,           X
+        = L2_C+L2_B,    0, L2_B, 0              ; X,          X,  X,           X
+        = L2_C+L2_B,    0, L2_B, 0              ; X,          X,  X,           X
+
+; SA-1110 - WB only read allocate cache, merging WB, mini D-cache
+XCBTableSA1110
+        = L2_C+L2_B,    0, L2_B, 0              ;        Default
+        =      L2_B,    0,    0, 0              ; WT,         X,  Non-merging, X
+        = L2_C+L2_B,    0, L2_B, 0              ; WB/RA,      X,  Merging,     X
+        = L2_C+L2_B,    0, L2_B, 0              ; WB/WA,      X,  X,           X
+        = L2_C     ,    0, L2_B, 0              ; Alt DCache, X,  X,           X
+        = L2_C+L2_B,    0, L2_B, 0              ; X,          X,  X,           X
+        = L2_C+L2_B,    0, L2_B, 0              ; X,          X,  X,           X
+        = L2_C+L2_B,    0, L2_B, 0              ; X,          X,  X,           X
+
+; XScale - WB/WT read or write-allocate cache, merging WB, mini D-cache
+;          defaulting to read-allocate
+XCBTableXScaleRA
+        =      L2_C+L2_B,    0,      L2_B, 0    ;        Default
+        =      L2_C     ,    0, L2_X+L2_B, 0    ; WT,         X,  Non-merging, X
+        =      L2_C+L2_B,    0,      L2_B, 0    ; WB/RA,      X,  Merging,     X
+        = L2_X+L2_C+L2_B,    0,      L2_B, 0    ; WB/WA,      X,  X,           X
+        = L2_X+L2_C     ,    0,      L2_B, 0    ; Alt DCache, X,  X,           X
+        =      L2_C+L2_B,    0,      L2_B, 0    ; X,          X,  X,           X
+        =      L2_C+L2_B,    0,      L2_B, 0    ; X,          X,  X,           X
+        =      L2_C+L2_B,    0,      L2_B, 0    ; X,          X,  X,           X
+
+; XScale - WB/WT read or write-allocate cache, merging WB, mini D-cache
+;          defaulting to write-allocate
+XCBTableXScaleWA
+        = L2_X+L2_C+L2_B,    0,      L2_B, 0    ;        Default
+        =      L2_C     ,    0, L2_X+L2_B, 0    ; WT,         X,  Non-merging, X
+        =      L2_C+L2_B,    0,      L2_B, 0    ; WB/RA,      X,  Merging,     X
+        = L2_X+L2_C+L2_B,    0,      L2_B, 0    ; WB/WA,      X,  X,           X
+        = L2_X+L2_C     ,    0,      L2_B, 0    ; Alt DCache, X,  X,           X
+        = L2_X+L2_C+L2_B,    0,      L2_B, 0    ; X,          X,  X,           X
+        = L2_X+L2_C+L2_B,    0,      L2_B, 0    ; X,          X,  X,           X
+        = L2_X+L2_C+L2_B,    0,      L2_B, 0    ; X,          X,  X,           X
 
         END

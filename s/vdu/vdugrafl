@@ -528,6 +528,9 @@ CompressionTable
 ;       Compress  ModeNo - stored in sprite itself
 
         Compress  TFTint, TBTint, GFTint, GBTint
+
+;       Compress  TotalScreenSize, MaxMode, ScreenEndAddr - refer to screen always
+
         Compress  CursorFlags, CursorStack
         Compress  ECFShift, ECFYOffset
 

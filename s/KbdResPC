@@ -128,7 +128,7 @@ IRQ_Test_CTRL_or_R_Pressed ROUT
 
         MOV     r2, #IOBase
  [ MorrisSupport
-        MOV     lr, #InitKbdWs
+        MOV     lr, #InitIRQWs
         LDRB    r1, [lr, #Port2Present] ;Check if 2nd PS2 port (in Morris) is available
         TEQ     r1, #0
 
@@ -159,7 +159,7 @@ IRQ_Test_CTRL_or_R_Pressed ROUT
         ORRNE   r0, r0, r1              ;Not zero, mark keyboard present
  ]
 
-        MOV     lr, #InitKbdWs
+        MOV     lr, #InitIRQWs
 
         STRB    r0, [lr, #KB_There_Flag]        ; Keyboard must be there (r0<>0 from above).
 

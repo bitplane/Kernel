@@ -32,7 +32,13 @@ EntryNo_HAL_IRQEnable           #       1
 EntryNo_HAL_IRQDisable          #       1
 EntryNo_HAL_IRQClear            #       1
 EntryNo_HAL_IRQSource           #       1
-EntryNo_HAL_FIQDisableCode      #       1
+EntryNo_HAL_IRQStatus           #       1
+EntryNo_HAL_FIQEnable           #       1
+EntryNo_HAL_FIQDisable          #       1
+EntryNo_HAL_FIQDisableAll       #       1
+EntryNo_HAL_FIQClear            #       1
+EntryNo_HAL_FIQSource           #       1
+EntryNo_HAL_FIQStatus           #       1
 
 EntryNo_HAL_Timers              #       1
 EntryNo_HAL_TimerDevice         #       1
@@ -49,6 +55,7 @@ EntryNo_HAL_CounterDelay        #       1
 
 EntryNo_HAL_NVMemoryType        #       1
 EntryNo_HAL_NVMemorySize        #       1
+EntryNo_HAL_NVMemoryPageSize    #       1
 EntryNo_HAL_NVMemoryProtectedSize #     1
 EntryNo_HAL_NVMemoryProtection  #       1
 EntryNo_HAL_NVMemoryIICAddress  #       1
@@ -59,6 +66,9 @@ EntryNo_HAL_IICBuses            #       1
 EntryNo_HAL_IICType             #       1
 EntryNo_HAL_IICSetLines         #       1
 EntryNo_HAL_IICReadLines        #       1
+EntryNo_HAL_IICDevice           #       1
+EntryNo_HAL_IICTransfer         #       1
+EntryNo_HAL_IICMonitorTransfer  #       1
 
 EntryNo_HAL_VideoFlybackDevice        #  1
 EntryNo_HAL_Video_SetMode             #  1
@@ -84,10 +94,11 @@ EntryNo_HAL_TouchscreenRead     #       1
 EntryNo_HAL_TouchscreenMode     #       1
 EntryNo_HAL_TouchscreenMeasure  #       1
 
-EntryNo_HAL_MachineID           #       1
-EntryNo_HAL_ControllerAddress   #       1
-EntryNo_HAL_HardwareInfo        #       1
-EntryNo_HAL_SuperIOInfo         #       1
+EntryNo_HAL_MachineID           #       1 ; ReadSysInfo 2
+EntryNo_HAL_ControllerAddress   #       1 ; Memory 9
+EntryNo_HAL_HardwareInfo        #       1 ; ReadSysInfo 2
+EntryNo_HAL_SuperIOInfo         #       1 ; ReadSysInfo 3
+EntryNo_HAL_PlatformInfo        #       1 ; ReadSysInfo 8
 EntryNo_HAL_CleanerSpace        #       1
 
 EntryNo_HAL_UARTPorts           #       1
@@ -111,6 +122,23 @@ EntryNo_HAL_UARTModemStatus     #       1
 EntryNo_HAL_UARTDevice          #       1
 
 EntryNo_HAL_Reset               #       1
+EntryNo_HAL_DebugRX             #       1
+EntryNo_HAL_DebugTX             #       1
+
+EntryNo_HAL_PCIFeatures         #       1
+EntryNo_HAL_PCIReadConfigByte   #       1
+EntryNo_HAL_PCIReadConfigHalfword #     1
+EntryNo_HAL_PCIReadConfigWord   #       1
+EntryNo_HAL_PCIWriteConfigByte  #       1
+EntryNo_HAL_PCIWriteConfigHalfword #     1
+EntryNo_HAL_PCIWriteConfigWord  #       1
+EntryNo_HAL_PCISpecialCycle     #       1
+EntryNo_HAL_PCISlotNumber       #       1
+EntryNo_HAL_PCIAddresses        #       1
+
+EntryNo_HAL_ATAControllerInfo   #       1
+EntryNo_HAL_ATASetModes         #       1
+EntryNo_HAL_ATACableID          #       1
 
 ; Various flags and constants
 
@@ -130,6 +158,7 @@ NVMemoryFlag_LowWrite           * 1:SHL:11  ; locations 0-15 are writeable
 
 IICFlag_LowLevel        * 1:SHL:0
 IICFlag_HighLevel       * 1:SHL:1
+IICFlag_Background      * 1:SHL:4
 IICFlag_Fast            * 1:SHL:16
 IICFlag_HighSpeed       * 1:SHL:17
 

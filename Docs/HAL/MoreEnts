@@ -33,7 +33,7 @@ Interrupt specifications are generally described by a 3-word structure.
 The 3 words correspond directly to the contents of registers R0,R3 and R4
 on entry to OS_ClaimDeviceVector.
 
-struct
+typedef struct irq_descriptor
 {
     int device;
     union {
@@ -46,7 +46,7 @@ struct
          void *handle;
        } func;
     } sub;
-}
+} irq_descriptor;
 
 OS_ClaimDeviceVector changes:
 
@@ -281,6 +281,7 @@ unsigned int HAL_IICType(int bus)
         bit 1: Bus supplies the high-level API
         bit 2: High-level API supports multi-master operation
         bit 3: High-level API supports slave operation
+        bit 4: High-level API supports background operation
        bit 16: Bus supports Fast (400kbps) operation
        bit 17: Bus supports High-speed (3.4Mbps) operation
    bits 20-31: Version number of I²C supported by high-level API, * 100.
@@ -311,29 +312,119 @@ __value_in_regs IICLines HAL_IICReadLines(int bus);
 High level API
 --------------
 
-To be defined.
+The high-level interface process a single transfer at a time (from the
+initial START to the STOP). It is designed to support background operations.
+
+irq_descriptor HAL_IICDevice(int bus);
+
+  Returns the interrupt specification for the bus. This is not meaningful
+  if bit 4 of the flags word above is not set. The OS will claim the interrupt
+  and call HAL_IICMonitorTransfer() each time it occurs.
+
+
+#define IICSTATUS_COMPLETED  0
+#define IICSTATUS_INPROGRESS 1  /* transfer proceeding in background */
+#define IICSTATUS_NOACK      2  /* slave failed to acknowledge */
+#define IICSTATUS_BUSY       3  /* IIC system busy (call back later) */
+#define IICSTATUS_SLAVE      4  /* reserved for slave operations */
+#define IICSTATUS_ERROR      5  /* other error prevented completion */
+
+typedef struct iic_transfer
+{
+  unsigned addr:8;
+  unsigned :22;
+  unsigned checksumonly:1;
+  unsigned nostart:1;
+  union
+  {   unsigned checksum;
+      void *data;
+  } d;
+  unsigned len;
+} iic_transfer;
+
+int HAL_IICTransfer(int bus, unsigned n, iic_transfer transfer[static n]);
+
+  Initiates an IIC transfer. The transfer shall progress in the background
+  if bit 4 is set, in which case the normal return should be IICSTATUS_INPROGRESS.
+  The OS will call HAL_IICMonitorTransfer each time an interrupt occurs - this
+  will allow the HAL to progress through the transfer if it's not totally automatic.
+  If the transfer happens in the foreground, return values are as for
+  IICMonitorTransfer (see below).
+
+  If an IIC transfer is currently in progress, the call may return BUSY and the
+  caller should retry later - although if background transfers are supported it may
+  queue the transfer and return INPROGRESS. If another master is driving the bus,
+  it should silently wait until the bus is free (in the background or foreground as
+  appropriate). If we lose arbitration, the transfer should be retried when the bus
+  becomes free.
+
+  transfer[] is an array of n transfer descriptors. Each descriptor describes part
+  of the transfer. The direction of the subtransfer is determined by the least
+  significant bit of addr. If nostart is 0, a START is first transmitted followed
+  by addr, otherwise the data flow continues where the previous subtransfer
+  left off. nostart must be 0 for the first subtransfer.
+
+  For writes, len bytes of data are read from "data" and transmitted. For reads,
+  len bytes are received and written to "data", unless "checksumonly" is 1, in which
+  case the len received bytes are summed and the (32-bit) sum stored in checksum.
+
+  If background transfers are in use, the transfer[] array and the data blocks must
+  remain available in unpaged memory for the duration of the transfer.
+
+  IICTransfer is re-entrant, but may return BUSY if re-entered (see above).
+
+  
+int HAL_IICMonitorTransfer(int bus);
+
+  Will be called on every interrupt, and should return the status of the transfer
+  currently in progress. If no transfer is in progress, the call should return
+  COMPLETED.
+
+  If the transfer is still in progress, INPROGRESS is returned.
+
+  If the slave failed to acknowledge (either the address or any later transmitted
+  byte), NOACK is returned.
+
+  If we have been addressed as a slave, the call returns SLAVE. More details to
+  be confirmed.
+
+  BUSY is not a valid response.
+
+  This will only be called in response to an IIC interrupt, with interrupts disabled.
+  The interrupt shall be cleared by this call.
+
+  Unknown return codes will be ignored.
+
 
 Machine ID
 ==========
 
 unsigned int64 HAL_MachineID(void)
 
-  Returns a 64-bit unique machine identifier. What does it mean?
+  Returns a 64-bit unique machine identifier,this may later be used to
+  form the ethernet MAC address but otherwise has no great significance on non
+  networked machines.
+
+  The top 8 bits are a CRC,based on the same algorithm the original DS2401 
+  used - if the CRC fails zero will be substituted
 
 ControllerAddress
 =================
 
-void *HAL_ControllerAddress(unsigned flags, unsigned controller)
+void *HAL_ControllerAddress(unsigned controller)
 
-  Maps to RISC OS' OS_Memory 9 call - provides a way for people who must poke the
-  hardware to find it. Bits 0-7 of controller are the sequence number
-  (starting at zero), and bits 8-31 are the controller type. Currently allocated
-  types are:
-              0 = EASI card access speed control register (sequence no = card)
-              1 = EASI space (sequence no = card)
-              2 = VIDC1
-              3 = VIDC20
-              4 = IOMD
+  Asks the HAL where various controllers might or might not be.
+  Podule manager uses this information to determine at run time whether or not
+  to bother doing anything.
+  
+  Returns r0=logical address of the chosen controller,or zero
+  
+     0 = EASI card access speed control
+     1 = EASI space(s)
+     2 = VIDC1
+     3 = VIDC20
+     4 = S space base (IOMD,podules,NICs,blah blah)
+     5 = Extension ROM(s)
 
 Matrix Keyboard
 ===============

@@ -410,9 +410,9 @@ readdyn_returnR2bit     *       &80
         CMP     r0, #&80                        ; CS => load maxsize into R2
                                                 ; (do this either if bit 7 set, or area >=&100)
         LDRCS   r2, [r10, #DANode_MaxSize]
+        LDR     r11, [r10, #DANode_Flags]       ; if doubly mapped
         LDR     r1, [r10, #DANode_Size]         ; r1 = current size
         LDR     r0, [r10, #DANode_Base]         ; r0 -> base
-        LDR     r11, [r10, #DANode_Flags]       ; if doubly mapped
         TST     r11, #DynAreaFlags_DoublyMapped
         SUBNE   r0, r0, r1                      ; then return start of 1st copy for compatibility
         ExitSWIHandler
@@ -602,7 +602,9 @@ SetMemMapEntries_Code  ROUT
         CMP     r2, r5
         BHI     %FT02                   ; finished
         LDMIA   r12!, {r3, r11}
+ [ {FALSE}
         AND     r11, r11, #3
+ ]
         CMP     r3, #-1
         LDRHS   r3, =DuffEntry
         MOVHS   r11, #AP_Duff
@@ -665,10 +667,30 @@ DynAreaFlags_NeedsSpecificPages *  1 :SHL:  8   ; whether area will ever require
 DynAreaFlags_Shrinkable         *  1 :SHL:  9   ; whether area may be shrunk when need more space in free pool
 DynAreaFlags_SparseMap          *  1 :SHL: 10   ; whether area may have non-contiguous mapping of pages (Holey dynamic areas Batman!)
 DynAreaFlags_PiersBinding       *  1 :SHL: 11   ; whether area is bound to client application, and so may be swapped out with it (not implemented yet)
+DynAreaFlags_CPBits             *  7 :SHL: 12   ; cache policy variant for NotBufferable and NotCacheable bits
+
+; Cache policies
 ;
-; bits 12..15 nominally reserved for future DA flags expansion
+CP_NCNB_Default                 * 0             ; no policy variants
+
+CP_NCB_Default                  * 0             ; OS decides buffer policy (currently always coalescing)
+CP_NCB_NonMerging               * 1             ; Non-merging write buffer. If not available, unbuffered.
+CP_NCB_Merging                  * 2             ; Merging write buffer. If not available, non-merging.
+
+CP_CNB_Default                  * 0             ; OS decides cache policy (writethrough). NCNB if not available
+CP_CNB_Writethrough             * 1             ; Writethrough cacheable, non-buffered. If not available, NCNB.
+CP_CNB_Writeback                * 2             ; Writeback cacheable, non-buffered. If not available,CNB_Writethrough.
+
+CP_CB_Default                   * 0             ; OS decides cache policy (WB if available, W alloc if HAL requests)
+CP_CB_Writethrough              * 1             ; Writethrough cacheable, read allocate. If not available, NCB_Merging
+CP_CB_WritebackReadAlloc        * 2             ; Writeback cacheable, read allocate. If not available, writethrough.
+CP_CB_WritebackWriteAlloc       * 3             ; Writeback cacheable, write allocate. If not available, WB/R.
+CP_CB_AlternativeDCache         * 4             ; Use XScale/SA11x0 mini-data cache. If not available, CB_Default.
+
 ;
-DynAreaFlags_AccessMask * DynAreaFlags_APBits :OR: DynAreaFlags_NotBufferable :OR: DynAreaFlags_NotCacheable :OR: DynAreaFlags_DoublyMapped
+; bits 15 nominally reserved for future DA flags expansion
+;
+DynAreaFlags_AccessMask * DynAreaFlags_APBits :OR: DynAreaFlags_NotBufferable :OR: DynAreaFlags_NotCacheable :OR: DynAreaFlags_DoublyMapped :OR: DynAreaFlags_CPBits
 ;
 ; The following bits are only present in page flags
 ;
@@ -2167,9 +2189,9 @@ FixedAreasTable                                         ; table of fixed areas (
         &       0,                      AplWorkMaxSize  ; application space
         &       CursorChunkAddress,     64*1024                 ; 32K for cursor, 32K for "nowhere"
  [ OSROM_ImageSize > 8192
-        &       &03000000,              8*1024*1024+OSROM_ImageSize*1024    ; I/O + ROM
+        &       &03800000,              OSROM_ImageSize*1024   ; ROM
  |
-        &       &03000000,              16*1024*1024            ; I/O + ROM
+        &       &03800000,              8*1024*1024            ; ROM
  ]
         &       IO,                     &FFFFFFFF-IO    ; Kernel workspace (code will also check dynamic value IOAllocPtr)
  |
@@ -2412,7 +2434,11 @@ AllocateBackingLevel2 Entry "r0-r8,r11"
 
         LDR     r6, [r1, #-4]                           ; r6 = physical address for L2 page + other L2 bits
         MOV     r6, r6, LSR #12                         ; r6 = phys.addr >> 12
+ [ ECC
+        LDR     lr, =L1_Page + L1_U + L1_P              ; form other bits to put in L1
+ |
         LDR     lr, =L1_Page + L1_U                     ; form other bits to put in L1
+ ]
         ORR     lr, lr, r6, LSL #12                     ; complete L1 entry
         STR     lr, [r8, #0]                            ; store entry for 1st MB
         ADD     lr, lr, #1024                           ; advance L2 pointer
@@ -2653,8 +2679,20 @@ InitDynamicAreas Entry "r0-r8,r11,r12"
 
         LDR     r2, [r5, #MaxCamEntry]          ; r2 = 1st page to put in free pool
         MOV     r3, r6                          ; r3 = base address of free pool, ie where to put stuff
+        SUB     lr, r8, r7
+        SUB     lr, r2, lr
+        ADD     r3, r3, lr, LSL #12             ; r3 = end address of free pool
 
         ! 0, "Sort out static check in InitDynamicAreas"
+10
+        CMP     r2, r8                          ; are we into statics already
+        SUBCC   r2, r7, #1                      ; if so, then move to last page of video RAM
+        MOVCC   r8, #0                          ; and move barrier so we never hit it again
+        BL      BangCamUpdate
+        SUB     r3, r3, #4096                   ; advance logical address
+        ADD     r5, r5, #4096
+        SUBS    r2, r2, #1                      ; decrement page number
+        BCS     %BT10                           ; if we haven't gone negative, then loop
  |
         MOV     r11, r3                         ; r11 = PPL (inc CB) for free pool
         MOV     r3, r2                          ; r3 = base address of free pool, ie where to put stuff
@@ -2668,7 +2706,6 @@ InitDynamicAreas Entry "r0-r8,r11,r12"
         ADD     r8, r8, r0                      ; add sizes together
         ADD     r8, r8, #StaticPagesSize + UndStackSize ; + number of bytes used for other static bits
         ADD     r8, r7, r8, LSR #12             ; r8 = page number of 1st page in 1st chunk not used for statics
- ]
 10
         CMP     r2, r8                          ; are we into statics already
         SUBCC   r2, r7, #1                      ; if so, then move to last page of video RAM
@@ -2678,6 +2715,7 @@ InitDynamicAreas Entry "r0-r8,r11,r12"
         ADD     r5, r5, #4096
         SUBS    r2, r2, #1                      ; decrement page number
         BCS     %BT10                           ; if we haven't gone negative, then loop
+ ]
 
         MOV     lr, #FreePoolDANode             ; may be used below to update DAList head ptr
         STR     r5, [lr, #DANode_Size]          ; update size of free pool in node
@@ -3052,9 +3090,10 @@ AreaShrink
         LDR     r3, [r12, #DANode_Size]
         ADD     r1, r1, r3                      ; r1 -> address of 1st extra page
 
+        LDR     lr, =DynAreaFlags_AccessMask
         MOV     r4, r2
         LDR     r6, [r12, #DANode_Flags]        ; r6 = dst flags
-        AND     r6, r6, #DynAreaFlags_AccessMask
+        AND     r6, r6, lr
 20
         SUB     r0, r0, r5                      ; pre-decrement source pointer
  [ DebugCDA2
@@ -3310,6 +3349,8 @@ GenNotAllMovedError Entry "r0"
         STR     lr, [sp, #12*4]
         EXIT
 
+        LTORG
+
 ChangeDynError
 
 ; in:   r0 -> error
@@ -3482,8 +3523,9 @@ DoTheGrow Entry "r3,r5,r10-r12", DoTheGrowStackSize
         LDR     r3, [r12, #DANode_Size]
 
         LDR     r6, [r12, #DANode_Flags]        ; r6 = dst flags
-        AND     r6, r6, #DynAreaFlags_AccessMask
+        LDR     lr, =DynAreaFlags_AccessMask
         TST     r6, #DynAreaFlags_DoublyMapped  ; check if dst is doubly mapped
+        AND     r6, r6, lr
         BEQ     %FT25                           ; [it's not, so skip all this]
 
 ; we must shunt all existing pages in dest area down
@@ -3623,7 +3665,8 @@ DoTheGrowPagesSpecified
         LDR     r3, [r12, #DANode_Size]
 
         LDR     r6, [r12, #DANode_Flags]        ; r6 = dst flags
-        AND     r6, r6, #DynAreaFlags_AccessMask
+        LDR     lr, =DynAreaFlags_AccessMask
+        AND     r6, r6, lr
         ORR     r6, r6, #PageFlags_Unavailable  ; set unavailable bit
         STR     r6, DestFlags                   ; save for later
         TST     r6, #DynAreaFlags_DoublyMapped  ; check if dst is doubly mapped
@@ -3877,6 +3920,8 @@ DoTheGrowPagesSpecified
         CLRV
         EXIT
 
+        LTORG
+
 ; ***********************************************************************************
 ;
 ;       DoTheGrowNotSpecified - Do one chunk of growing, with no page block
@@ -3915,7 +3960,8 @@ DoTheGrowNotSpecified Entry "r3,r5,r10-r12", DoTheGrowNotSpecifiedStackSize
         LDR     r3, [r12, #DANode_Size]
 
         LDR     r6, [r12, #DANode_Flags]        ; r6 = dst flags
-        AND     r6, r6, #DynAreaFlags_AccessMask
+        LDR     lr, =DynAreaFlags_AccessMask
+        AND     r6, r6, lr
         TST     r6, #DynAreaFlags_DoublyMapped  ; check if dst is doubly mapped
         BEQ     %FT25                           ; [it's not, so skip all this]
 
@@ -4600,10 +4646,13 @@ DynAreaHandler_Screen                           ;despatch routine for pre/post g
 
 PreGrow_Screen  Entry   "r0-r2,r4"
         LDR     r0, [WsPtr, #CursorFlags]       ; test if VDU inited yet
+        LDRB    lr, [WsPtr, #ExternalFramestore]
         TEQ     r0, #0                          ; if not, CursorFlags will be zero
-        SWINE   XOS_RemoveCursors               ; if VDU inited, then remove cursors
+        BEQ     %FT05
+        TEQ     lr, #0
+        SWIEQ   XOS_RemoveCursors               ; if VDU inited, then remove cursors
 
-        ADRL    r0, PageShifts-1
+05      ADRL    r0, PageShifts-1
         LDRB    r0, [r0, r5, LSR #12]           ; grab log2Pagesize for shifting
         MOV     r4, r4, LSR r0                  ; change present size into number of pages
                                                 ; since page numbers are 0 to n-1 thus n
@@ -4657,9 +4706,23 @@ PreShrink_Screen Entry   "R0-R2,R4-R5"
         ;the current amount needed by the vdu drivers, if it doesn't we
         ;reduce R3 to be the most we can spare (in whole pages)
 
+ [ HAL
+        MOV     LR, #0
+        LDR     LR, [LR, #VRAMFlags]            ;is VRAM suitable for general use?
+        TST     LR, #2                          ;if not - don't shrink screen memory
+        MOVNE   R3, #0
+ ]
         SUB     R2, R5, #1                      ;make a page mask
 
-        LDR     R5, [R12, #ScreenSize]          ;get current minimum size
+        LDRB    R14, [R12, #ExternalFramestore]
+        TEQ     R14, #0                         ;okay to shrink if using external framestore
+        BEQ     %FT12
+        RSB     R0, R3, #0                      ;R0= -(number of bytes) for RemovePages
+        BL      RemovePages
+        CLRV
+        EXIT
+
+12      LDR     R5, [R12, #ScreenSize]          ;get current minimum size
 
         SUB     R1, R4, R5                      ;R1 = maximum shrink (current - screensize)
         CMP     R3, R1                          ;if requested shrink > max...

@@ -375,12 +375,17 @@ UpdatePointer ROUT
 
         ; and its up to the HAL to handle clipping according to h/w capabilities
 40
+ [ UseGraphicsV
+        Push    "LR"
+        MOV     R4, #GraphicsV_UpdatePointer
+        BL      CallGraphicsV
+        Pull    "PC"
+ |
         Push    "R9, R12, LR"
         mjsAddressHAL
         mjsCallHAL     HAL_Video_UpdatePointer
-        Pull    "R9, R12, LR"
-
-        MOV     PC, LR
+        Pull    "R9, R12, PC"
+ ]
 
 
         LTORG

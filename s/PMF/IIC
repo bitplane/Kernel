@@ -16,8 +16,8 @@
 ; 05-Feb-02  BJGA  Added re-entrant capability
 
 
-PollMax		*	150	; Number of times to poll for an Ack (increase if you clock faster - need to
-                                ; allow 5ms for write cycle).
+PollMax		*	150	; Number of times to poll for an Ack (increase if you
+				; clock faster - need to allow 5ms for write cycle).
 
 
 ; Choose a lower limit on the number of ticks per clock phase based on the
@@ -121,7 +121,7 @@ IICOpSWI
 
 
 ; *****************************************************************************
-
+;
 ; in:   R0 = device address (bit 0 set => read, clear => write)
 ;       R1 -> data block
 ;       R2 = length of data block
@@ -138,13 +138,15 @@ IIC_Op
         Pull    "R1-R2,PC"
 
 ; *****************************************************************************
-
+;
+; IIC_OpV - perform IIC operations based on a list of descriptors
+;
 ; in:   R0 -> array of transfer descriptors
 ;       R1 = number of transfers
 ;
 ; out:  transfer descriptors may be updated (beware)
 ;
-; transfer descriptor is 3 words: word 0 = device address (+direction)
+; Transfer descriptor is 3 words: word 0 = device address (+direction)
 ;                                         (bit 29 signifies retry for response)
 ;                                         (bit 30 signifies checksum read only - ie fill in word 1 with
 ;                                          sum of bytes read)
@@ -271,6 +273,10 @@ IICDoOp ROUT
 
         MOV     R3, R0
 
+        LDR     iiclr, [R2, #IICType]
+        TST     iiclr, #IICFlag_HighLevel
+	BNE	IIC_OpV_HAL             ; HAL can make use of a hardware IIC engine
+
 05      LDR     R0, [iicsp]
         SUBS    R0, R0, #1
         BCC     %FT90
@@ -355,13 +361,19 @@ IICDoOp ROUT
 
 90
      iicBL      Stop
+IIC_ExitOK
         CLRV
         ADD     iicsp, iicsp, #8        ; skip junk on stack
      iicPull    "pc"
 
 80
      iicBL      Stop
+IIC_ExitNoAck
+	MOV	R0, #0
+	STR	R0, [R0, #IICStatus]
         ADR     R0, ErrorBlock_IIC_NoAcknowledge
+
+IIC_ExitError
  [ International :LAND: {FALSE}
         ; KJB - problematical - this may be done very early, before SWI dispatch
         ; is ready, so we can't call MessageTrans. Think about this.
@@ -389,9 +401,11 @@ SetC1C0 ROUT
         MOV     R2, R1
         MOV     R1, R0
         MOV     R0, #0
-        MRS     CPSR_c, r8              ; IRQs off for use of ATPCS
+        MSR     CPSR_c, r8              ; IRQs off for use of ATPCS
+        Push    "lr"
         CallHAL HAL_IICSetLines
-        MRS     CPSR_c, r7              ; IRQs back on
+        Pull    "lr"
+        MSR     CPSR_c, r7              ; IRQs back on
  |
 	ADD	R0, R0, R1, LSL #1	; R0 := C0 + C1*2
 
@@ -429,9 +443,11 @@ SetC1C0 ROUT
 ReadC1C0 ROUT
  [ HAL
      iicPush    "r2,r3,iiclr"
-        MRS     CPSR_c, r8              ; IRQs off for use of ATPCS
+        MSR     CPSR_c, r8              ; IRQs off for use of ATPCS
+        Push    "lr"
         CallHAL HAL_IICReadLines
-        MRS     CPSR_c, r7              ; IRQs back on
+        Pull    "lr"
+        MSR     CPSR_c, r7              ; IRQs back on
      iicPull    "r2,r3,pc"
  |
         LDRB    a1, [r9, #IOCControl]
@@ -456,9 +472,11 @@ iicDoMicroDelay ROUT
      iicPush    "a3,a4,iiclr"
         MOVS    a1, a1, LSR #1
         ADC     a1, a1, #0
-        MRS     CPSR_c, r8              ; IRQs off for use of ATPCS
+        MSR     CPSR_c, r8              ; IRQs off for use of ATPCS
+        Push    "lr"
         CallHAL HAL_CounterDelay
-        MRS     CPSR_c, r7              ; IRQs back on
+        Pull    "lr"
+        MSR     CPSR_c, r7              ; IRQs back on
      iicPull    "a3,a4,pc"
   |
      iicPush    "iiclr"
@@ -754,9 +772,136 @@ RXByte	ROUT
 	MOV	R0, R3			; return the result in R0
      iicPull    "R1-R3,PC"
 
+; *****************************************************************************
+
+IIC_OpV_HAL
+;       R2 = 0
+;       R3 -> array of transfer descriptors
+;       [iicsp, #0] = number of transfers
+;       [iicsp, #4] unused on entry, used to hold number of retries remaining
+;       [iicsp, #8] = return address
+
+        LDR	iiclr, [R2, #IICStatus]
+        TEQ     iiclr, #0
+        BNE     IIC_Busy
+
+        LDR     iiclr, [R3]
+        TST     iiclr, #1:SHL:29        ; retries reqd?
+        MOVNE   iiclr, #PollMax
+        MOVEQ   iiclr, #1      		; no,just try once
+        STR     iiclr, [iicsp, #4]
+
+IIC_OpV_HAL_Retry
+        MOV	iiclr, #1
+        STR	iiclr, [R2, #IICStatus]
+
+     iicPush    "R3"
+        MOV     R0, #0
+        LDR     R1, [iicsp, #4]
+        MOV     R2, R3
+        MSR     CPSR_c, R8              ; IRQs off for use of ATPCS
+        Push    "lr"
+	CallHAL	HAL_IICTransfer
+        Pull    "lr"
+        MSR     CPSR_c, R7              ; IRQs back on
+     iicPull    "R3"
+        MOV     R2, #0
+
+20      TEQ     R0, #2
+        BEQ     IIC_NoAck
+        TEQ     R0, #3
+        BEQ     IIC_Busy
+        TEQ     R0, #0
+        STREQ   R0, [R2, #IICStatus]    ; mark IIC system as free
+        BEQ     IIC_ExitOK
+        TEQ     R0, #1
+        BNE     IIC_Error
+        LDR     R0, [R2, #IICStatus]
+        B       %BT20
+
+IIC_NoAck
+        LDR     iiclr, [iicsp, #4]
+        SUBS    iiclr, iiclr, #1
+        STRNE   iiclr, [iicsp, #4]
+        BNE     IIC_OpV_HAL_Retry       ; worth another go?
+        B       IIC_ExitNoAck
+
+IIC_Busy
+        ADR     R0,IICBusy_Error
+        B       IIC_ExitError
+
+IICBusy_Error
+        DCD     &12345 ; Fix me
+        =       "IIC busy", 0
+        ALIGN
+
+IIC_Error
+	MOV	R0, #0
+	STR	R0, [R0, #IICStatus]
+        ADR     R0,IICError_Error
+        B       IIC_ExitError
+
+IICError_Error
+        DCD     &12345 ; Fix me
+        =       "IIC error", 0
+        ALIGN
 
 interrupt_protected_end
 
+
+IICIRQ
+        Push    "R9,R14"
+        MOV     R9, R12
+        MOV	R0, #0
+        CallHAL HAL_IICMonitorTransfer
+        MOV     R12, #0
+        STR     R0, [R12, #IICStatus]
+        Pull    "R9,PC"
+
+IICAbort
+        Push    "R7,R8,R9,R11,R12"
+        MOV     R11,R13
+        SUB     R13,R13,#&80
+        MRS     R7,CPSR
+        ORR     R8,R7,#I32_bit
+ [ HAL
+        AddressHAL
+ |
+        MOV     R9,#IOC
+ ]
+ [ {FALSE}
+        MOV     R1,#16                          ; Two bytes in case RTC transmitting
+35
+     iicBL      Start                           ; Start/clock edge
+     iicBL      Stop
+        SUBS    R1,R1,#1
+        BNE     %BT35
+ |
+     iicBL      Start
+        MOV     R0, #1
+     iicBL      TXAck
+     iicBL      Stop
+ ]
+        Pull    "R7,R8,R9,R11,R12"
+        MOV     PC,R14
+
+IICInit
+        Push    "R9,R14"
+        AddressHAL
+        MOV     a1, #0
+        CallHAL HAL_IICType
+        MOV     a2, #0
+        STR     a1, [a2, #IICType]
+        TST     a1, #IICFlag_Background
+        Pull    "R9,PC",EQ
+        SUB     sp, sp, #12
+        MOV     a1, sp
+        MOV     a2, #0
+        CallHAL HAL_IICDevice
+        LDR     a1, [sp]
+        CallHAL HAL_IRQEnable
+        ADD     sp, sp, #12
+        Pull    "R9,PC"
 
 ; We need to retain a version of DoMicroDelay with standard calling conventions, because
 ; it is called from elsewhere in the kernel. But it can't live inside the protected

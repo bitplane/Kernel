@@ -154,6 +154,21 @@ UpdateLEDs ROUT
         TST     r0, #KBStat_ScrollLock
         ORRNE   r1, r1, #4
 
+        ; fall through
+        ASSERT  . = SetLEDs
+
+; *****************************************************************************
+;
+;       SetLEDs - Set the LED(s) to a specific value
+;
+; in:   R1 = desired LED state (bit 0 = caps lock, 1 = num lock, 2 = scroll lock)
+;       R11 -> keyboard workspace
+;       R12 -> IOC
+;
+; out:  R0, R1 corrupted
+;
+
+SetLEDs
         LDRB    r0, LastLED             ; Only update if different.
         TEQ     r0, r1
         MOVEQ   pc,lr
@@ -180,6 +195,31 @@ UpdateLEDs ROUT
         MOV     pc, lr
   ]
  ]
+
+; *****************************************************************************
+;
+;       LEDsOn - Turn on all the LEDs
+;
+; out:  all registers preserved
+;
+
+LEDsOn  Push    "r0,r1,r11,lr"
+        MOV     r1, #7
+        MOV     r11, #KeyWorkSpace
+        BL      SetLEDs
+        Pull    "r0,r1,r11,pc"
+
+; *****************************************************************************
+;
+;       LEDsOff - Restore the LEDs to keyboard status
+;
+; out:  all registers preserved
+;
+
+LEDsOff Push    "r0,r1,r11,lr"
+        MOV     r11, #KeyWorkSpace
+        BL      UpdateLEDs
+        Pull    "r0,r1,r11,pc"
 
 ; *****************************************************************************
 ;
@@ -640,11 +680,7 @@ PerformReset
 
 ; Ensure any CMOS operation aborted
 
-        MOV     R1,#16                          ; Two bytes in case RTC transmitting
-20      BL      Start                           ; Start/clock edge
-        BL      Stop
-        SUBS    R1,R1,#1
-        BNE     %BT20
+        BL      IICAbort
 
         MOV     R1, #Service_PreReset
         IssueService

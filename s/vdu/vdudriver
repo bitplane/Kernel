@@ -160,7 +160,9 @@ VduInit ROUT
         STR     R0, [WsPtr, #CursorStack]         ; 0 bits => on
         STR     R0, [WsPtr, #VduSaveAreaPtr]      ; indicate no save area yet
         STR     R0, [WsPtr, #ClipBoxEnable]       ; no clip box calculating
+        STRB    R0, [WsPtr, #ExternalFramestore]
 
+ [ :LNOT:UseGraphicsV
         Push    "r4, r9, r12"
         mjsAddressHAL
         MOV     r4, r12                       ; temp WsPtr
@@ -171,6 +173,7 @@ VduInit ROUT
         mjsCallHAL HAL_Video_BufferAlignment
         STR     r0, [r4, #HWBufferAlign]
         Pull    "r4, r9, r12"
+ ]
 
         ;;; sort this out!
         ! 0, "mjsHAL not doing anything useful with HAL_Video_BufferAlignment"
@@ -305,8 +308,9 @@ VduInit ROUT
 10
         BL      SpriteInit
 
+        LDR     R14, [WsPtr, #ScreenEndAddr]
         LDR     R0, [WsPtr, #TotalScreenSize]
-        RSB     R0, R0, #ScreenEndAdr
+        RSB     R0, R0, R14
         STR     R0, [WsPtr, #DisplayStart]
         STR     R0, [WsPtr, #DisplayScreenStart]
         STR     R0, [WsPtr, #ScreenStart]
@@ -712,8 +716,18 @@ ModeChangeSub ROUT
         CMP     r1, #50                      ; mode number
         BHS     mchsub_3
         Push    "r3, r4"
-        ADR     lr, ModePromoTable           ; table of mode promotions
+ [ UseGraphicsV
+        Push    "r0-r2"
+        MOV     r4, #GraphicsV_DisplayFeatures
+        BL      CallGraphicsV
+        TEQ     r4, #0
+        MOVEQ   r4, r1
+        MOVNE   r4, #2_111111
+        Pull    "r0-r2"
+ |
         LDR     r4, [WsPtr, #HWPixelFormats] ; bits 0 to 3 set for 1,2,4,8 bpp supported
+ ]
+        ADR     lr, ModePromoTable           ; table of mode promotions
 mchsub_1
         MOV     r1, r1, LSL #1
         LDRB    r3, [lr, r1]                 ; bpp for this mode number (1,2,4,8)
@@ -770,12 +784,18 @@ mchsub_3
         RSBS    R1, R9, R11, LSL R2     ; extra amount we need
         BLS     %FT08                   ; enough memory, so skip
 
+ [ UseGraphicsV
+        LDRB    R0, [WsPtr, #ExternalFramestore]
+        TEQ     R0, #0
+        BNE     %FT06                   ; can't grow an external framestore
+ ]
+
 ; try to extend the amount of screen memory
 
         MOV     R0, #2                  ; expand screen memory
         SWI     XOS_ChangeDynamicArea
         BVC     %FT08
-
+06
         ADD     R13, R13, #PushedInfoSize + 1*4 ; junk stacked info + mode no.
         ADR     R0, ErrorBlock_BadMODE
       [ International
@@ -862,6 +882,40 @@ TV_Mode_string
         STR     R3, [WsPtr, #ScreenSize] ; store screensize BEFORE calling
                                         ; ConvertBankToAddress (was a bug!)
 
+ [ UseGraphicsV
+        Push    "r0-r4"
+        MOV     r4, #GraphicsV_FramestoreAddress
+        BL      CallGraphicsV
+        TEQ     r4, #0
+        BNE     %FT581
+        MOV     r1, r1, LSR #20                 ; round size down to 1MB
+        MOV     r2, r1, LSL #20
+        ADD     r0, r0, #1:SHL:20               ; round addr up to 1MB
+        SUB     r0, r0, #1
+        MOV     r0, r0, LSR #20                 ; (because of OS_Memory 13 limits)
+        MOV     r1, r0, LSL #20
+        MOV     r0, #13                         ; map in permanently
+        ORR     r0, r0, #1:SHL:8                ; buffered, uncached
+        ORR     r0, r0, #1:SHL:16               ; doubly map
+        SWI     XOS_Memory
+        BVS     %FT581
+        STR     r2, [WsPtr, #TotalScreenSize]
+        ADD     r3, r3, r2
+        STR     r3, [WsPtr, #ScreenEndAddr]
+        MOV     r14, #1
+        B       %FT582
+581
+        MOV     r0, #128+2
+        SWI     XOS_ReadDynamicArea
+        STRVC   r1, [WsPtr, #TotalScreenSize]
+        ADDVC   r0, r0, r1
+        STRVC   r0, [WsPtr, #ScreenEndAddr]
+        MOV     r14, #0
+582
+        Pull    "r0-r4"
+        STRB    r14, [WsPtr, #ExternalFramestore]
+ ]
+
         TEQ     R2, #0                  ; Shadowing or not ?
         LDR     R3, [WsPtr, #VduStatus]
         BICEQ   R3, R3, #Shadowing
@@ -934,8 +988,12 @@ TV_Mode_string
 
 ; finished doing other variables
 
+ [ :LNOT:UseGraphicsV
         Push    "R0-R3, R9, R12"                ; preserve registers ready to make HAL call later
         ADD     R0, R13, #wkwordsize+6*4        ; R0 -> VIDCList3 (we have just pushed 6 regs)
+ |
+        ADD     R0, R13, #wkwordsize            ; R0 -> VIDCList3
+ ]
 
 ;adjust vertical porch parameters in VIDCList3 for TVVertical (from *TV)
 ;
@@ -977,10 +1035,15 @@ TV_Mode_string
 
 ;kernel/HAL split - call the HAL to program video controller for mode,
 ;
+ [ UseGraphicsV
+        MOV     R4, #GraphicsV_SetMode
+        BL      CallGraphicsV
+ |
         mjsAddressHAL
         mjsCallHAL    HAL_Video_SetMode
 
         Pull    "R0-R3, R9, R12"            ; restore registers after HAL call
+ ]
 
         ADD     R13, R13, #PushedInfoSize       ; junk stacked data
 
@@ -998,7 +1061,7 @@ TV_Mode_string
 
         BL      SetVendDefault
 
-        MOV     R1, #ScreenEndAdr               ; need to reload cos corrupt
+        LDR     R1, [WsPtr, #ScreenEndAddr]     ; need to reload cos corrupt
         LDR     R2, [WsPtr, #TotalScreenSize]
         SUB     R0, R1, R2                      ; R0 = Vstart
         BL      SetVstart
@@ -1204,8 +1267,17 @@ PushModeInfoCommonNoService
         ORR     r14, r14, #Flag_InterlacedMode
         STR     r14, [r9, #wkModeFlags]
 58
+ [ UseGraphicsV
+        Push    "r0-r2,r4"
+        MOV     r4, #GraphicsV_DisplayFeatures
+        BL      CallGraphicsV
+        TEQ     r4, #0
+        TSTEQ   r0, #1                          ; bit 0 is h/w scroll support
+        Pull    "r0-r2,r4"
+ |
         LDR     r14, [WsPtr, #HWVideoFeatures]
         TST     r14, #1                         ; bit 0 is h/w scroll support
+ ]
         LDREQ   r14, [r9, #wkModeFlags]
         ORREQ   r14, r14, #Flag_HardScrollDisabled
         STREQ   r14, [r9, #wkModeFlags]

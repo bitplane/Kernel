@@ -29,25 +29,26 @@
 ;                  Fixed support for E2ROM. E2 works in the same gross way as
 ;                  CMOS. Any E2 fitted > 256 bytes will not be accessed by these
 ;                  routines.
-; amg 7/12/96 Renaissance. Leave this file as is, allowing the E2ROMSupport
-;             switch to disable non-STB bits
+; 07-Dec-96  AMG   Renaissance. Leave this file as is, allowing the E2ROMSupport
+;                  switch to disable non-STB bits
 ; 12-Jun-97  TMD   (Really) fix OTP access problem.
 ; 17-Sep-98  KJB   Add support for 16K 24C128 EEPROM.
 ; 21-Sep-98  KJB   Add OS_NVMemory SWI.
 ; 30-Jul-99  KJB   Add support for 8K 24C64 EEPROM.
 ; 23-Sep-99  KJB   Remove support for 24C64, add support for 4K and 8K protectable ATMEL parts.
 
-PhysChecksum	*	(((CheckSumCMOS + &30) :MOD: &F0) + &10)
+PhysChecksum		*	(((CheckSumCMOS + &30) :MOD: &F0) + &10)
 
 ; Device addresses
-RTCAddress		*	&a0     ; traditional RTC / 240 byte CMOS
+RTCAddressPHI		*	&a0     ; Philips RTC + 240 byte CMOS
+RTCAddressDAL		*	&d0     ; Dallas RTC + 56 byte CMOS
 E2ROMAddress2K		*	&e0     ; 24C174 device - 2K
 E2ROMAddress2K_OTP	*	&60     ; 24C174 device - OTP section
-E2ROMAddress4K          *       &a4     ; 24C32 device - 4K (top 1K protectable)
-E2ROMAddress8K_prot     *       &a2     ; 24C64 device - 8K (top 2K protectable)
-E2ROMAddress8K          *       &ae     ; 24C64 device - 8K
-E2ROMAddress16K         *       &a8     ; 24C128 device - 16K
-E2ROMAddress32K         *       &a6     ; 24CS256 device - 32K (top 2K possibly OTP)
+E2ROMAddress4K		*	&a4     ; 24C32 device - 4K (top 1K protectable)
+E2ROMAddress8K_prot	*	&a2     ; 24C64 device - 8K (top 2K protectable)
+E2ROMAddress8K		*	&ae     ; 24C64 device - 8K
+E2ROMAddress16K		*	&a8     ; 24C128 device - 16K
+E2ROMAddress32K		*	&a6     ; 24CS256 device - 32K (top 2K possibly OTP)
 
 
 ; *****************************************************************************
@@ -86,7 +87,9 @@ BCDToHex ROUT
 
 
 ; *****************************************************************************
-
+;
+;       HTBSR9 - hex to BCD and store at "next free byte" R9
+;
 HTBS9   ROUT
         Push    R14
         BL      HexToBCD
@@ -215,7 +218,7 @@ Write
 	BL	GetI2CAddress		; convert to device address + offset
 	MOV	R2, R0			; save the offset
  |
-	MOV	R1, #RTCAddress
+	MOV	R1, #RTCAddressPHI
  ]
 
 
@@ -459,7 +462,7 @@ WriteSubBlock ROUT
   [	E2ROMSupport
 	BL	GetI2CAddress		; convert to device address and offset
   |
-	MOV	R1, #RTCAddress
+	MOV	R1, #RTCAddressPHI
   ]
 
         MOV     R2, R0                  ; save the offset
@@ -594,7 +597,7 @@ Read
   [	E2ROMSupport
 	BL	GetI2CAddress		; convert to device address and offset
   |
-	MOV	R1, #RTCAddress
+	MOV	R1, #RTCAddressPHI
   ]
 
         SUB     R13, R13, #2*12+4
@@ -777,7 +780,7 @@ ReadSubBlock ROUT
   [	E2ROMSupport
 	BL	GetI2CAddress		; convert to device address and offset
   |
-	MOV	R1, #RTCAddress
+	MOV	R1, #RTCAddressPHI
   ]
 
 
@@ -967,10 +970,11 @@ ChecksumSubBlock ROUT
         Pull    "sb,R12"
   ]
         SUB     R5, R3, R0              ; R5 = bytes being read
+
   [	E2ROMSupport
 	BL	GetI2CAddress		; convert to device address and offset
   |
-	MOV	R1, #RTCAddress
+	MOV	R1, #RTCAddressPHI
   ]
 
         MOV     R2, R0                  ; save the offset
@@ -1039,10 +1043,10 @@ GetI2CAddress ROUT
 
 ; address is < end address -> is valid
 	MOV	R1, #0
-	LDRB	R1, [R1, #RTCFitted]
-	TEQ	R1, #0
-	MOVNE	R1, #RTCAddress
-	LDREQB  R1, [R1, #NVRamBase]
+	;LDRB	R1, [R1, #RTCFitted]    ; This causes a headache if both an RTC and NVRAM are fitted
+	;TEQ	R1, #0
+	;LDREQB  R1, [R1, #NVRamBase]   ; RTC overlaps bottom of NVRAM
+	LDRB    R1, [R1, #NVRamBase]    ; RTC overlaps bottom of NVRAM
 
         CMP     R14, #2*1024            ; is the device bigger than 2K? If so, new addressing scheme
         ORRHI   R1, R1, #&100           ; set magic bit => 2 byte address
@@ -1195,78 +1199,66 @@ MakeChecksum	ROUT
 ;	R7 = seconds
 ;	R8 = centiseconds
 ;
-;	Any of the above, if -1, will not be written to
+;	If R0,R2,R5 or R6 is -1 then the time,date,year,century (respectively) will not be written
 ;
 
 SetTime ROUT
-	Push	"R4, R9, R14"		; save registers
+	Push	"R4, R9-R10, R14"	; save registers
 
- [ E2ROMSupport
-	MOV	R14, #0
-	LDRB	R14, [R14, #RTCFitted]
-
-        TEQ     R14, #0
+	LDR	R10, =ZeroPage
+	LDRB	R10, [R10, #RTCFitted]
+        TEQ     R10, #0			; no RTC - just set soft copy
         BNE     %FT20
 
-; no RTC - just set soft copy
-
         BL      RegToRealTime
+        Pull    "R4, R9-R10, PC"
 
-        Pull    "R4, R9, PC"
- ]
 20
-; write year to CMOS RAM
-
-	MOV	R4, R0			; save hours in R4
+	Push	"R0-R2"
+	MOV	R4, R0			; copy hours in R4
 
 	Push	"R1"
-	MOVS	R1, R5
+	MOVS	R1, R5                  ; year held seperately from the RTC
 	MOVPL	R0, #YearCMOS
 	BLPL	Write
 	MOVS	R1, R6
 	MOVPL	R0, #YearCMOS+1
 	BLPL	Write
+	Pull	"R1"
 
 	CMP	R4, #-1			; are we writing time ?
-	Pull	"R1",EQ			; [no, then skip]
 	BEQ	%FT30
-
-	Pull	"R1"
 
         SUB     R13, R13, #8
         MOV     R9, R13
-        MOV     R0, #&01                ; offset 1
+	TEQ	R10, #RTCAddressPHI
+        MOVEQ   R0, #1                  ; offset to start of time (varies)
+        MOVNE   R0, #0
         STRB    R0, [R9], #1
-        MOV     R0, R8                  ; centiseconds
-        BL      HTBS9
+        MOVEQ   R0, R8                  ; centiseconds (not for Dallas parts)
+        BLEQ    HTBS9
         MOV     R0, R7                  ; seconds
         BL      HTBS9
         MOV     R0, R1                  ; minutes
         BL      HTBS9
         MOV     R0, R4                  ; hours
         BL      HTBS9
-        Push    "R0-R2"
-    [	E2ROMSupport
-	MOV	R0, #&01		; start at address 1
-	BL	GetI2CAddress		; convert to device address and offset
-	MOV	R0, R1			; write address
-    |
-	MOV	R0, #RTCAddress
-    ]
-        ORR     R0, R0, #1:SHL:29       ; retry
-        MOV     R1, R13
-        SUB     R2, R9, R13
-        BL      IIC_Op
-        Pull    "R0-R2"
-        ADD     R13, R13, #8
+        MOV	R6, R2
+	BL	%FT45
+	MOV	R2, R6			; preserve D-O-M for later
+        ADD	R13, R13, #8
 
 30
 	CMP	R2, #-1			; are we writing date ?
-	BEQ	%FT40			; [no, then skip]
+	BEQ	%FT40
 
         SUB     R13, R13, #8
         MOV     R9, R13
-        MOV     R0, #&05                ; offset 5
+	TEQ	R10, #RTCAddressPHI
+	BNE     %FT35
+
+	; Philips specific handling
+        MOV     R0, #5                  ; offset 5
         STRB    R0, [R9], #1
         MOV     R0, R2                  ; day of month
         BL      HexToBCD
@@ -1274,25 +1266,34 @@ SetTime ROUT
         STRB    R0, [R9], #1
         MOV     R0, R3                  ; months
         BL      HTBS9
-        Push    "R0-R2"
-    [	E2ROMSupport
-	MOV	R0, #&05		; start at address 5
-	BL	GetI2CAddress		; convert to device address and offset
-	MOV	R0, R1			; write address
-    |
-	MOV	R0, #RTCAddress
-    ]
-        ORR     R0, R0, #1:SHL:29       ; retry
-        MOV     R1, R13
-        SUB     R2, R9, R13
-        BL      IIC_Op
-        Pull    "R0-R2"
+	B	%FT37
+35
+	; Dallas specific handling
+	MOV	R0, #4                  ; offset 4
+	STRB    R0, [R9], #1
+	MOV     R0, R2
+	BL	HTBS9
+	MOV	R0, R3
+	BL	HTBS9
+	MOV	R0, R5
+	BL	HTBS9			; don't bother setting the D-O-W
+37
+	BL      %FT45
+	ADD	R13, R13, #8
 
 40
-	MOV	R0, R4			; put hours back in R0
-	BL	RTCToRealTime
+	Pull    "R0-R2"
+	BL	RTCToRealTime		; update RAM copy
+	Pull	"R4, R9-R10, PC"
 
-	Pull	"R4, R9, PC"
+45
+	MOV     R0, R10
+        ORR     R0, R0, #1:SHL:29
+        MOV     R1, R13
+        SUB     R2, R9, R13
+        Push    "R14"
+        BL      IIC_Op                  ; write the prepared block with retries
+	Pull    "PC"
 
 ; *****************************************************************************
 ;
@@ -1312,24 +1313,23 @@ SetTime ROUT
 
 ReadTime ROUT
 	Push	"R4, R14"
-        SUB     R13, R13, #12*2+8
-    [	E2ROMSupport
-	MOV	R0, #&01		; start at address 1
-	BL	GetI2CAddress		; convert to device address and offset
-	MOV	R0, R1			; write address
-    |
-	MOV	R0, #RTCAddress
-    ]
-        ORR     R14, R0, #1:SHL:29      ; retry
+        SUB     R13, R13, #(12*2)+6+1+1
+
+        LDR	R14, =ZeroPage
+        LDRB	R2, [R14, #RTCFitted]
+        ORR     R14, R2, #1:SHL:29      ; retry
         STR     R14, [R13, #8]          ; transfer 1 address
-        ADD     R0, R0, #1
+        ADD     R0, R14, #1
         STR     R0, [R13, #20]          ; transfer 2 address
-        MOV     R0, #&01                ; offset 1
+        TEQ	R2, #RTCAddressPHI
+        MOVEQ   R0, #1			; PHI time starts at +1
+        MOVNE   R0, #0			; DAL time starts at +0
         STRB    R0, [R13, #0]
-        STR     R13, [R13, #12]         ; transfer 1 data
+        STR     R13, [R13, #12]         ; transfer 1 dataptr
+        MOV     R0, #1
         STR     R0, [R13, #16]          ; transfer 1 length
         ADD     R0, R13, #1
-        STR     R0, [R13, #24]          ; transfer 2 data
+        STR     R0, [R13, #24]          ; transfer 2 dataptr
         MOV     R0, #6
         STR     R0, [R13, #28]          ; transfer 2 length
 
@@ -1337,6 +1337,10 @@ ReadTime ROUT
         MOV     R1, #2
         BL      IIC_OpV
 
+	TEQ     R2, #RTCAddressPHI
+	BNE	%FT50
+
+	; Philips specific read
         LDRB    R0, [R13, #1]
         BL      BCDToHex
         MOV     R8, R0                  ; centiseconds
@@ -1357,26 +1361,77 @@ ReadTime ROUT
         AND     R0, R0, #&1F            ; month (clear day of week bits)
         BL      BCDToHex
         MOV     R3, R0
-        ADD     R13, R13, #12*2+8
+	B	ReadTimeYear
 
+50
+	; Dallas specific read
+        MOV     R8, #0                  ; centiseconds
+        LDRB    R0, [R13, #1]
+        BL      BCDToHex
+        MOV     R7, R0                  ; seconds
+        LDRB    R0, [R13, #2]
+        BL      BCDToHex
+        MOV     R1, R0                  ; minutes
+        LDRB    R0, [R13, #3]
+        BL      BCDToHex
+        MOV     R4, R0                  ; hours
+        LDRB    R0, [R13, #5]
+        BL      BCDToHex
+        MOV     R2, R0                  ; day of month
+        LDRB    R0, [R13, #6]
+        BL      BCDToHex
+        MOV     R3, R0                  ; month
+
+ReadTimeYear
+	ADD     R13, R13, #(12*2)+6+1+1
 	MOV	R0, #YearCMOS
 	BL	Read
 	MOV	R5, R0			; year (lo)
-
 	MOV	R0, #YearCMOS+1
 	BL	Read
 	MOV	R6, R0			; year (hi)
 
 	MOV	R0, R4			; put hours in R0
 
-; Ensure day/month are non-zero, fixes RTCToRealTime
- [ {TRUE}				; LRust, fix RP-0370
-	TEQ	R2, #0			; Valid day?
+	TEQ	R2, #0			; Ensure day/month are non-zero (LRust, fix RP-0370)
 	MOVEQ	R2, #1			; No then force 1st
 	TEQ	R3, #0			; Invalid month?
 	MOVEQ	R3, #1			; Yes then force Jan
- ]
+
 	Pull	"R4, PC"
+
+; *****************************************************************************
+;
+;       InitRTC - Force the clock into a known state (incase of new battery)
+;
+;  in:  R0 = RTC IIC address
+
+InitRTC
+	Push    "R0-R2, R14"
+	SUB	R13, R13, #4
+	MOV	R1, R13
+	ORR     R0, R0, #1:SHL:29
+	TEQ	R0, #RTCAddressPHI
+	BEQ	%FT60
+	MOV	R2, #0			; to write 0 to address ptr
+	STRB	R2, [R1]
+	MOV	R2, #1
+	BL	IIC_Op
+	ORR	R0, R0, #1
+	BL	IIC_Op
+	LDRB	R2, [R1]
+	ANDS	R2, R2, #&80		; test clock disabled bit
+	BEQ	%FT65
+	EOR	R0, R0, #1
+	DebugTX "Forced RTC on"
+60
+	MOV     R2, #0
+	STR	R2, [R1]
+	MOV	R2, #2			; to write 0 to control reg 0
+	BL      IIC_Op
+65
+	ADD	R13, R13, #4
+	Pull    "R0-R2, PC"
 
 ; *****************************************************************************
 ;
@@ -1388,14 +1443,23 @@ ReadTime ROUT
 InitCMOSCache	Entry "r1-r6, sb,r12"
     [	E2ROMSupport
 
-; Need to set the slowest speed so we can probe
+	; Need to set the slowest speed so we can probe
+	LDR     R4, =ZeroPage
+	MOV     R3, #10         ; Default speed setting (5탎 delays)
+	STRB    R3, [R4, #NVRamSpeed]
 
-        LDR     R4, =ZeroPage
-        MOV     R3, #10         ; Default speed setting (5탎 delays)
-        STRB    R3, [R4, #NVRamSpeed]
-
-;	First determine what hardware we've got fitted, R4 holds the number of
-;	256 byte blocks that we've found
+	; Have we got an RTC ?
+	LDR 	R2, =ZeroPage
+	MOV	R4, #0
+	MOV	R0, #RTCAddressPHI
+	BL	DummyAccess
+	BVC	%FT13
+	MOV	R0, #RTCAddressDAL
+	BL	DummyAccess
+	STRVSB  R4, [R2, #RTCFitted]
+13
+	STRVCB  R0, [R2, #RTCFitted]
+	BLVC    InitRTC
 
  [ HAL
         AddressHAL
@@ -1423,6 +1487,15 @@ InitCMOSCache	Entry "r1-r6, sb,r12"
         STRB    R0, [R4, #NVRamWriteSize]
 
 02
+        CallHAL HAL_NVMemoryPageSize    ; returns size in bytes but..
+        TEQ     R0, #0                  ; .. expecting power of 2
+        MVNEQ   R0, #0
+        MOV     R1, #0
+22      MOVS    R0, R0, LSR #1
+        ADDNE   R1, R1, #1
+        BNE     %BT22
+        STRB    R1, [R4, #NVRamPageSize]
+
     	CallHAL	HAL_NVMemoryIICAddress
     	STRB 	R0, [R4, #NVRamBase]
 
@@ -1436,6 +1509,7 @@ InitCMOSCache	Entry "r1-r6, sb,r12"
     	STRB	R3, [R4, #NVRamSpeed]
 
     	; If we're using IIC then read in the cache manually
+        AND	R0, R5, #NVMemoryFlag_Provision
     	TEQ 	R0, #NVMemoryFlag_IIC
     	BEQ   	%FT06
 
@@ -1445,23 +1519,19 @@ InitCMOSCache	Entry "r1-r6, sb,r12"
     	MOV 	R2, #&100
     	CallHAL	HAL_NVMemoryRead
     	TEQ 	R0, #&100
-    	MOVNE	R0, #0	    	    	; Failure exit condition
+    	MOVNE	R0, #0			; Failure exit condition
     	EXIT
 03
  ]
-	; Have we got an RTC ?
-	MOV	R0, #RTCAddress
-    	LDR 	R2, =ZeroPage
-	BL	DummyAccess
-	MOVVS	R4, #0
-	MOVVC	R4, #1
-	STRB	R4, [R2, #RTCFitted]
+
+;	No HAL,so determine what hardware we've got fitted by probing,
+;	R4 holds the number of 256 byte blocks that we've found
 
         MOV     R3, #10         ; assume 100kHz to start with
         MOV     R5, #4          ; assume 16 byte page size to start with
         MOV     R6, #0          ; assume not protected
 
-; Have we got a 2K E� ?
+; Have we got a 2K device ?
         MOV     r1, #E2ROMAddress2K
 	MOV	r0, #(E2ROMAddress2K+14)
 	BL	DummyAccess
@@ -1489,7 +1559,6 @@ InitCMOSCache	Entry "r1-r6, sb,r12"
         BVC     %FT5
 
 ; Have we got an 8K device?
-
         MOV     r1, #E2ROMAddress8K
 	MOV	r0, #E2ROMAddress8K
 	BL	DummyAccess
@@ -1499,7 +1568,6 @@ InitCMOSCache	Entry "r1-r6, sb,r12"
         BVC     %FT5
 
 ; Have we got a protected 8K device?
-
         MOV     r1, #E2ROMAddress8K_prot
 	MOV	r0, #E2ROMAddress8K_prot
 	BL	DummyAccess
@@ -1510,7 +1578,6 @@ InitCMOSCache	Entry "r1-r6, sb,r12"
         BVC     %FT5
 
 ; Have we got a 32K device?
-
         MOV     r1, #E2ROMAddress32K
         MOV     r0, #E2ROMAddress32K
         BL      DummyAccess
@@ -1520,8 +1587,9 @@ InitCMOSCache	Entry "r1-r6, sb,r12"
         MOVVC   R3, #1          ; Hyper-fast speed setting (0.5탎 delays - 1MHz part)
     	BVC 	%FT5
 
-        MOVVS   R1, #RTCAddress
-        MOVVS   R0, #RTCAddress
+; Any storeage in the Philips RTC? (Dallas capacity is tiny,ignored)
+        MOV     R1, #RTCAddressPHI
+        MOV     R0, #RTCAddressPHI
     	BL  	DummyAccess
         MOV     R5, #8          ; 256 byte page size for CMOS
     	BVC 	%FT5
@@ -1534,8 +1602,7 @@ InitCMOSCache_NoCMOS
         MOV     R1, #1                          ; single page CMOS.
         STRB    R1, [R2, #NVRamSize]
         STRB    R1, [R2, #NVRamWriteSize]
-    	MOV 	R0, #0	    	; Exit failure
-        STRB    R0, [R2, #RTCFitted]
+    	MOV 	R0, #0		; Exit failure
     	EXIT
 
 5
@@ -1564,16 +1631,16 @@ InitCMOSCache_NoCMOS
         MOV     R2, R0                  ; save the offset
         MOV     R4, #&100               ; stop at &100
     |
-	MOV	R1, #RTCAddress
-	MOV	R2, #&10
-	MOV	R4, #&100		; stop at address &100
-	LDR	R3, =CMOSRAMCache
+    	; No E2ROM support,assume a Philips RTC
+    	MOV	R1, #RTCAddressPHI
+    	MOV	R2, #&10
+    	MOV	R4, #&100		; stop at address &100
+    	LDR	R3, =CMOSRAMCache
     ]
 
         ; Note - R4 MUST be &100 to prevent crossover between 256-byte pages
         ; (for devices with multiple addresses)
 09
-
 
         SUB     R13, R13, #2*12+4
         AND     R0, R1, #&FF
@@ -1634,14 +1701,22 @@ ReadOTPArea Entry
 ;	V=0 => device is present
 ;	V=1 => device is not present
 
-; Have we got an RTC ? do a read from location 0 to find out
-
   [ E2ROMSupport
-DummyAccess	Entry "R1,R2"
+DummyAccess
 
+ [ {TRUE}
+        ; Blooming 80321 HW IIC can't do just START address STOP
+	Entry   "R0-R2",4
+        ORR     R0, R0, #1
+        MOV     R1, R13
+        MOV     R2, #1
+        BL      IIC_Op
+ |
+	Entry   "R1,R2"
         MOV     R1, #0
         MOV     R2, #0
         BL      IIC_Op
+ ]
 
 	EXIT				; Exit with V set appropriately
   ]

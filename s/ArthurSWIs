@@ -577,11 +577,15 @@ defaultvectab
  |
    & 0, 0, NaffVector           ; PointerV * &26
  ]
+   & 0, 0, NaffVector           ; TimeCodeV * &27
+   & 0, 0, NaffVector           ; LowPriorityEventV &28
+ [ UseGraphicsV
+   & 0, 0, MOSGraphicsV         ; GraphicsV * &29
+ |
+   & 0, 0, NaffVector           ; GraphicsV * &29
+ ]
 
  ; the spares
-   & 0, 0, NaffVector           ; &27
-   & 0, 0, NaffVector           ; &28
-   & 0, 0, NaffVector           ; &29
    & 0, 0, NaffVector           ; &2a
    & 0, 0, NaffVector           ; &2b
    & 0, 0, NaffVector           ; &2c
@@ -891,14 +895,22 @@ Issue_Service ROUT             ; R1 is service number, R2 may be a parameter
        STRB     R1, [R1, #MOShasFIQ-Service_ReleaseFIQ]
        TEQ      R9, #0
        BNE      %FT06
-       AddressHAL
-       Push     "R0,R2,R3"
-       MOV      R0, #&1C
-       CallHAL  HAL_FIQDisableCode
+
+       ADR      R1, FIQKiller
+       MOV      R10, #FIQKiller_ws - FIQKiller
+       MOV      R11, #&1C
+04     LDR      LR, [R1], #4
+       SUBS     R10, R10, #4
+       STR      LR, [R11], #4
+       BNE      %BT04
+       AddressHAL R10
+       LDR      R14, [R9, #-(EntryNo_HAL_FIQDisableAll+1)*4]
+       STMIA    R11, {R9, R14}
+       Push     "R0"
        MOV      R0, #0                  ; in case 32-byte cache lines
        MOV      R1, #&100
        ARMop    IMB_Range,,,R0
-       Pull     "R0,R2,R3"
+       Pull     "R0"
     ]
 
                                         ; MOS is default owner if nobody
@@ -1039,6 +1051,18 @@ display_post_postinit_calls
        B        %BT87
  ]
 
+ [ HAL
+FIQKiller
+       SUB     R14, R14, #4
+       MOV     R13, #&100
+       ADR     R10, FIQKiller_ws
+       STMFD   R13!, {R0-R3,R14}
+       MOV     R14, PC
+       LDMIA   R10, {R9,PC}
+       LDMFD   R13!, {R0-R3,PC}^
+FIQKiller_ws
+ ]
+
 
 ;************************************************
 ; SWI to call a vector
@@ -1172,6 +1196,13 @@ ValidateAddress_Code ROUT
 
         LDR     R11, =CursorChunkAddress
         ADD     R12, R11, #32*1024
+        BL      RangeCheck
+
+        VDWS    R12                     ; in case of external framestore
+        LDR     R11, [R12, #ScreenEndAddr]
+        LDR     R12, [R12, #TotalScreenSize]
+        SUB     R11, R11, R12
+        ADD     R12, R11, R12, LSL #1   ; doubly-mapped friggage
         BL      RangeCheck
 
 ; not in one of those ranges, so check against dynamic area list

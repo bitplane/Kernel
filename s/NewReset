@@ -53,9 +53,9 @@ Port3Present    # 1
 KeyState        # 1
 KeyMSB          # 1
 
-; On ARM600, InitKbdWs is in zero page - check it's big enough
+; On ARM600, InitIRQWs is in zero page - check it's big enough
 
-        ASSERT  @ <= ?InitKbdWs
+        ASSERT  @ <= ?InitIRQWs
 
 
 ;       AddCamEntries
@@ -123,14 +123,6 @@ ConfigureRMA
         MOV     R10, #0
         LDR     R10, [R10, #Page_Size]
         MUL     R0, R10, R0             ; get size in bytes
-        CMP     R3, #ScreenEndAdr       ; screen?
-        BNE     NotScreen
-
-; quick pokery for sensible screensize
-
-        BL      MassageScreenSize
-        SUB     R3, R3, R0              ; step back.
-NotScreen
         MOV     R5, #0                  ; amount moved
         CMP     R0, #0
         BEQ     NoMoreMemory
@@ -205,6 +197,14 @@ NoMoreMemory
 ; ReadSysInfo
 
 MassageScreenSize ROUT
+        Push    lr
+        MOV     lr, #0
+        LDR     lr, [lr, #VRAMFlags]
+        TST     lr, #2
+        MOVNE   lr, #0
+        LDRNE   r0, [lr, #VideoSize]
+        Pull    pc, NE
+
         CMP     r0, #0
         BNE     CmosScreenWillDo
         LDR     r0, [r0, #RAMLIMIT]
@@ -217,7 +217,7 @@ CmosScreenWillDo
         BCC     CmosScreenWillDo
         CMP     r0, #ScreenMaxSize
         MOVHI   r0, #ScreenMaxSize
-        MOV     pc, lr
+        Pull    pc
 
         LTORG
 
@@ -435,7 +435,7 @@ SetUpKbdReturn
         STR     R2, [R3, #&18]          ; but hopefully by the same value!
 
         ADDR    R2, IRQ_Test_CTRL_or_R_Pressed ; (could use ADRL, but ADDR macro is nicer)
-        STR     R2, [R3, #InitKbdHandler] ; instruction is now a LDR PC,InitKbdHandler
+        STR     R2, [R3, #InitIRQHandler] ; instruction is now a LDR PC,InitKbdHandler
 
         ORR     r0, r0, #SVC32_mode     ; switch into SVC32
 
@@ -534,6 +534,8 @@ Continue_after_HALInit
         TEQ     R0, #EndMOSROMVecs-MOSROMVecs
         BNE     %BT40
 
+        ChangedProcVecs r0
+
  [ :LNOT: No26bitCode
 ; Now we have set up the hardware vectors we can drop back to SVC26 mode
 
@@ -545,22 +547,14 @@ Continue_after_HALInit
 
 ; Ensure any CMOS operation aborted
 
- [ {FALSE}
-        MOV     R1,#16                          ; Two bytes in case RTC transmitting
-35
-        BL      Start                           ; Start/clock edge
-        BL      Stop
-        SUBS    R1,R1,#1
-        BNE     %BT35
- |
-        BL      Start
-        MOV     R0, #1
-        BL      TXAck
-        BL      Stop
- ]
+        BL      IICAbort
+
+        BL      IICInit
 
  [ CacheCMOSRAM
+        DebugTX "InitCMOSCache entry"
         BL      InitCMOSCache           ; initialise cache of CMOS RAM
+        DebugTX "InitCMOSCache done"
         TEQ     R0, #0                  ; returns zero on failure
         LDREQ   R1, [R0, #HAL_StartFlags]
         ORREQ   R1, R1, #OSStartFlag_NoCMOS
@@ -635,6 +629,7 @@ conversionSWIfill
 ;
         MOV     r0, #0
         ARMop   IMB_Full,,,r0
+        DebugTX "IMB_Full done"
 
 ; Initialise CAO ptr to none.
 
@@ -809,7 +804,7 @@ checkboot
 
  ] ; HAL
 
-        MOV     R0, #InitKbdWs
+        MOV     R0, #InitIRQWs
         LDR     R7, [R0, #R_Down_Flag]
         CMP     R7, #0
         BEQ     no_cmos_reset           ; power on bit checked again there
@@ -911,7 +906,7 @@ skipskipforTC
 not_full_reset
 
 ; IF R or Delete pressed THEN set sync 0 ELSE set sync Auto
-        MOV     R0, #InitKbdWs
+        MOV     R0, #InitIRQWs
         LDRB    R1, [R0, #R_Down_Flag]
         CMP     R1, #0
         LDREQB  R1, [R0, #Del_Down_Flag]
@@ -1016,7 +1011,7 @@ DefaultCMOSTable ; list of non-zero options wanted :
         =       MODETVCMOS,             &10                                     ; TV 0,1
         =       StartCMOS,              (2:SHL:3)                               ; NOCAPS
         =       DBTBCMOS,               (1:SHL:4)                               ; Boot
-        =       YearCMOS,               00
+        =       YearCMOS,               02
         =       YearCMOS+1,             20
   [ IOMD_C_MonitorType = 0 :LAND: IOMD_C_PALNTSCType = 0
 ; TV if we don't have a MonitorType auto-detect bit
@@ -1065,7 +1060,7 @@ DefaultCMOSTable ; list of non-zero options wanted :
         =       SoundCMOS,      &F0     ; speaker on, volume 7, channel 1
 
         =       LanguageCMOS,   ConfiguredLang
-        =       YearCMOS,       00
+        =       YearCMOS,       02
         =       YearCMOS+1,     20
  [ :LNOT: Select16BitSound
         =       TutuCMOS,       2_0100  ; tbs chars valid, ctrlchars '|x'
@@ -1540,7 +1535,7 @@ WallopDuffOnes
 
         MOV     r1, #ChangeDyn_Screen   ; area number
         MOV     r2, r0                  ; initial size
-        MOV     r3, #ScreenEndAdr       ; base address (start of 2nd copy)
+        MOV     r3, #-1                 ; Base address dynamic
         LDR     r4, =AP_Screen          ; area flags
         ADRL    r6, DynAreaHandler_Screen ; handler
         VDWS    r7                      ; workspace pointer
@@ -1549,6 +1544,7 @@ WallopDuffOnes
         STR     r2, [r7, #TotalScreenSize]
         ADRL    r8, AreaName_Screen     ; area name
         BL      DynArea_Create
+        STR     r3, [r7, #ScreenEndAddr]
         Pull    "r0-r12"
 
 ; RMA
@@ -1624,7 +1620,8 @@ WallopDuffOnes
         MOV     r1, #ChangeDyn_FontArea ; Area number
         MOV     r3, #-1                 ; Base address dynamic
         MOV     r4, #AP_FontArea        ; Area flags
-        MOV     r5, #-1                 ; Maximum size
+        MOV     r5, #32*1024*1024       ; Maximum size changed from -1 for Ursula (limit address
+                                        ; space usage on large memory machines)
         ADRL    r6, DynAreaHandler_FontArea ; Pointer to handler
         MOV     r7, #-1                 ; Use base address as workspace ptr
         ADRL    r8, AreaName_FontArea   ; Title string - node will have to be reallocated
@@ -1699,7 +1696,7 @@ ResetPart1Done                          ; R0 is reset type
         LDR     R1, =OsbyteVars + :INDEX: LastBREAK
         STRB    R0, [R1]
 
-        MOV     R1, #InitKbdWs
+        MOV     R1, #InitIRQWs
         LDRB    R0, [R1, #KB_There_Flag]
         LDRB    R1, [R1, #SHIFT_Down_Flag]
         Push    "R0, R1"                ; save until after MOSInit
@@ -1745,7 +1742,9 @@ ResetPart1Done                          ; R0 is reset type
         Push    "r0"
         MOV     r0, #0
         ARMop   IMB_Full,,,r0
+        ChangedProcVecs r0
         Pull    "r0"
+
 
  [ :LNOT:No26bitCode
 
@@ -1780,6 +1779,17 @@ ResetPart1Done                          ; R0 is reset type
         BL      OscliInit               ; before initialising modules
 
         WritePSRc SVC_mode, R14         ; enable IRQs
+
+ [ DebugTerminal
+        MOV     R0, #RdchV
+        ADRL    R1, DebugTerminal_Rdch
+        MOV     R2, #0
+        LDR     R2, [R2, #HAL_Workspace]
+        SWI     XOS_Claim
+        MOV     R0, #WrchV
+        ADRL    R1, DebugTerminal_Wrch
+        SWI     XOS_Claim
+ ]
 
         [ DoInitialiseMode :LOR: :LNOT: STB
         BL      InitialiseMode          ; select correct screen mode, in case any
@@ -1880,7 +1890,16 @@ SkipHardResetPart2                      ; code executed on all types of reset
 
         MOV     R0, #0
         LDR     R0, [R0, #RAMLIMIT]
-        MOV     R0, R0, LSR #20         ; /(1024*1024)
+
+        Push    "R0"
+        MOV     R0, #8
+        ORR     R0, R0, #&500
+        SWI     XOS_Memory              ; returns amount of soft ROM (pages) in r1
+        MOVVS   R1, #0
+        Pull    "R0"
+        MLA     R0, R1, R2, R0          ; convert pages to bytes and add in
+
+        MOV     R0, R0, LSR #20         ; /(1024*1024) down to megabytes
         LDR     R1, =GeneralMOSBuffer
         MOV     R2, #?GeneralMOSBuffer
         SWI     XOS_ConvertInteger4

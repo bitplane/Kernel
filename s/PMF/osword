@@ -108,8 +108,8 @@ OsWord00 ROUT
         LDRB    R2, [R1, #3]            ; lo limit
         LDRB    R3, [R1, #4]            ; hi limit
         LDRB    R1, [R1, #2]            ; length of buffer
-        ORR     R1, R1, #&80000000      ; use the new API, for modernity
-        SWI     XOS_ReadLine
+        MOV     R4, #0                  ; flags
+        SWI     XOS_ReadLine32
         WordReturnV VS
 
         MOV     R2, R1                  ; put line length into R2
@@ -684,15 +684,32 @@ OsWord0F_5byte
 
 ; *****************************************************************************
 ;
-;       CheckYear - Check for year wrap (if months have gone down)
+;       CheckYear - Check for year wrap (year in RTC <> year "YearCMOS")
 ;       and for leap year fudging
 ;
 
 CheckYear ROUT
         Push    "R0,R1,R2,R14"
-        MOV     R0, #5                  ; year address
-        BL      ReadStraight
-        MOV     R1, R0, LSR #6          ; year in range 0..3
+        MOV     R0, #0
+        LDRB    R0, [R0, #RTCFitted]
+        TEQ     R0, #RTCAddressPHI
+        MOVEQ   R1, #5
+        MOVNE   R1, #6                  ; year address (dependant on RTC)
+	SUB	R13, R13, #4
+	STRB	R1, [R13]
+	MOV	R1, R13
+	ORR	R0, R0, #1:SHL:29
+	MOV	R2, #1
+        BL      IIC_Op
+        ORR	R0, R0, #1
+        BL	IIC_Op
+        AND	R1, R0, #&FF
+        LDRB	R0, [R13]
+        ADD	R13, R13, #4
+
+        TEQ     R1, #RTCAddressPHI+1
+        MOVEQ   R1, R0, LSR #6
+        ANDNE   R1, R0, #3              ; R1= year MOD 4
         MOV     R0, #YearCMOS
         BL      Read
         AND     R2, R0, #3

@@ -40,7 +40,7 @@ CacheOff        SETL    {FALSE}
 
                 GET   Version
                 GBLS  VersionNo
-                [ Module_MinorVersion = ""
+                [ Module_MinorVersion = "" :LOR: :LNOT: STB
 VersionNo       SETS  "$VString ($Date)"
                 |
 VersionNo       SETS  "$VString ($Date) $Module_MinorVersion"
@@ -170,6 +170,9 @@ MakeModeSelectorsForModeNumbers SETL    ModeSelectors :LAND: {FALSE}    ; not ac
                 GBLL    IgnoreVRAM              ; if true, don't add VRAM to the RAM list (+ don't use for screen)
 IgnoreVRAM      SETL    {FALSE}
 
+                GBLL    UseGraphicsV            ; if true, use GraphicsV, rather than going straight
+UseGraphicsV    SETL    {TRUE}                  ; to the hardware (or HAL)
+
                 GBLL    LateAborts              ; if true, use late abort mode on ARM600 (compulsory on ARM700)
 LateAborts      SETL    {TRUE}
 
@@ -203,13 +206,22 @@ LongCLISize          * 1024                     ; buffer size for long commands
                 GBLL    StrongARM_POST          ;whether to run POST for StrongARM (and possibly ARM8)
 
                 GBLL    ARM6support
+                GBLL    XScaleMiniCache         ;is the XScale mini data-cache used (at all)
+                GBLL    XScaleJTAGDebug
+                GBLL    ECC                     ;use ECC on XScale. May compromise other ARM compatibility
 
 StrongARM          SETL {TRUE}
 SAcleanflushbroken SETL {TRUE}  :LAND: StrongARM
-SASTMhatbroken         SETL {TRUE}  :LAND: StrongARM
-StrongARM_POST         SETL {TRUE}  :LAND: StrongARM
+SASTMhatbroken     SETL {TRUE}  :LAND: StrongARM
+StrongARM_POST     SETL {TRUE}  :LAND: StrongARM
 
-ARM6support            SETL {TRUE}
+ARM6support        SETL {TRUE}
+
+XScaleMiniCache    SETL {FALSE}
+
+XScaleJTAGDebug    SETL {TRUE}
+
+ECC                SETL {FALSE}
 
 
                 ;mjs
@@ -286,13 +298,19 @@ RMTidyDoesNowt  SETL    {TRUE} ; should really be "machine has FSLock in ROM"
 RogerEXEY       SETL    {FALSE}                 ; Marketing don't like it!
 
                 GBLL    DebugROMInit
-DebugROMInit    SETL    {TRUE}
+DebugROMInit    SETL    {FALSE}
 
                 GBLL    DebugROMPostInit ; Displays when the PostInit service call is sent to each ROM module (currently works on vanilla service call handling only)
 DebugROMPostInit SETL    (:LNOT: ChocolateService) :LAND: {FALSE}
 
                 GBLL    DebugROMErrors
-DebugROMErrors  SETL    {TRUE}
+DebugROMErrors  SETL    {FALSE}
+
+                GBLL    DebugTerminal           ; default WRCH and RDCH through HAL
+DebugTerminal   SETL    {FALSE}
+
+                GBLL    DebugHALTX
+DebugHALTX      SETL    {FALSE}
 
                 GBLL    DebugHeaps              ; initialise claimed and freed blocks
 DebugHeaps      SETL    {FALSE}                 ; (may slow things down unacceptably)
@@ -314,7 +332,7 @@ LCDSupport      SETL    {TRUE} :LAND: :LNOT: STB
                                         ;(First intro'd for Stork)
 
                 GBLL    FixR9CorruptionInExtensionSWI   ; whether R9 corruption by ExtensionSWI handler is fixed
-FixR9CorruptionInExtensionSWI   SETL    {FALSE}         ; currently FALSE as CC's !SpellMod (possibly others) rely on it being broken
+FixR9CorruptionInExtensionSWI   SETL    No26bitCode     ; currently FALSE as CC's !SpellMod (possibly others) rely on it being broken
 
                 GBLL    InterlacedPointer
 InterlacedPointer SETL {TRUE} :LAND: STB                ; enable code to do proper interlaced pointer
@@ -464,6 +482,6 @@ USR2632 * USR26_mode
 SVC2632 * SVC26_mode
  ]
 
-MaxSwi  * OS_IICOp+1
+MaxSwi  * OS_HeapSort32+1
 
         END

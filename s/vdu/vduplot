@@ -122,7 +122,11 @@ EntryFromSWIPlot
         TST     R6, #ClipBoxEnableBit
         BLNE    DoPlotClipBox
 
+ [ No26bitCode
+        ADR     R14, CTidy              ; set up return address
+ |
         ADR     R14, CTidy + SVC_mode   ; set up return address
+ ]
                                         ; R0=X, R1=Y, R2=plot code
         ADD     PC, PC, R2, LSR #1      ; jump to branch (bottom 2 bits of the
                                         ; result are ignored!)
@@ -535,10 +539,15 @@ PlotPoint
 
         AND     R5, R5, R3                      ; mask zgora
         AND     R6, R6, R3                      ; & zgeor for this pixel
-        LDR     R7, [R2, R8, LSL #2]!           ;
+ [ AvoidScreenReads
+        CMP     R5, #&FFFFFFFF
+        LDRNE   R7, [R2, R8, LSL #2]
+ |
+        LDR     R7, [R2, R8, LSL #2]
+ ]
         ORR     R7, R7, R5                      ; and hit the screen
         EOR     R7, R7, R6
-        STR     R7, [R2]
+        STR     R7, [R2, R8, LSL #2]
         MOV     PC, R14
 
 ; *****************************************************************************
@@ -992,8 +1001,14 @@ NewHLine ROUT                           ; Entry point for sorted Xcoords
         ANDEQ   R14, R14, R6            ; if start word = end word
         BEQ     %FT40                   ; then combine masks
 
+ [ AvoidScreenReads
+        AND     R1, R8, R6              ; zgora AND left mask
+        CMP     R1, #&FFFFFFFF
+        LDRNE   R0, [R9]                ; do left hand word of line
+ |
         LDR     R0, [R9]                ; do left hand word of line
         AND     R1, R8, R6              ; zgora AND left mask
+ ]
         AND     R2, R10, R6             ; zgeor AND left mask
         ORR     R0, R0, R1              ; screen OR or mask
         EOR     R0, R0, R2              ; EOR eor mask
@@ -1037,10 +1052,15 @@ NewHLine ROUT                           ; Entry point for sorted Xcoords
         TST     R11, #1                 ; can we do 1 word ?
         STMNEIA R9!, {R0}               ; write 1 word to screen
         AND     R10, R10, R14           ; do partial word at end
+ [ AvoidScreenReads
+        CMP     R14, #&FFFFFFFF
+        LDRNE   R0, [R9]
+ |
         LDR     R0, [R9]
+ ]
         OrrEor  R0,R0, R14,R10
         STR     R0, [R9],#4
-
+70
  [ No26bitCode
         Pull    "R0-R3,R11,PC"
  |
@@ -1169,6 +1189,11 @@ NewVLine ROUT                           ; Entry point for sorted Ycoords
         AND     R8, R8, R6              ; zgora = zgora AND pixelmask
         AND     R10, R10, R6            ; zgeor = zgeor AND pixelmask
 
+ [ AvoidScreenReads
+        CMP     R8, #&FFFFFFFF
+        BEQ     %FT20
+ ]
+
 ; now do the plotting
 
 10
@@ -1185,6 +1210,17 @@ NewVLine ROUT                           ; Entry point for sorted Ycoords
         Pull    "R0-R3,R11,PC",,^
  ]
 
+ [ AvoidScreenReads
+20      MVN     R6, R10
+25      STR     R6, [R9], R11
+        SUBS    R1, R1, #1
+        BPL     %BT25
+ [ No26bitCode
+        Pull    "R0-R3,R11,PC"
+ |
+        Pull    "R0-R3,R11,PC",,^
+ ]
+ ]
 
 
 ; *****************************************************************************

@@ -40,7 +40,7 @@ RM      = remove
 WIPE    = -wipe
 CCFLAGS = -c -depend !Depend -IC:
 ASFLAGS = -depend !Depend ${THROWBACK} -Stamp -quit -To $@ -From
-ARMASMFLAGS = -depend !Depend -g ${THROWBACK}
+ARMASMFLAGS = -depend !Depend -g ${THROWBACK} -cpu 5TE
 CPFLAGS = ~cfr~v
 WFLAGS  = ~cfr~v
 
@@ -63,6 +63,7 @@ EXPORTS   = ${EXP_HDR}.EnvNumbers \
             ${EXP_HDR}.Variables \
             ${EXP_HDR}.VduExt \
             ${EXP_HDR}.HALEntries \
+            ${EXP_HDR}.HALDevice \
             ${EXP_HDR}.OSEntries \
             ${C_EXP_HDR}.RISCOS \
             ${C_EXP_HDR}.HALEntries
@@ -85,6 +86,7 @@ install_rom: ${TARGET}
 
 clean:
 	${RM} s.TMOSHelp
+	${RM} s.Time+Date
 	${WIPE} o.* ${WFLAGS}
 	${RM} ${TARGET}
 	${WIPE} aif ${WFLAGS}
@@ -126,7 +128,12 @@ ${GPADBG}: ${AIFDBG}
 s.TMOSHelp: ${TOKENS} HelpStrs
 	${TOKENISE} ${TOKENS} HelpStrs $@
 
-o.GetAll: s.TMOSHelp
+s.Time+Date:
+	@echo |IGBLS Builddate|JBuilddate SETS "<Sys$Date> <Sys$Year>.<Sys$Time>" |J|IEND { > s.Time+Date }
+	settype s.Time+Date FFF
+	
+o.GetAll: s.TMOSHelp \
+          s.Time+Date
 
 #
 # Exported interface headers
@@ -151,6 +158,9 @@ ${EXP_HDR}.Variables: hdr.Variables
 	
 ${EXP_HDR}.HALEntries: hdr.HALEntries
 	${CP} hdr.HALEntries $@ ${CPFLAGS}
+	
+${EXP_HDR}.HALDevice: hdr.HALDevice
+	${CP} hdr.HALDevice $@ ${CPFLAGS}
 	
 ${EXP_HDR}.OSEntries: hdr.OSEntries
 	${CP} hdr.OSEntries $@ ${CPFLAGS}

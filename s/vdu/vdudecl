@@ -32,6 +32,9 @@ RePlot  SETL {TRUE}
         GBLL UseVLineOnSolidLines       ; When TRUE VLine is assembled and used
 UseVLineOnSolidLines  SETL {TRUE}       ; to plot vertical solid lines
 
+        GBLL AvoidScreenReads           ; When TRUE, use extra code to avoid
+AvoidScreenReads      SETL {TRUE}       ; reading the screen when we can avoid it
+
 ;
 ; Register usage
 ; ==============

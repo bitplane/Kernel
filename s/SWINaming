@@ -204,6 +204,10 @@ System_Swi_Names
         AddSwiNameToDecodeTab DeviceDriver
         AddSwiNameToDecodeTab Hardware
         AddSwiNameToDecodeTab IICOp
+        AddSwiNameToDecodeTab LeaveOS
+        AddSwiNameToDecodeTab ReadLine32
+        AddSwiNameToDecodeTab SubstituteArgs32
+        AddSwiNameToDecodeTab HeapSort32
         = 0
 
  [ SwisInSystemTable+1 <> MaxSwi

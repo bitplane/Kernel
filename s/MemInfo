@@ -599,7 +599,12 @@ MemoryAmounts   ROUT
         ;
         BICS    lr, r0, #&FF            ; Get type of memory required (leave bits 12-31, non-zero => error).
         BEQ     %FT30                   ; Don't understand 0 (so the spec says).
-        TEQ     lr, #1:SHL:8
+
+        TEQ     lr, #5:SHL:8            ; Check for soft ROM
+        MOV     r1, #OSROM_ImageSize*1024 ; this much soft ROM
+        B       %FT20
+
+05      TEQ     lr, #1:SHL:8
         BNE     %FT10
         MOV     r1, #0
         LDR     r1, [r1, #RAMLIMIT]     ; assume 0 VRAM
@@ -675,9 +680,11 @@ MemoryAmounts   ROUT
 ;                       0-7     controller sequence number
 ;                       8-31    controller type:
 ;                               0 = EASI card access speed control
-;                               1 = EASI space
+;                               1 = EASI space(s)
 ;                               2 = VIDC1
 ;                               3 = VIDC20
+;                               4 = S space (IOMD,podules,NICs,blah blah)
+;                               5 = Extension ROM(s)
 ;
 ;       Out:    r1 = controller base address or 0 if not present
 ;
@@ -689,7 +696,11 @@ MemoryIOSpace   ROUT
         Entry   "r0,r2,r3,sb,ip"
         AddressHAL
         CallHAL HAL_ControllerAddress
-        MOV     r1, r0
+        CMP     r0, #-1
+        MOVNE   r1, r0
+        ADREQL  r0, ErrorBlock_BadParameters
+        STREQ   r0, [sp, #0]
+        SETV    EQ
         EXIT
  |
 MemoryIOSpace   ROUT
@@ -697,14 +708,16 @@ MemoryIOSpace   ROUT
 
         AND     r2, r1, #&FF            ; Get sequence number.
         MOV     r1, r1, LSR #8          ; Get controller type.
-        CMP     r1, #4                  ; Make sure it's in range.
-        BCS     %FT20
+        CMP     r1, #6                  ; Make sure it's in range.
+        ADRCSL  r0, ErrorBlock_BadParameters
+        SETV    CS
+        EXIT    CS
 
         ADR     lr, controller_types
         LDR     r1, [lr, r1, LSL #2]    ; Get base address or offset to table.
         TEQ     r1, #0                  ; If not present or
-        CMPNE   r1, #1024               ;     not offset to table then
-        EXIT    GE                      ;   return.
+        CMPNE   r1, #1024               ;    not offset to table then
+        EXIT    GE                      ;    return.
 
         ADD     lr, lr, r1              ; Point to table indexed by sequence number.
         LDR     r1, [lr], #4            ; Get sequence number limit.
@@ -713,16 +726,13 @@ MemoryIOSpace   ROUT
         LDR     r1, [lr, r2, LSL #2]    ; Get base address.
         EXIT
 
-20
-        ADRL    r0, ErrorBlock_BadParameters
-        SETV
-        EXIT
-
 controller_types
         DCD     IOMD_Base + IOMD_ECTCR  ; Expansion card timing control.
         DCD     easi_space_table - controller_types
         DCD     0
         DCD     VIDC
+        DCD     IOMD_Base
+        DCD     0
 
 easi_space_table
         DCD     8                       ; Maximum of 8 expansion cards.
@@ -846,7 +856,9 @@ RP_error
 ;
 ;       In:     r0 bits 0..7  = 13 (reason code 13)
 ;               r0 bit  8     = 1 to map bufferable space (0 is normal, non-bufferable)
-;               r0 bits 9..31 = 0 (reserved flags)
+;               r0 bits 9..15 = 0 (reserved flags)
+;               r0 bit  16    = 1 to doubly map
+;               r0 bits 17..31 = 0 (reserved flags)
 ;               r1 = physical address of base of IO space required
 ;               r2 = size of IO space required (bytes)
 ;
@@ -855,9 +867,12 @@ RP_error
 ;
 MapIOpermanent ROUT
         Push    "r0-r2,r12,lr"
-        TST     r0, #&100           ;test bufferable bit
+        MOV     lr, r0
+        TST     lr, #&100           ;test bufferable bit
         MOVNE   r0, #L1_B
         MOVEQ   r0, #0
+        TST     lr, #1:SHL:16
+        ORRNE   r0, r0, #MapInFlag_DoublyMapped
         BL      RISCOS_MapInIO
         MOV     r3, r0
         CMP     r3, #0              ;MOV,CMP rather than MOVS to be sure to clear V

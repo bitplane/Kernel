@@ -1663,22 +1663,23 @@ HardScrollUp
         TST     R1, #Flag_HardScrollDisabled
         BNE     HardScrollSpriteUp
 
+        Push    R14
         LDR     R1, [WsPtr, #RowLength]
         LDR     R2, [WsPtr, #TotalScreenSize]
+        LDR     R14, [WsPtr, #ScreenEndAddr]
 
         LDR     R0, [WsPtr, #DisplayScreenStart]
         ADD     R0, R0, R1
-        CMP     R0, #ScreenEndAdr
+        CMP     R0, R14
         SUBCS   R0, R0, R2
         STR     R0, [WsPtr, #DisplayScreenStart]
         STR     R0, [WsPtr, #ScreenStart]
 
         LDR     R0, [WsPtr, #DisplayStart]
         ADD     R0, R0, R1
-        CMP     R0, #ScreenEndAdr
+        CMP     R0, R14
         SUBCS   R0, R0, R2
 
-        Push    R14
         BL      SetVinit                ; program vinit and set DisplayStart
 
         TST     R6, #TeletextMode
@@ -1802,13 +1803,15 @@ HardScrollDown
         TST     R1, #Flag_HardScrollDisabled
         BNE     HardScrollSpriteDown
 
+        Push    R14
         LDR     R1, [WsPtr, #RowLength]
         LDR     R2, [WsPtr, #TotalScreenSize]
+        LDR     R14, [WsPtr, #ScreenEndAddr]
 
         LDR     R0, [WsPtr, #DisplayScreenStart]
         SUB     R0, R0, R1                      ; down one row
         ADD     R3, R0, R2
-        CMP     R3, #ScreenEndAdr               ; if < then need wrap
+        CMP     R3, R14                         ; if < then need wrap
         MOVCC   R0, R3
         STR     R0, [WsPtr, #DisplayScreenStart]
         STR     R0, [WsPtr, #ScreenStart]
@@ -1816,10 +1819,9 @@ HardScrollDown
         LDR     R0, [WsPtr, #DisplayStart]
         SUB     R0, R0, R1
         ADD     R3, R0, R2
-        CMP     R3, #ScreenEndAdr
+        CMP     R3, R14
         MOVCC   R0, R3
 
-        Push    R14
         BL      SetVinit                ; program vinit and set DisplayStart
 
         TST     R6, #TeletextMode
@@ -1955,7 +1957,7 @@ ScrollLineDown
 ; these routines now call HAL_Video_SetDAG
 
 ; Note that the addresses provided are logical addresses for the software mapping
-; of the display, and this starts at (ScreenEndAdr - TotalScreenSize) for
+; of the display, and this starts at (ScreenEndAddr - TotalScreenSize) for
 ; wonderful historical reasons (h/w scroll, two mappings, blah, blah) - see eg. PRM 1-354
 ;
 ; To get physical address for the HAL, we subtract this software mapping start
@@ -1963,7 +1965,8 @@ ScrollLineDown
 ;
 
 SetVstart
-        SUB     r1, r0, #ScreenEndAdr
+        LDR     r2, [WsPtr, #ScreenEndAddr]
+        SUB     r1, r0, r2
         LDR     r2, [WsPtr, #TotalScreenSize]
         ADD     r1, r1, r2                      ; now we have offset of Vstart in video RAM
         MOV     r2, #0
@@ -1982,7 +1985,8 @@ SetVendDefault
 
 SetVinit
         STR     r0, [WsPtr, #DisplayStart]
-        SUB     r1, r0, #ScreenEndAdr
+        LDR     r2, [WsPtr, #ScreenEndAddr]
+        SUB     r1, r0, r2
         LDR     r2, [WsPtr, #TotalScreenSize]
         ADD     r1, r1, r2                      ; now we have offset of Vinit in video RAM
         LDR     r0, [WsPtr, #TeletextOffset]
@@ -1994,11 +1998,17 @@ SetVinit
         ADD     r1, r1, r2
         MOV     r0, #HALDAG_VInit
 Do_HALDAG
+ [ UseGraphicsV
+        Push    "r4, lr"
+        MOV     r4, #GraphicsV_SetDMAAddress
+        BL      CallGraphicsV
+        Pull    "r4, pc"
+ |
         Push    "r3, r9, r12, lr"               ; we can corrupt r0-r2
         mjsAddressHAL
         mjsCallHAL    HAL_Video_SetDAG
-        Pull    "r3, r9, r12, lr"
-        MOV     pc, lr
+        Pull    "r3, r9, r12, pc"
+ ]
 
 ; *****************************************************************************
 ;
@@ -2014,7 +2024,8 @@ Do_HALDAG
 ConvertBankToAddress ROUT
         MOV     R4, R2
         LDR     R3, [WsPtr, #TotalScreenSize]
-        RSB     R3, R3, #ScreenEndAdr           ; R3 := start of all screen mem
+        LDR     R5, [WsPtr, #ScreenEndAddr]
+        RSB     R3, R3, R5                      ; R3 := start of all screen mem
         LDR     R5, [WsPtr, #ScreenSize]
 10
         MOVS    R4, R4, LSR #1                  ; add on R4*ScreenSize
@@ -2720,6 +2731,7 @@ CSWaitLoop
         BLMI    Page_ProcessCallbacksIdle
         BMI     CSWaitLoop              ; and wait for change (NB C=1 now)
 Page18
+        BL      LEDsOff                 ; put LEDs back to normal
         BL      PreWrchCursor           ; get rid of cursor again
 
 ; CTRL and SHIFT are not both down
@@ -2808,7 +2820,11 @@ BotRowCheck
         MOV     PC, R14
 
 CtrlShiftTest ROUT
-        MOV     R0, #0
+	BCC     %FT05
+        Push    R14
+        BL      LEDsOn
+        Pull    R14
+05      MOV     R0, #0
         LDRB    R0, [R0, #ESC_Status]
         TST     R0, #&40                ; escape condition ?
         LDROSB  R0, KeyBdStatus         ; (preserves PSR)

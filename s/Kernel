@@ -30,8 +30,8 @@
   [ HAL
 
         MACRO
-        mjsAddressHAL
-        AddressHAL
+        mjsAddressHAL $zero
+        AddressHAL $zero
         MEND
 
         MACRO
@@ -39,6 +39,14 @@
         CallHAL $rout
         MEND
 
+        MACRO
+        DebugTX $str
+    [ DebugHALTX
+        BL      DebugHALPrint
+        =       "$str", 0
+        ALIGN
+    ]
+        MEND
   |
 
         MACRO
@@ -236,9 +244,9 @@ v8      RN      11
 
 ; Calls the HAL. $rout is the routine. sb must have been set up by AddressHAL
         MACRO
-        CallHAL $rout
-        MOV     lr, pc
-        LDR     pc, [sb, #-(EntryNo_$rout+1) * 4]
+        CallHAL $rout, $cond
+        MOV$cond lr, pc
+        LDR$cond pc, [sb, #-(EntryNo_$rout+1) * 4]
         MEND
 
 ; Checks whether a HAL routine exits. If it does, a1 points to it (probably
@@ -419,10 +427,10 @@ MOSROMVecs
         LDR     pc, MOSROMVecs+ProcVec_PrefAb
         LDR     pc, MOSROMVecs+ProcVec_DataAb
         LDR     pc, MOSROMVecs+ProcVec_AddrEx
-        LDR     pc, MOSROMVecs+InitKbdHandler
+        LDR     pc, MOSROMVecs+InitIRQHandler
 EndMOSROMVecs
 
-        ASSERT  InitKbdHandler >= EndMOSROMVecs - MOSROMVecs
+        ASSERT  InitIRQHandler >= EndMOSROMVecs - MOSROMVecs
 
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ; This is the table of default processor vectors which is copied to 0 page.
@@ -571,8 +579,7 @@ SVC * SWIDespatch + {PC}-SVCDespatcher
 
 SVC_CallASWI * SWIDespatch + {PC}-SVCDespatcher ; CallASWI,CallASWIR12 re-entry point
 
-        BICS    r11, r11, #Auto_Error_SWI_bit
-        BEQ     SWIWriteC + SVCDespatcher - SWIDespatch
+        BIC     r11, r11, #Auto_Error_SWI_bit
 
         CMP     r11, #OS_WriteI
         LDRLO   pc, [pc, r11, LSL #2]
@@ -600,7 +607,11 @@ JTABLE  & SWIWriteC             ; this entry never gets used (see ^)
         & BPutSWI               ; bput
         & VecSwiDespatch        ; gbpb
         & VecSwiDespatch        ; find
+ [ No26bitCode
+        & ReadLineSWI
+ |
         & VecSwiDespatch        ; readline
+ ]
 
         & SCTRL
         & SWI_GetEnv_Code
@@ -739,6 +750,10 @@ JTABLE  & SWIWriteC             ; this entry never gets used (see ^)
         & NoSuchSWI
         & HardwareSWI
         & IICOpSWI
+        & SLEAVESWI
+        & ReadLine32SWI
+        & XOS_SubstituteArgs32_code
+        & HeapSortRoutine32
 
 
  ASSERT (.-JTABLE)/4 = MaxSwi
@@ -1080,10 +1095,11 @@ NotMainMOSSwi ; Continuation of SWI despatch
 
 ExtensionSWI ROUT
 
-        Push    "r9, lr"                        ; first construct the link to pass on.
       [ No26bitCode
-        ADR     lr, %FT02
+        ASSERT  FixR9CorruptionInExtensionSWI
+        Push    "lr"
       |
+        Push    "r9, lr"                        ; first construct the link to pass on.
         AND     r10, lr, #&F0000000             ; copy in user CCodes
         AND     r12, lr, #F32_bit+I32_bit       ; (inc. IRQ state)
         ORR     r10, r10, r12, LSL #IF32_26Shift
@@ -1097,8 +1113,13 @@ ExtensionSWI ROUT
 loopoverhashchain
         CMP     r10, #0
         BEQ     VectorUserSWI
+ [ No26bitCode
+        LDR     lr, [r10, #ModSWINode_Number]
+        CMP     lr, r12
+ |
         LDR     r9, [r10, #ModSWINode_Number]
         CMP     r9, r12
+ ]
         LDRNE   r10, [r10, #ModSWINode_Link]
         BNE     loopoverhashchain
 
@@ -1106,22 +1127,29 @@ loopoverhashchain
         LDR     r12, [r12, #Module_incarnation_list]  ; preferred life
         CMP     r12, #0
 
- [ FixR9CorruptionInExtensionSWI
+ [ FixR9CorruptionInExtensionSWI:LAND::LNOT:No26bitCode
         Pull    "r9", NE                ; restore corrupted r9 before calling SWI handler
                                         ;RCM added 'NE' above to fix MED=04655
  ]
 
         ANDNE   r11, r11, #Module_SWIChunkSize-1
         ADDNE   r12, r12, #Incarnation_Workspace
+ [ No26bitCode
+        ADRNE   lr, %FT02
+ ]
         MOVNE   pc, r10
 
 
 VectorUserSWI                   ; Not in a module, so call vec
- [ FixR9CorruptionInExtensionSWI
+ [ FixR9CorruptionInExtensionSWI:LAND::LNOT:No26bitCode
         Pull    "r9"            ; restore corrupted r9 before calling UKSWIV
  ]
         MOV     r10, #UKSWIV    ; high SWI number still in R11
+ [ No26bitCode
+        BL      CallVector
+ |
         B       CallVector      ; lr still has user CCs (if 26bit) & points at%FT02
+ ]
 
 
 02
@@ -1131,8 +1159,8 @@ VectorUserSWI                   ; Not in a module, so call vec
         Pull    "r9,lr"
  ]
         MRS     r10, CPSR
-        BIC     lr, lr, #&F0000000      ; Can mangle any/all of punter NZCV flags
-        AND     r10, r10, #&F0000000
+        BIC     lr, lr, #&FF000000      ; Can mangle any/all of punter flags
+        AND     r10, r10, #&FF000000
         ORR     lr, lr, r10
         B       SLVK
 
@@ -1389,6 +1417,8 @@ SEXIT ROUT
 
 ABEX    =       "ABEX"                  ; Picked up as word
 
+        LTORG
+
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ; SWI OS_CallBack: Set/read callback buffer and handler
 
@@ -1442,7 +1472,7 @@ PlatFeatSWI ROUT
 
         ;Ok, it's the 'code_features' reason code.
         LDR     r0,[r0, #ProcessorFlags]
-        TST     r0, #2                  ;Is the 'no irq enable/disable' bit set?
+        TST     r0, #CPUFlag_InterruptDelay
         ADRNE   r1, platfeat_irqinsert  ;Yep, so point R1 to the delay routine
         MOVEQ   r1, #0
         Pull    lr

@@ -115,19 +115,41 @@ Initial_IRQ_Code ROUT
 
 ; Now copied to RAM, together with vector entries and device tables
 
+                  ^ 0
+ [ HAL
+IRQDesp_Link      # 4
+IRQDesp_R12Val    # 4
+IRQDesp_CallAddr  # 4
+
+IRQDesp_Link_Unshared * 1       ; flag in Link (for _this_ node)
+ |
+IRQDesp_R12Val    # 4
+IRQDesp_CallAddr  # 4
+IRQDesp_Link      # 4
+ ]
+       ASSERT   IRQDesp_CallAddr = IRQDesp_R12Val + 4
+
        ALIGN 32
 
 DefaultIRQ1Vcode ROUT
 
  [ HAL
-        Push    "r9"
+        Push    "r9,lr"
         AddressHAL                      ; modifies r9
-        MOV     r11, r14                ; r11 trashable
+;        MOV     r11, r14                ; r11 trashable
         CallHAL HAL_IRQSource
         Pull    "r9"
+        ADR     r2, Devices
         ADD     r1, r0, r0, LSL #1      ; multiply by 3
-        MOV     r14, r11
-        ADD     r1, pc, r1, LSL #2      ; so table contains DevNo * 3
+;        MOV     r14, r11
+        ADD     r11, r2, r1, LSL #2     ; so table contains DevNo * 3
+ ;       ASSERT  IRQDesp_R12Val = 4
+ ;       LDMIB   r1, {r12, pc}
+01      MOV     lr, pc
+        LDMIA   r11, {r11, r12, pc}
+        TST     r11, #IRQDesp_Link_Unshared
+        BEQ     %BT01
+        Pull    pc
  |
         MOV     r3, #IOC                ; base for IOC and IOMD
         LDRB    r0, [r3, #IOMD_DMAREQ]
@@ -157,8 +179,9 @@ DefaultIRQ1Vcode ROUT
 
         LDRB    r0, [r1, r0]            ; pick up offset in device despatcher
         ADD     r1, pc, r0, LSL #2      ; so table contains DevNo * 3
- ] ; HAL
+        ASSERT  IRQDesp_R12Val = 0
         LDMIA   r1, {r12, pc}
+ ] ; HAL
 
 ; ******* IRQ device handlers entered with r0-r3,r11,r12,r14 trashable *******
 ;   r0  =  device number (if HAL)
@@ -170,11 +193,12 @@ DefaultIRQ1Vcode ROUT
 
 DefaultIRQ1Vcode_end
 
-Devices
+Devices * DefaultIRQ1Vcode_end + 12
 
-NoInterrupt     * 64
+NoInterrupt     * -1
+MaxInterrupts   * 64
 
-        ASSERT  DefaultIRQ1Vcode_end + (NoInterrupt+1) * 12 - DefaultIRQ1Vcode <= DefIRQ1Vspace
+        ASSERT  Devices + MaxInterrupts * 12 - DefaultIRQ1Vcode <= DefIRQ1Vspace
 
 
  | ; HAL
@@ -735,13 +759,14 @@ CopyDefaultIRQ1V
 
   [ HAL
         AddressHAL
-        MOV     v1, a1
-        ADD     a3, a1, #(NoInterrupt+1)*12
+        ADD     v1, a1, #12
+        ADD     a3, v1, #MaxInterrupts*12
         MOV     a2, #0
-        LDR     a4, =IRQ
-        MOV     ip, #0
+        MOV     a4, #-1
+        LDR     ip, =IRQ
 FillInDefaultIRQ1VDevices
         STMIA   a1!, {a2, a4, ip}
+        ADD     a4, a4, #1
         CMP     a1, a3
         BNE     FillInDefaultIRQ1VDevices
 
@@ -752,16 +777,48 @@ FillInDefaultIRQ1VDevices
         LDR     a3, =TickOne
         ADD     a1, a1, a1, LSL #1
         ADD     a1, v1, a1, LSL #2
-        STMIA   a1, {a2, a3}
+        STMIB   a1, {a2, a3}
 
 ; Now the VSync
         MOV     a1, #0
         CallHAL HAL_VideoFlybackDevice
-        LDR     a2, =OsbyteVars
-        LDR     a3, =VsyncIRQ
-        ADD     a1, a1, a1, LSL #1
-        ADD     a1, v1, a1, LSL #2
-        STMIA   a1, {a2, a3}
+        CMP     a1, #-1
+        LDRNE   a2, =OsbyteVars
+        LDRNE   a3, =VsyncIRQ
+        ADDNE   a1, a1, a1, LSL #1
+        ADDNE   a1, v1, a1, LSL #2
+        STMNEIB a1, {a2, a3}
+
+ [ :LNOT:{FALSE}
+; Now Podule bits
+        MOV     a1, #IRQDesp_Link_Unshared
+        LDR     a2, =PIRQ_Chain - (PodDesp_Link-PodDesp_R12Val)
+        ADR     a3, PFIQasIRQ_Despatch
+        ADD     lr, v1, #8*12
+        STMIA   lr, {a1, a2, a3}
+        ADR     a3, PIRQ_Despatch
+        ADD     lr, v1, #13*12
+        STMIA   lr, {a1, a2, a3}
+ ]
+
+; Now IIC - if any
+        MOV     a1, #0
+        CallHAL HAL_IICType
+        LDR     a2, =IICType
+        STR     a1, [a2]
+        TST     a1, #IICFlag_HighLevel
+        TSTNE   a1, #IICFlag_Background
+        BEQ     %FT90
+        SUB     sp, sp, #12
+        MOV     a1, sp
+        MOV     a2, #0
+        CallHAL HAL_IICDevice
+; I think it's safe to call A SWI here...
+        LDMIA   sp!, {r0, r3, r4}
+        LDR     r1, =IICIRQ
+        MOV     r2, sb
+        SWI     XOS_ClaimDeviceVector
+90
   ]
         Pull    "v1,sb,pc"
 
@@ -773,31 +830,46 @@ FillInDefaultIRQ1VDevices
 PodDesp_Address   #  4     ; address of IRQ status byte
 PodDesp_Mask      #  4     ; for use on above
 PodDesp_R12Val    #  4
-PodDesp_CallAddr  #  4     ; address to call if ?Address AND Mask <> 0
+PodDesp_CallAddr  #  4     ; address to call if (?Address EOR (Mask>>8)) AND Mask <> 0
 PodDesp_Link      #  4     ; next node
 PodDesp_NodeSize  #  0
 
- [ True
+ [ HAL:LAND:{FALSE}
+        ROUT
+; In    r1 -> top level node
+;       r12 = sub chain
+01      LDR     r12, [r12, #PodDesp_Link-PodDesp_R12Val]
+SubInterrupt_Despatch
+        LDMIA   r12!, {r2, r3}          ; address and mask
+        CMP     r3, #&10000
+        LDRLOB  r2, [r2]
+        BHS     %FT02
+        EOR     r2, r2, r3, LSR #8      ; polarity inversion
+        TST     r2, r3                  ; check against mask
+        BEQ     %BT01
+        LDMIA   r12, {r12, pc}
+02
+        Push    "r0,r1,r12,lr"
+        MOV     r0, r3
+        MOV     r12, r3
+        MOV     lr, pc
+        MOV     pc, r2
+        TEQ     r0, #0
+        Pull    "r0,r1,r12,lr"
+        BEQ     %BT01
+        LDMIA   r12, {r12, pc}
+
+
+NotSubInterrupt
+        LDR     r1, [r1, #8]            ; call next (full) handler
+        LDMIA   r1, {r12, pc}
+ |
 
 ; In    r12 =    PFIQasIRQ_Chain - (PodDesp_Link-PodDesp_R12Val)
 ;             or PIRQ_Chain - (PodDesp_Link-PodDesp_R12Val)     from despatcher
 
 PFIQasIRQ_Despatch ROUT
-
 PIRQ_Despatch ; All the same thing now
-
- |
-
-PFIQasIRQ_Despatch  ROUT
-
-        LDR     r12, =PFIQasIRQ_Chain - (PodDesp_Link-PodDesp_R12Val)
-        B       %FT01
-
-PIRQ_Despatch ; NOROUT
-
-        LDR     r12, =PIRQ_Chain - (PodDesp_Link-PodDesp_R12Val)
- ]
-
 
 01      LDR     r12, [r12, #PodDesp_Link-PodDesp_R12Val]
         LDMIA   r12!, {r1, r2}           ; address and mask
@@ -808,14 +880,19 @@ PIRQ_Despatch ; NOROUT
         ANDS    r1, r1, r2
         BEQ     %BT01
         LDMIA   r12, {r12, pc}
+ ]
 
-
+Default_SubInterruptHandler_Node
 Default_PIRQHandler_Node
 Default_PFIQasIRQHandler_Node
         &       .+4                     ; address we know has non-zero value!
         &       -1                      ; mask
         &       0                       ; handler r12
+ [ HAL:LAND:{FALSE}
+        &       NotSubInterrupt         ; handler code
+ |
         &       IRQ                     ; handler code
+ ]
         &       0                       ; null link for naff release checking
 
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -824,8 +901,16 @@ Default_PFIQasIRQHandler_Node
 ; r0 = Device number
 ; r1 = call address
 ; r2 = r12 value
+ [ HAL
+; r3 = interrupt location     or r3 = 0 or (if r4 > 64K)  r3 = routine
+; r4 = interrupt mask/polarity                            r4 = workspace
+ |
 ; r0 = PFIQ|PIRQ devno -> r3 = interrupt location
 ;                         r4 = interrupt mask
+ ]
+
+CDV_Flags * &FF000000
+CDV_Shared * 1:SHL:31
 
 DeviceVector_Claim ROUT
 
@@ -835,26 +920,43 @@ DeviceVector_Claim ROUT
         BVC     %BT01
 
         LDR     r0, [sp]
-        CMP     r0, #NoInterrupt
-        BGE     DV_Fail_NaffDevNo
+ [ HAL
+        BIC     r0, r0, #CDV_Flags
+ ]
+        CMP     r0, #MaxInterrupts
+        BHS     DV_Fail_NaffDevNo
 
+ [ HAL:LAND:{FALSE}
+;        TEQ     r3, #0
+;        BNE     SubInterruptClaim
+ |
         CMP     r0, #Podule_DevNo
         CMPNE   r0, #PFIQasIRQ_DevNo
         BEQ     PoduleChainClaim
+ ]
 
         MOV     r3, #12
         BL      ClaimSysHeapNode
         BVS     DV_Exit
-        LDR     r0, [sp]
+        LDR     r11, [sp]
+        BIC     r0, r11, #CDV_Flags
         ADD     r0, r0, r0, LSL #1      ; *3
         LDR     r1, =DefaultIRQ1V-DefaultIRQ1Vcode+Devices
         ADD     r1, r1, r0, LSL #2
-        WritePSRc SVC_mode+I_bit, r10   ; IRQs off for update
+        WritePSRc SVC_mode+I_bit, r10   ; IRQs off for update (on again on SWI exit)
         LDMIA   r1, {r0, r3, r10}
         STMIA   r2, {r0, r3, r10}       ; copy current head into node
+ [ HAL
+        MOV     r10, r2
+        TST     r11, #CDV_Shared
+        ORREQ   r10, r10, #IRQDesp_Link_Unshared
+        LDR     r11, [sp, #4*2]         ; r12 value
+        LDR     r12, [sp, #4*1]         ; call address
+ |
         LDR     r10, [sp, #4*2]         ; r12 value
         LDR     r11, [sp, #4*1]         ; call address
         MOV     r12, r2
+ ]
         STMIA   r1, {r10-r12}           ; copy given info into head
 
 
@@ -874,7 +976,50 @@ DV_Fail_NaffDevNo
 
         MakeErrorBlock NaffDevNo
 
+ [ HAL:LAND:{FALSE}
+SubInterruptClaim
+        Push    "r5"
+        ADD     r0, r0, r0, LSL #1      ; *3
+        LDR     r5, =DefaultIRQ1V-DefaultIRQ1Vcode+Devices
+        ADD     r5, r5, r0, LSL #2
+        LDR     r2, [r5, #IRQDesp_CallAddr]
+        ADR     r3, SubInterrupt_Despatch
+        TEQ     r2, r3
+        BEQ     AlreadySubbed
+        ; Need to claim the top-level interrupt.
+        MOV     r3, #12
+        BL      ClaimSysHeapNode
+        Pull    "r5",VS
+        BVS     DV_Exit
+        WritePSRc SVC_mode+I_bit, r10   ; IRQs off for update (on again on SWI exit)
+        LDMIA   r5, {r0, r3, r10}
+        STMIA   r2, {r0, r3, r10}       ; copy current head into node
+        ADR     r0, Default_SubInterruptHandler_Node
+        ADR     r3, SubInterrupt_Despatch
+        STR     r0, [r5, #IRQDesp_R12Val]
+        STR     r3, [r5, #IRQDesp_CallAddr]
+        STR     r2, [r5, #IRQDesp_Link]
 
+AlreadySubbed
+        ; r1 -> top level interrupt entry
+        MOV     r3, #PodDesp_NodeSize
+        BL      ClaimSysHeapNode
+        Pull    "r5",VS
+        BVS     DV_Exit
+        MOV     r10, r2
+        ADD     r1, sp, #8
+        LDMFD   r1, {r1-r3}
+        STR     r1, [r10, #PodDesp_CallAddr]
+        STR     r2, [r10, #PodDesp_R12Val]
+        STR     r3, [r10, #PodDesp_Address]
+        STR     r4, [r10, #PodDesp_Mask]
+        WritePSRc SVC_mode+I_bit, r2    ; IRQs off for update
+        LDR     r0, [r5, #IRQDesp_R12Val]
+        STR     r0, [r10, #PodDesp_Link]
+        STR     r10, [r5, #IRQDesp_R12Val]
+        Pull    "r5"
+        B       DV_Exit
+ |
 PoduleChainClaim
         MOV     r3, #PodDesp_NodeSize
         BL      ClaimSysHeapNode
@@ -893,6 +1038,7 @@ PoduleChainClaim
         STR     r1, [r10, #PodDesp_Link]
         STR     r10, [r0]
         B       DV_Exit
+ ]
 
 ; .............................................................................
 ; Release of device vectors
@@ -906,26 +1052,44 @@ PoduleChainClaim
 DeviceVector_Release ROUT
 
         Push    "r0-r3, lr"             ; Ensure same regset as above
-        CMP     r0, #NoInterrupt
-        BGE     DV_Fail_NaffDevNo
+ [ HAL
+        BIC     r0, r0, #CDV_Flags
+ ]
+        CMP     r0, #MaxInterrupts
+        BHS     DV_Fail_NaffDevNo
 
         WritePSRc SVC_mode + I_bit, r12 ; IRQs off while holding context
+ [ :LNOT:(HAL:LAND:{FALSE})
         CMP     r0, #Podule_DevNo
         CMPNE   r0, #PFIQasIRQ_DevNo
         BEQ     PoduleChainRelease
+ ]
 
         ADD     r0, r0, r0, LSL #1      ; *3
         LDR     r12, =DefaultIRQ1V-DefaultIRQ1Vcode+Devices
         ADD     r12, r12, r0, LSL #2    ; address of node
         MOV     r11, #-1                ; "fudge" predecessor node
 
+ [ HAL
+;        TEQ     r3, #0
+;        BNE     SubInterruptRelease
+ ]
+
+ [ HAL
+01      LDMIB   r12, {r3, r10}
+ |
 01      LDMIA   r12, {r3, r10}
+ ]
         CMP     r3, r2
         CMPEQ   r10, r1
         BEQ     %FT02                   ; found it
         MOV     r11, r12
-        LDR     r12, [r12, #8]          ; get the link
+        LDR     r12, [r12, #IRQDesp_Link]
+ [ HAL
+        BICS    r12, r12, #IRQDesp_Link_Unshared
+ |
         CMP     r12, #0
+ ]
         BNE     %BT01
 
 11      ADR     r0, ErrorBlock_BadDevVecRel
@@ -942,11 +1106,17 @@ DeviceVector_Release ROUT
 02      CMP     r11, #-1
         BEQ     %FT03
         MOV     r2, r12
-        LDR     r12, [r2, #8]
-        STR     r12, [r11, #8]          ; node delinked
+        LDR     r12, [r2, #IRQDesp_Link]
+ [ HAL
+        LDR     r14, [r11, #IRQDesp_Link]       ; preserve r11's "unshared" flag
+        BIC     r12, r12, #IRQDesp_Link_Unshared
+        AND     r14, r14, #IRQDesp_Link_Unshared
+        ORR     r12, r12, r14
+ ]
+        STR     r12, [r11, #IRQDesp_Link] ; node delinked
         B       %FT04
 
-03      LDR     r2, [r12, #8]           ; freeable = nextnode
+03      LDR     r2, [r12, #IRQDesp_Link]; freeable = nextnode
         LDMIA   r2,  {r0, r1, r3}       ; copy next node into head posn
         STMIA   r12, {r0, r1, r3}
 
@@ -955,6 +1125,48 @@ DeviceVector_Release ROUT
         B       DV_Exit
 
 
+ [ HAL:LAND:{FALSE}
+SubInterruptRelease
+        ADR     r10, SubInterrupt_Despatch
+10      LDR     r0, [r12, #IRQDesp_CallAddr]
+        TEQ     r0, r10
+        BEQ     %FT15
+
+13      MOV     r11, r12
+        LDR     r12, [r12, #IRQDesp_Link]
+        TEQ     r12, #0
+        BEQ     %BT11
+        B       %BT10
+
+15      SUB     r0, r12, #PodDesp_Link
+17      LDR     r14, [r0, #PodDesp_Link]
+        TEQ     r14, #0
+        BEQ     %BT13
+
+        LDR     r10, [r14, #PodDesp_Address]
+        CMP     r10, r3
+        LDREQ   r10, [r14, #PodDesp_Mask]
+        CMPEQ   r10, r4
+        LDREQ   r10, [r14, #PodDesp_CallAddr]
+        CMPEQ   r10, r1
+        LDREQ   r10, [r14, #PodDesp_R12Val]
+        CMPEQ   r10, r2
+        MOVNE   r0, r14
+        BNE     %BT17
+
+        LDR     r10, [r14, #PodDesp_Link]
+        STR     r10, [r0,  #PodDesp_Link]!
+
+        LDR     r0, [r12, #IRQDesp_R12Val]
+        MOV     r2, r14
+        ADR     r14, Default_SubInterruptHandler_Node
+        TEQ     r0, r14                 ; last sub-interrupt gone?
+        BNE     %BT04
+
+        BL      FreeSysHeapNode         ; free sub-interrupt
+        BVS     DV_Exit
+        B       %BT02                   ; then go back to delink top level
+ |
 PoduleChainRelease
         CMP     r0, #Podule_DevNo
         LDREQ   r0, =PIRQ_Chain-PodDesp_Link
@@ -978,6 +1190,7 @@ PoduleChainRelease
         STR     r11, [r0,  #PodDesp_Link]
         MOV     r2, r12
         B       %BT04
+ ]
 
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ; Default device owner for IRQ not recognised by system: pass to IRQ2V
@@ -998,7 +1211,11 @@ IRQ ROUT
         MOV     r10, #IrqV
         BL      CallVector
 
+ [ HAL
+        Pull    "r10, lr, pc"           ; new-style CDV - pull return address
+ |
         Pull    "r10, pc"               ; return: someone will always claim it.
+ ]
 
  [ False
 irq_vtable
@@ -1025,8 +1242,13 @@ irq_vtable
 
 ; *****************************************************************************
 ; Default IRQ2V:
+ [ HAL
+;   r0  must still have devno in it
+;   r12 is 0 (from vector)
+ |
 ;   r0  must still have devno*3 in it
 ;   r12 is 0 (from vector)
+ ]
 
 ; Clear mask, clear IRQ as appropriate/possible
 
@@ -1045,6 +1267,8 @@ NOIRQ ROUT
  STR r14, [r10]
  ]
  [ HAL
+        TEQ     r0, #0
+        Pull    pc, MI
         MOV     r11, r9
         AddressHAL
         CallHAL HAL_IRQDisable
@@ -1161,14 +1385,15 @@ DefEvent ROUT
 
 TickOne ROUT
 
-        Push    r14
-
  [ HAL
+        ; Don't push r14 - we're using new interface, and claim the vector
         Push    "r9,r12"
         AddressHAL
         CallHAL HAL_IRQClear
         Pull    "r9,r12"
  |
+        Push    r14
+
         MOV     R0, #timer0_bit
         STRB    R0, [R3, #IOCIRQCLRA]   ; clear timer 0 interrupt
  ]
@@ -1251,18 +1476,20 @@ TickOne ROUT
 
 VsyncIRQ ROUT
 
-        Push    r14
-
     [ HAL
+        ; Don't push r14 - we're using new interface, and claim the vector
         Push    "r9,r12"
         AddressHAL
         CallHAL HAL_IRQClear
         Pull    "r9,r12"
     |
+        Push    r14
+
         MOV     R0, #vsync_bit
         STRB    R0, [R3, #IOCIRQCLRA]   ; Clear the vsync interrupt
     ]
 
+VsyncIRQ_ExtEntry
         LDRB    R0, CFStime             ; decrement 'CFS' timer !
         SUB     R0, R0, #1
         STRB    R0, CFStime

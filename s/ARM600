@@ -296,6 +296,7 @@ BangCamAltEntry
         AND     r4, r11, #3             ; first use PPL bits
         LDR     r1, [r1, r4, LSL #2]    ; get PPL bits and SmallPage indicator
 
+ [ {FALSE}
         TST     r11, #DynAreaFlags_NotCacheable
         TSTEQ   r11, #PageFlags_TempUncacheableBits
         ORREQ   r1, r1, #L2_C           ; if cacheable (area bit CLEAR + temp count zero), then OR in C bit
@@ -303,6 +304,23 @@ BangCamAltEntry
         ORREQ   r1, r1, #L2_B           ; if bufferable (area bit CLEAR), then OR in B bit
 
         ORR     r0, r0, r1
+ |
+        ASSERT  DynAreaFlags_CPBits = 7 :SHL: 12
+        ASSERT  DynAreaFlags_NotCacheable = 1 :SHL: 5
+        ASSERT  DynAreaFlags_NotBufferable = 1 :SHL: 4
+
+        ORR     r0, r0, r1
+
+        MOV     r6, #ZeroPage
+        LDR     r6, [r6, #MMU_PCBTrans]
+        AND     r4, r11, #DynAreaFlags_CPBits
+        AND     r1, r11, #DynAreaFlags_NotCacheable + DynAreaFlags_NotBufferable
+        TST     r11, #PageFlags_TempUncacheableBits
+        ORRNE   r1, r1, #DynAreaFlags_NotCacheable      ; if temp uncache, set NC bit, ignore P
+        ORREQ   r1, r1, r4, LSR #6                      ; else use NC, NB and P bits
+        LDRB    r1, [r6, r1, LSR #4]                    ; convert to X, C and B bits for this CPU
+        ORR     r0, r0, r1
+ ]
 
         LDR     r1, =L2PT               ; point to level 2 page tables
 
@@ -326,7 +344,7 @@ BangL2PT                                        ; internal entry point used only
         ;we need to worry about cache only if mapping out a cacheable page
         ;
         TEQ     r6, #0                          ;EQ if mapping out
-        TSTEQ   r11, #DynAreaFlags_NotCacheable ;EQ if also cacheable
+        TSTEQ   r11, #DynAreaFlags_NotCacheable ;EQ if also cacheable (overcautious for temp uncache+illegal PCB combos)
         MOV     r0, r3                          ;MMU page entry address
         ADR     lr, %FT20
         MOV     r4, #0
@@ -343,7 +361,7 @@ BangL2PT_sledgehammer
         ;should only be used for awkward cases
         ;
         TEQ     r6, #0                          ;EQ if mapping out
-        TSTEQ   r11, #DynAreaFlags_NotCacheable ;EQ if also cacheable
+        TSTEQ   r11, #DynAreaFlags_NotCacheable ;EQ if also cacheable (overcautious for temp uncache+illegal PCB combos)
         ADR     lr, %FT30
         MOV     r4, #0
         ARMop   MMU_Changing, EQ, tailcall, r4
@@ -362,6 +380,12 @@ PPLTrans
         &       (AP_Read * L2_APMult) + L2_SmallPage      ; R any W sup
         &       (AP_None * L2_APMult) + L2_SmallPage      ; R sup W sup
         &       (AP_ROM  * L2_APMult) + L2_SmallPage      ; R any W none
+
+PPLTransX
+        &       (AP_Full * L2X_APMult) + L2_ExtPage       ; R any W any
+        &       (AP_Read * L2X_APMult) + L2_ExtPage       ; R any W sup
+        &       (AP_None * L2X_APMult) + L2_ExtPage       ; R sup W sup
+        &       (AP_ROM  * L2X_APMult) + L2_ExtPage       ; R any W none
 
 PageSizes
         &       4*1024                  ; 0 is 4K
@@ -409,14 +433,27 @@ SSETMEMC ROUT
 ; bit 11   => Sound DMA enable
 ; bit 12   => OS mode
 
+ [ UseGraphicsV
+        Push  "r0,r1,r4, r14"
+        TST   r11, #(1 :SHL: 10)
+        MOVEQ r0, #1             ; blank (video DMA disable)
+        MOVNE r0, #0             ; unblank (video DMA enable)
+        MOV   r1, #0             ; no funny business with DPMS
+        MOV   r4, #GraphicsV_SetBlank
+        BL    CallGraphicsV
+        Pull  "r0,r1,r4, r14"
+ |
         Push  "r0-r3, r9, r14"   ; can corrupt r12
         TST   r11, #(1 :SHL: 10)
         MOVEQ r0, #1             ; blank (video DMA disable)
         MOVNE r0, #0             ; unblank (video DMA enable)
         MOV   r1, #0             ; no funny business with DPMS
+        MOV     r0, #0
+        MOV     r1
         mjsAddressHAL
         mjsCallHAL    HAL_Video_SetBlank
         Pull  "r0-r3, r9, r14"
+ ]
 
         WritePSRc SVC_mode+I_bit, r11
         ExitSWIHandler
@@ -856,8 +893,8 @@ init7500cpu_common
         MOV     r0, #IOMD_IOTCR_Network_TypeA :OR: IOMD_IOTCR_Combo_TypeB :OR: IOMD_IOTCR_Sound_TypeB :OR: IOMD_IOTCR_Sound_Word
         STRB    r0, [r12, #IOMD_IOTCR]
 
-        MOV     r0, #0                          ; Podule manager wants TypeA setting by default for all podules
-        STRB    r0, [r12, #IOMD_ECTCR]
+        ; MOV     r0, #0                        ; Podule manager will set ECTCR to TypeA cycles
+        ; STRB    r0, [r12, #IOMD_ECTCR]
 
    [ Japanese16BitSound :LAND: STB
         MOV     r0, #2_10
@@ -982,8 +1019,8 @@ MedusaInit
         MOV     r0, #IOMD_IOTCR_Network_TypeA :OR: IOMD_IOTCR_Combo_TypeB :OR: IOMD_IOTCR_Sound_TypeB :OR: IOMD_IOTCR_Sound_Word
         STRB    r0, [r12, #IOMD_IOTCR]
 
-        MOV     r0, #0                          ; Podule manager wants TypeA setting by default for all podules
-        STRB    r0, [r12, #IOMD_ECTCR]
+        ; MOV     r0, #0                        ; Podule manager will set ECTCR to TypeA cycles
+        ; STRB    r0, [r12, #IOMD_ECTCR]
 
 CommonInit
 ; On breaks (ie software resets) we have to turn the MMU off.
@@ -2263,6 +2300,7 @@ BurstTable
 ;          r0 bit 31 set if cache(s) to be flushed
 ;          r0 bit 30 set if TLB(s) to be flushed
 ;          r0 bit 29 set if flush of entry only (else whole flush)
+;          r0 bit 28 set if write buffer to be flushed (implied by bit 31)
 ;       r1 = entry specifier, if r0 bit 29 set
 ;       (currently, flushing by entry is ignored, and just does full flush)
 ;
@@ -2365,18 +2403,15 @@ MMUC_modcon_readonly
         Pull    "r3,r4,r5,pc"
 
 MMUControl_Flush
-       Push     "r0,r1"
-       MOV      r1, #0
-       TST      r0,#&80000000
-       BEQ      MMUC_flush_flushT
-       ARMop    Cache_CleanInvalidateAll,,,r1
-       LDR      r0, [sp]
-MMUC_flush_flushT
-       TST      r0,#&40000000
-       BEQ      MMUC_flush_done
-       ARMop    TLB_InvalidateAll,,,r1
-MMUC_flush_done
-       Pull     "r0,r1,pc"
+       MOVS     r10, r0
+       MOV      r12, #0
+       ARMop    Cache_CleanInvalidateAll,MI,,r12
+       TST      r10,#&40000000
+       ARMop    TLB_InvalidateAll,NE,,r12
+       TST      r10,#&10000000
+       ARMop    WriteBuffer_Drain,NE,,r12
+       ADDS     r0,r10,#0
+       Pull     "pc"
 
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ;
@@ -2489,12 +2524,17 @@ DAbPreVeneer    ROUT
         STR     lr_abort, [r13_abort, #15*4]    ; save old PC, ie instruction address
 
   [ ChocolateAMB
+        ARM_read_FSR r0
+        AND     r0, r0, #&F
+        TEQ     r0, #7
+        BNE     DAb_NotTranslationFault
         ARM_read_FAR r0                         ; aborting address
         BL      AMB_LazyFixUp                   ; can trash r0-r7, returns NE status if claimed and fixed up
         LDR     lr_abort, [r13_abort, #15*4]    ; restore lr_abort
         LDMIA   r13_abort, {r0-r7}              ; restore regs
         ADDNE   r13_abort, r13_abort, #17*4     ; if fixed up, restore r13_abort
         SUBNES  pc, lr_abort, #8                ; and restart aborting instruction
+DAb_NotTranslationFault
   ]
 
         MRS     r0, SPSR                        ; r0 = PSR when we aborted
@@ -2550,6 +2590,9 @@ DAbPreVeneer    ROUT
 
         SUB     r11, r2, #8*4                   ; r11 -> register bank
         STR     r4, [sp, #7*4]                  ; store aborter's PC in user register bank
+
+        TST     r0, #T32_bit                    ; were they in Thumb mode? if so, give up now
+        BNE     %FT90
 
 ;ARM 810 or StrongARM allow signed byte load or half-word load/stores - not supported at present
 ;***KJB - need to think about LDRH family
@@ -3316,6 +3359,24 @@ Fault
 ;some tricks to improve performance, looking at MMU level 1 and level 2 page tables
 L1L2PTenhancements ROUT
         Push    "r0-r5,lr"
+
+        ;mjs change for Ursula:
+        ;improved kernel workspace protection
+        ; - user access to bottom 3k restricted to read only (things like Clib tmpnam counter prevent
+        ;   going further)
+        ; - Java VM will probably require bottom 1k restricted to no user access (so that VM can avoid
+        ;   all run-time checks for null pointers), but this currently makes various things like ShareFS
+        ;   go pop-bang, so not done yet (see TRUE/FALSE choice below)
+        ;
+        MOV     r0,#L2PT                ;L2PT address for page at 0
+        LDR     r1,[r0]
+        BIC     r1,r1,#&FF0             ;clear current AP bits for all four 1k sub-pages (S0 to S3)
+     [ {FALSE}                          ;this would be good for Java VM:
+        ORR     r1,r1,#&E90             ;S0=user none, S1=user read, S2=user read, S3=user read/write
+     |                                  ;this makes less current things go pop-bang:
+        ORR     r1,r1,#&EA0             ;S0=user read, S1=user read, S2=user read, S3=user read/write
+     ]
+        STR     r1,[r0]
 
 ;if the MMU control reg (soft copy) has R bit set (bit 9), then adjust the L1 entries for ROM
 ;space to give full write protection (user and supervisor)
