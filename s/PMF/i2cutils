@@ -1410,9 +1410,9 @@ InitRTC
 	Push    "R0-R2, R14"
 	SUB	R13, R13, #4
 	MOV	R1, R13
-	ORR     R0, R0, #1:SHL:29
 	TEQ	R0, #RTCAddressPHI
 	BEQ	%FT60
+	ORR     R0, R0, #1:SHL:29
 	MOV	R2, #0			; to write 0 to address ptr
 	STRB	R2, [R1]
 	MOV	R2, #1
@@ -1425,6 +1425,7 @@ InitRTC
 	EOR	R0, R0, #1
 	DebugTX "Forced RTC on"
 60
+	ORR     R0, R0, #1:SHL:29
 	MOV     R2, #0
 	STR	R2, [R1]
 	MOV	R2, #2			; to write 0 to control reg 0
@@ -1451,10 +1452,10 @@ InitCMOSCache	Entry "r1-r6, sb,r12"
 	; Have we got an RTC ?
 	LDR 	R2, =ZeroPage
 	MOV	R4, #0
-	MOV	R0, #RTCAddressPHI
+	MOV	R0, #RTCAddressDAL
 	BL	DummyAccess
 	BVC	%FT13
-	MOV	R0, #RTCAddressDAL
+	MOV	R0, #RTCAddressPHI
 	BL	DummyAccess
 	STRVSB  R4, [R2, #RTCFitted]
 13

@@ -133,7 +133,7 @@ EntryNo_HAL_PCIWriteConfigByte  #       1
 EntryNo_HAL_PCIWriteConfigHalfword #     1
 EntryNo_HAL_PCIWriteConfigWord  #       1
 EntryNo_HAL_PCISpecialCycle     #       1
-EntryNo_HAL_PCISlotNumber       #       1
+EntryNo_HAL_PCISlotTable        #       1
 EntryNo_HAL_PCIAddresses        #       1
 
 EntryNo_HAL_ATAControllerInfo   #       1

@@ -446,6 +446,14 @@ routines (rather than the early bootstrap code in the HAL) can be done.
 
 ????
 
+-- HAL_Reset
+
+This resets the board depending on the value in a1
+ a1 = 0  hard reset and turn the power off (ie.just turn the power off)
+ a1 = 1  hard reset and leave the power on
+ a1 > 1  reserved
+Asking HAL_PlatformInfo will tell you if the hardware allows the power to be turned off by software,if it doesn't then behaviour is per a1 = 1
+
 -- int HAL_Timers(void)
 
 Returns number of timers. Timers are numbered from 0 upwards. Timer 0 must

@@ -915,6 +915,8 @@ MMUon_nol1ptoverlap
         MOV     a1, #4096
         STR     a1, [v8, #Page_Size]
 
+        BL      CountPageTablePages
+
         MOV     a1, #InitIRQWs
         MOV     a2, #0
         MOV     a3, #0
@@ -924,6 +926,24 @@ MMUon_nol1ptoverlap
         B       Continue_after_HALInit
 
         LTORG
+
+CountPageTablePages ROUT
+        MOV     a1, #ZeroPage
+        LDR     a2, =CAM
+        LDR     a3, [a1, #MaxCamEntry]
+        MOV     a1, #0
+        ADD     a3, a3, #1
+        ADD     a4, a2, a3, LSL #3
+10      LDR     ip, [a4, #-8]!
+        ASSERT  (L2PT :AND: &3FFFFF) = 0
+        MOV     ip, ip, LSR #22
+        TEQ     ip, #L2PT :SHR: 22
+        ADDEQ   a1, a1, #4096
+        TEQ     a4, a2
+        BNE     %BT10
+        MOV     a2, #0
+        STR     a1, [a2, #L2PTUsed]
+        MOV     pc, lr
 
 ; int PhysAddrToPageNo(void *addr)
 ;
@@ -1676,7 +1696,7 @@ InitProcVec_FIQ
 InitProcVecsEnd
 
 ;
-; In:  a1 = flags  (only L1_B currently allowed)
+; In:  a1 = flags  (L1_B,L1_C,L1_AP)
 ;      a2 = physical address
 ;      a3 = size
 ; Out: a1 = assigned logical address, or 0 if failed (no room)
@@ -1686,10 +1706,15 @@ InitProcVecsEnd
 ;
 
         ASSERT  L1_B = 1:SHL:2
-MapInFlag_DoublyMapped * 1:SHL:16
+        ASSERT  L1_C = 1:SHL:3
+        ASSERT  L1_AP = 3:SHL:10
+MapInFlag_DoublyMapped * 1:SHL:20
+MapInFlag_APSpecified * 1:SHL:21
 
 RISCOS_MapInIO ROUT
-        Entry   "v1-v5"
+        Entry   "v1-v5,v7"
+        MOV     v7, #L1_B:OR:L1_C
+        ORR     v7, v7, #L1_AP                          ; v7 = user-specifiable flags
         MOV     v5, a1                                  ; v5 = original flags
         MOV     v4, a2                                  ; v4 = original requested address
         ADD     a3, a2, a3                              ; a3 -> end (exclusive)
@@ -1701,12 +1726,16 @@ RISCOS_MapInIO ROUT
         ADDNE   lr, lr, #1
         MOV     a3, lr, LSL #20                         ; round a3 up to a section boundary
 
+        TST     v5, #MapInFlag_APSpecified
+        BICEQ   a1, a1, #L1_AP
+        ORREQ   a1, a1, #L1_APMult * AP_None
+
         ANDS    v5, v5, #MapInFlag_DoublyMapped
         SUBNE   v5, a3, a2                              ; v5 = offset of second mapping or 0
 
         LDR     ip, =ZeroPage
         LDR     a4, =L1PT
-        AND     a1, a1, #L1_B                           ; only allow bufferable as flags option
+        AND     a1, a1, v7                              ; only allow bufferable as flags option
         LDR     v2, =IO                                 ; logical end (exclusive) of currently mapped IO
         LDR     v1, [ip, #IOAllocPtr]                   ; logical start (inclusive)
 
@@ -1719,7 +1748,7 @@ RISCOS_MapInIO ROUT
         MOV     lr, v3, LSR #20                         ; physical address bits
         CMP     lr, a2, LSR #20
         BNE     %BT10                                   ; no address match
-        AND     lr, v3, #L1_B
+        AND     lr, v3, v7
         TEQ     lr, a1
         BNE     %BT10                                   ; no flags match
 
@@ -1733,13 +1762,13 @@ RISCOS_MapInIO ROUT
         MOV     lr, v3, LSR #20                         ; physical address bits
         CMP     lr, a2, LSR #20
         BNE     %BT10                                   ; no address match
-        AND     lr, v3, #L1_B
+        AND     lr, v3, v7
         TEQ     lr, a1
         BNE     %BT10                                   ; no flags match
 
 19
 ;
-; alright, found start of requested IO already mapped, and with required L1_B
+; alright, found start of requested IO already mapped, and with required flags
 ;
         Push    "a2, v1"
 20
@@ -1754,7 +1783,7 @@ RISCOS_MapInIO ROUT
         MOV     lr, v3, LSR #20                        ; physical address bits
         CMP     lr, a2, LSR #20
         BNE     %FT29                                  ; address match failed
-        AND     lr, v3, #L1_B
+        AND     lr, v3, v7
         TEQ     lr, a1
         TEQEQ   v5, #0                                 ; doubly mapped?
         BEQ     %BT20                                  ; address and flags match so far
@@ -1765,7 +1794,7 @@ RISCOS_MapInIO ROUT
         MOV     lr, v3, LSR #20                        ; physical address bits
         CMP     lr, a2, LSR #20
         BNE     %FT29                                  ; address match failed
-        AND     lr, v3, #L1_B
+        AND     lr, v3, v7
         TEQ     lr, a1
         BEQ     %BT20
 29
@@ -1774,7 +1803,7 @@ RISCOS_MapInIO ROUT
 30
         Pull    "a2, v1"
 ;
-; request not currently mapped, only partially mapped, or mapped with wrong L1_B
+; request not currently mapped, only partially mapped, or mapped with wrong flags
 ;
 32
         MOV     ip, #ZeroPage
@@ -1788,7 +1817,6 @@ RISCOS_MapInIO ROUT
         BLS     %FT90
         STR     v1, [ip, #IOAllocPtr]
         ORR     a2, a2, a1
-        ORR     a2, a2, #AP_None * L1_APMult
         ORR     a2, a2, #L1_Section                     ; first L1PT value
 34
         STR     a2, [a4, v1, LSR #(20-2)]
@@ -1910,7 +1938,7 @@ HardwareDeviceAdd_Common
         BHI     %BT11
         STR     r0, [r2]
         MOV     r2, r0
-        MOV     r1, #Service_Device
+        MOV     r1, #Service_Hardware
         MOV     r0, #0
         BL      Issue_Service
         ADDS    r0, r2, #0                              ; exit with V clear
@@ -1948,7 +1976,7 @@ HardwareDeviceRemove_Common
         TEQ     r2, r0
         EXIT    NE                                      ; this device not registered
         MOV     r0, #1
-        MOV     r1, #Service_Device
+        MOV     r1, #Service_Hardware
         BL      Issue_Service
         CMP     r1, #0                                  ; if service call claimed
         CMPEQ   r1, #1:SHL:31                           ; then set V

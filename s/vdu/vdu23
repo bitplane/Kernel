@@ -1282,17 +1282,17 @@ DoSetScreenStart ROUT
 ;
 
 NewScreenStart ROUT
-        LDR     R2, [WsPtr, #VduSprite]         ; test if outputting to sprite
-        TEQ     R2, #0                          ; Z => outputting to screen
+        Push    R14
 
         LDR     R2, [WsPtr, #DisplayScreenStart]
-        STR     R0, [WsPtr, #DisplayScreenStart]
+        BL      SetDisplayScreenStart
+        LDR     R14, [WsPtr, #VduSprite]        ; test if outputting to sprite
+        TEQ     R14, #0                         ; Z => outputting to screen
         MOVNE   PC, R14                 ; if outputting to sprite, don't update
                                         ; Screenstart or cursor addresses
 
         STR     R0, [WsPtr, #ScreenStart]
         SUB     R0, R0, R2                      ; R0 := new-old
-        Push    R14
 AdjustCursorVars
         LDR     R14, [WsPtr, #CursorAddr]
         ADD     R14, R14, R0

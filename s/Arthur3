@@ -1227,7 +1227,7 @@ AlternateLoud
 PrinterBufferFrig
 AlternateQuiet
         Config_NoParm   Quiet,          1, 0, DBTBCMOS, 0
-        Config_Size     RamFsSize,      0, 6, RAMDiscCMOS
+        Config_Size     RamFSSize,      0, 6, RAMDiscCMOS
         Config_Field    Repeat,         0, 7, KeyRepCMOS
         Config_Size     RMASize,        0, 6, RMASizeCMOS
         Config_Size     ScreenSize,     0, 6, ScreenSizeCMOS

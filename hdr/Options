@@ -129,7 +129,7 @@ Japanese16BitSound SETL {TRUE} :LAND: STB
 ChopOffTheGoolies SETL  {FALSE}
 
                 GBLL   ChecksumCMOS
-ChecksumCMOS    SETL  {TRUE}
+ChecksumCMOS    SETL   {TRUE}
 
                 GBLL    SqueezeMods     ; whether squeezed modules are allowed
 SqueezeMods     SETL    {TRUE}
@@ -186,15 +186,15 @@ ShadowROM       SETL    {FALSE}                 ; &FF800000
 Interruptible32bitModes SETL {TRUE}             ;if true, limited 32-bit mode code support (interrupt handler does not assume
                                                 ; 26-bit foreground), also allows faster, 32-bit APCS version of FPEmulator
 
-                  GBLL  EarlierReentrancyInDAShrink ; fix for RAMFS and new FileCore (causes reentrant DA shrink/remove)
-EarlierReentrancyInDAShrink SETL {TRUE}
+                GBLL    EarlierReentrancyInDAShrink
+EarlierReentrancyInDAShrink SETL {TRUE}         ; fix for RAMFS and new FileCore (causes reentrant DA shrink/remove)
 
                 GBLL    OnlyKernelCanAccessHardwareVectors
 OnlyKernelCanAccessHardwareVectors SETL {TRUE}  ; if true, only the Kernel is permitted to write to the hardware vectors
                                                 ; while in 26-bit mode. If false, the whole ROM can (including BASIC
                                                 ; and the Shared C Library - eg any memcpy!)
 
-                 GBLL   LongCommandLines        ; first introduced for Ursula, merged into HAL kernel
+                GBLL   LongCommandLines         ; first introduced for Ursula, merged into HAL kernel
 LongCommandLines SETL   {TRUE}
   [ LongCommandLines
 LongCLISize          * 1024                     ; buffer size for long commands
@@ -289,10 +289,10 @@ mjsSysHeapNodesTrace SETL    {FALSE}
 NoSPSRcorruption SETL   {FALSE}                       ;preserves SPSR_SVC
 
                 GBLL    CheckProtectionLink     ; if true, disallow CMOS RAM changes if link in protected position
-CheckProtectionLink  SETL {TRUE}                ; NB affects Delete/Copy/R/T and 0-9/.
+CheckProtectionLink     SETL {TRUE}             ; NB affects Delete/Copy/R/T and 0-9/.
 
                 GBLL    RMTidyDoesNowt          ; if true, RMTidy does nothing
-RMTidyDoesNowt  SETL    {TRUE} ; should really be "machine has FSLock in ROM"
+RMTidyDoesNowt  SETL    {TRUE}                  ; should really be "machine has FSLock in ROM"
 
                 GBLL    RogerEXEY               ; if true, use Roger's new algorithm for XEigFactor, YEigFactor
 RogerEXEY       SETL    {FALSE}                 ; Marketing don't like it!
@@ -317,12 +317,11 @@ DebugHeaps      SETL    {FALSE}                 ; (may slow things down unaccept
 
 ; ChangeDynamicArea and related options
 
-        GBLL    DebugCDA
-DebugCDA SETL {FALSE}
+                GBLL    DebugCDA
+DebugCDA        SETL    {FALSE}
 
-        GBLL    DebugCDA2
-DebugCDA2 SETL {FALSE}
-
+                GBLL    DebugCDA2
+DebugCDA2       SETL    {FALSE}
 
                 GBLL    StorkPowerSave  ;True => power saving for Stork AND A4
 StorkPowerSave  SETL    MorrisSupport   ;False=> older A4 code only
@@ -355,7 +354,7 @@ GetMessages     SETS    ""
 DebugForcedReset SETL   {FALSE}
 
                 GBLA    ConfiguredLang
-ConfiguredLang  SETA    10                      ; default configured language
+ConfiguredLang  SETA    11                      ; default configured language
 
                 GBLA    FirstUnpluggableModule
 FirstUnpluggableModule SETA 8                   ; Podule, FileSwitch, ResourceFS, Messages, MessageTrans,

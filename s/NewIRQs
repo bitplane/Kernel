@@ -198,8 +198,9 @@ Devices * DefaultIRQ1Vcode_end + 12
 NoInterrupt     * -1
 MaxInterrupts   * 64
 
-        ASSERT  Devices + MaxInterrupts * 12 - DefaultIRQ1Vcode <= DefIRQ1Vspace
+DevicesEnd * Devices + MaxInterrupts * 12
 
+        ASSERT  DevicesEnd - DefaultIRQ1Vcode <= DefIRQ1Vspace
 
  | ; HAL
   [ MorrisSupport
@@ -388,7 +389,7 @@ Devices
         & IRQ
         & 0
 
-
+DevicesEnd
 
 ; Following tables encode the priority of the devices within each register
 ;

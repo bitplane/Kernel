@@ -378,8 +378,12 @@ RMFaster_Code
            MOV R0, #ModHandReason_LookupName
            SWI XOS_Module
            Pull "PC", VS
-           CMP   R3, #ROM
-           BLT   RMFast_notinROM
+           CMP   R3, #ROM                 ; HS if R3 >= ROM
+           BLO   RMFast_notinROM
+ [ :LNOT:ROMatTop
+           CMP   R3, #ROMLimit
+           BHS   RMFast_notinROM
+ ]
            MOV   R1, R3
            LDR   R2, [R1, #-4]
            MOV   R0, #ModHandReason_CopyArea
@@ -832,11 +836,11 @@ FileCommands_Help
 ;          string to print in r0
 
 OneModuleK     ROUT
-        Push  "r2-r6, lr"
+        Push  "r2-r7, lr"
         LDR    R4, [R2, #Module_HC_Table]
         CMP    R4, #0
-        Pull  "r2-r6, PC", EQ       ; no table
-        ORR    R3, R3, #&80000000   ; buffer position ptr and flag
+        Pull  "r2-r7, PC", EQ       ; no table
+        MOV    R7, #&80000000       ; flag
         MOV    R5, #0               ; buffer offset
 
         ADD    R2, R2, R4           ; point at table start.
@@ -861,7 +865,7 @@ OneModuleK     ROUT
         CMP    R4, R1, LSR #24      ; move flags into bottom byte
 79      ADDNE  R2, lr, #16
         BNE    %BT03
-        TST    R3, #&80000000
+        TST    R7, #&80000000
         BEQ    %FT05
         SWI    XOS_NewLine
         SWIVC  XOS_NewLine
@@ -881,8 +885,8 @@ OneModuleK_PrintTitle
         BL     PrintTitle
 77
         MOVVC  r0, r4
-        Pull  "r2-r6, PC", VS
-        BIC    R3, R3, #&80000000
+        Pull  "r2-r7, PC", VS
+        BIC    R7, R7, #&80000000
 05
         SUB    lr, r6, r2
         RSB    r4, r5, #HelpBufferSize
@@ -895,7 +899,7 @@ OneModuleK_PrintTitle
         MOV    r0, r3
         SWI    XOS_PrettyPrint
         SWIVC  XOS_NewLine
-        Pull   "r2-r6,pc",VS
+        Pull   "r2-r7,pc",VS
         MOV    r0, r4
         MOV    r5, #0                   ; start again with empty buffer
 07
@@ -914,8 +918,8 @@ OneModuleK_PrintTitle
 78      CMP    r4, #0
         B      %BT79
 
-06      TST    R3, #&80000000
-        Pull  "r2-r6, PC", NE
+06      TST    R7, #&80000000
+        Pull  "r2-r7, PC", NE
         Push  "R0"
         MOV    R0, #0
         SUB    R5, R5, #1
@@ -923,7 +927,7 @@ OneModuleK_PrintTitle
         MOV    R0, R3
         SWI    XOS_PrettyPrint
         STRVS  r0, [stack]
-        Pull  "R0, r2-r6, PC"
+        Pull  "R0, r2-r7, PC"
 
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -989,7 +993,7 @@ vec_rmasize	#	4
 vec_screensize	#	4
 ss_outputvec    *       &100
 
-Keydef  DCB     "FontSize/K,SpriteSize/K,RamFsSize/K,RMASize/K,ScreenSize/K"
+Keydef  DCB     "FontSize/K,SpriteSize/K,RamFSSize/K,RMASize/K,ScreenSize/K"
         DCB     0
         ALIGN
 
@@ -1050,7 +1054,7 @@ changeR0R1      ROUT
         Push    "R0-R3,LR"
 
         CMP     R1,#0
-        Pull    "R0-R3,PC",LE
+        Pull    "R0-R3,PC",EQ
 
         SWI     XOS_ReadDynamicArea     ; R1 = current size of area
         MOVVC   R3,R1
@@ -1078,11 +1082,17 @@ getK    ROUT
         SWI     XOS_ReadUnsigned
         Pull    "R2-R3,PC",VS
 ;
-        LDRB    R3,[R1]                 ; if terminator is "K" or "k",
+        LDRB    R3,[R1]
         UpperCase R3, R14
-        TEQ     R3,#"K"
+        TEQ     R3,#"K"                 ; if terminator is "K" or "k",
         ADDEQ   R1,R1,#1
         MOVEQ   R2,R2,LSL #10           ; multiply by 1024
+        TEQ     R3,#"M"                 ; if terminator is "M" or "m",
+        ADDEQ   R1,R1,#1
+        MOVEQ   R2,R2,LSL #20           ; multiply by 1048576
+        TEQ     R3,#"G"                 ; if terminator is "G" or "g",
+        ADDEQ   R1,R1,#1
+        MOVEQ   R2,R2,LSL #30           ; multiply by 1073741824
 ;
         LDRB    R14,[R1]                ; check terminator
         RSBS    R14,R14,#" "+1          ; ensure GT set if OK

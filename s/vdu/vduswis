@@ -22,7 +22,7 @@
          |
          LDR     R12, [R11, #VecPtrTab+$vector*4]  ; load vector, leave R11=0
          ]
-        CMP     R12, #&03800000
+        CMP     R12, #&FC000000                    ; fudge
         BCC     $label
         MEND
 

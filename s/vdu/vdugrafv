@@ -156,6 +156,17 @@ CallGraphicsV
         BL      CallVector
         Pull    "r10,r12,pc"
 
+; Corrupts R9-R11
+; returns EQ if acceleration valid
+CheckAcceleration
+        ASSERT  Log2BPP = Log2BPC +4
+        ADD     R9, WsPtr, #Log2BPC
+        LDMIA   R9, {R9, R10}                   ; R9 = Log2BPC; R10 = Log2BPP
+        LDR     R11, [WsPtr, #VduSprite]
+        TEQ     R9, R10                         ; BPC must equal BPP
+        TEQEQ   R11, #0                         ; Must not be redirected
+        MOV     PC, R14
+
  ] ; UseGraphicsV
 
         END

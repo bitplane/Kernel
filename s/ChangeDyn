@@ -46,7 +46,8 @@ AP_RMA          *       0                                       ; user r/w, CB
 AP_Screen       *       0 :OR: DynAreaFlags_NotCacheable :OR: DynAreaFlags_DoublyMapped :OR: DynAreaFlags_NeedsSpecificPages
 AP_Sprites      *       0                                       ; user r/w, CB
 AP_FontArea     *       2                                       ; user none, CB
-AP_RAMDisc      *       2 :OR: DynAreaFlags_NotCacheable        ; user none, ~CB
+AP_RAMDisc      *       2 :OR: DynAreaFlags_NotCacheable        ; user none, ~CB (poor performance for current StrongARMs)
+AP_RAMDisc_SA   *       2                                       ; user none,
 AP_Duff         *       2 :OR: DynAreaFlags_NotCacheable :OR: DynAreaFlags_NotBufferable ; user none, ~C~B
 AP_FreePool     *       2 :OR: DynAreaFlags_NotCacheable        ; user none, ~CB
 AP_CursorChunk  *       1 :OR: DynAreaFlags_NotCacheable :OR: DynAreaFlags_NotBufferable :OR: PageFlags_Unavailable
@@ -2187,11 +2188,15 @@ CheckForOverlappingAreas Entry "r0-r5"
 FixedAreasTable                                         ; table of fixed areas (address, size)
  [ HAL
         &       0,                      AplWorkMaxSize  ; application space
+ [ CursorChunkAddress < IO
         &       CursorChunkAddress,     64*1024                 ; 32K for cursor, 32K for "nowhere"
+ ]
+ [ ROM < IO
  [ OSROM_ImageSize > 8192
         &       &03800000,              OSROM_ImageSize*1024   ; ROM
  |
         &       &03800000,              8*1024*1024            ; ROM
+ ]
  ]
         &       IO,                     &FFFFFFFF-IO    ; Kernel workspace (code will also check dynamic value IOAllocPtr)
  |
@@ -2428,6 +2433,11 @@ AllocateBackingLevel2 Entry "r0-r8,r11"
         Push    "r2,r4,r5"
         BL      MoveCAMatR0toR3                         ; else move page from end of free pool to r3
         Pull    "r2,r4,r5"
+
+        MOV     lr, #ZeroPage
+        LDR     r6, [lr, #L2PTUsed]
+        ADD     r6, r6, #4096
+        STR     r6, [lr, #L2PTUsed]
 
 ; now update 4 words in L1PT (corresponding to 4M of address space which is covered by the 4K of L2)
 ; and point them at the physical page we've just allocated (r1!-4 will already hold physical address+bits now!)
@@ -2737,6 +2747,9 @@ InitDynamicAreas Entry "r0-r8,r11,r12"
         LDMIA   r0, {r0-r8}
         STMIA   lr, {r0-r8}
         MOV     r0, #0
+ [ FreePoolAddress < SysHeapStart
+        MOV     lr, #FreePoolDANode             ; cf comments above/below - what was old code? KJB
+ ]
         STR     lr, [r0, #DAList]               ; store pointer to 1st node on list (either free pool or sys heap)
 
   [ ChocolateSysHeap
@@ -2936,6 +2949,8 @@ ChangeDynamicSWI ROUT
         TEQ     r10, #0
         LDREQ   r10, [r10, #CDASemaphore]       ; now also check whether ChangeDynamicArea is already threaded
         TEQEQ   r10, #0
+        LDREQB  r10, [r10, #VRAMRescue_control] ; also check that wimp has not locked Free Pool
+        TSTEQ   r10, #VRRc_wimp_lock
         BNE     failure_IRQgoing
         MOV     r10, #1
         STR     r10, [r10, #CDASemaphore-1]     ; store non-zero value in CDASemaphore, to indicate we're threaded

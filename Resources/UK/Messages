@@ -77,7 +77,7 @@ ChunkNotRM:Podule chunk is not a relocatable module
 ModulePostfix:'%%' in module title
 NotMod:This is not a relocatable module
 BadRMHeaderField:Illegal header field in module
-RMNot32bit:Module is not 32-bit compatible
+RMNot32bit:Module '%0' is not 32-bit compatible
 IncarnationNotFound:Incarnation not found
 RMNotFoundInROM:Module is not in ROM
 NumbTooBig:Number too big
@@ -176,3 +176,4 @@ SA1110:SA-1110 Processor
 920T:ARM 920T Processor
 922T:ARM 922T Processor
 X80200:80200 Processor
+X80321:80321 Processor

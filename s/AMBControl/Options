@@ -33,7 +33,7 @@ AMBPhysBinMask     * &7F
 
 ApplicationStart  * (32*1024)
 
-AbsMaxAppSize     * (28*1024*1024)                   ;28 Mb application space limit for RISC OS
+AbsMaxAppSize     * AplWorkMaxSize                   ;application space limit for RISC OS
 AbsMaxAppPages    * (AbsMaxAppSize:SHR:Log2PageSize) ;and same limit expressed in Pages
 
   [ ChocolateAMB

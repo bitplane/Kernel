@@ -424,8 +424,9 @@ KFlag       *  1:SHL:9
 SFlag       *  1:SHL:10
 EFlag       *  1:SHL:11
 GFlag       *  1:SHL:12
-UnsetFlag   *  1:SHL:31
-PresentFlag * -1 :AND::NOT:UnsetFlag
+UnsetBase   *  &FF000000   ; only if all bits set (cannot be RAM address)
+
+PresentFlag *  &7FFFFFFF
 AbsentFlag  *  0
 
 ; Type flags
@@ -442,7 +443,7 @@ RdArgs_SWICode ROUT
       Push   "R4, R8, R9, lr"
       MOV     R10, R2             ; R10 points at next available word
       MOV     R12, R0
-01    MOV     R11, #UnsetFlag
+01    MOV     R11, #UnsetBase
       SUBS    R3, R3, #4
       BMI     %FT99               ; insufficient space
       STR     R11, [R10], #4
@@ -496,8 +497,8 @@ RdArgs_SWICode ROUT
 20    CMP     R11, R8
       BEQ     %FT98               ; no more positional args
       LDR     R12, [R11], #4
-      TST     R12, #UnsetFlag
-      BEQ     %BT20
+      CMP     R12, #UnsetBase
+      BLO     %BT20
       TST     R12, #KFlag :OR: SFlag
       BNE     %BT20
       SUB     R11, R11, #4
@@ -513,8 +514,8 @@ RdArgs_SWICode ROUT
 30    CMP     R12, R8
       BEQ     %FT31
       LDR     R11, [R12], #4
-      TST     R11, #UnsetFlag
-      BEQ     %BT30
+      CMP     R11, #UnsetBase
+      BLO     %BT30
       TST     R11, #AFlag
       BNE     %FT98          ; bum args error
       MOV     R11, #AbsentFlag
@@ -575,8 +576,8 @@ RdItem    ROUT
       MRS    R12, CPSR
       Push   R12            ; save EQ/NE
       LDR    R12, [R2, R4, LSL #2]
-      TST    R12, #UnsetFlag
-      BNE    %FT34
+      CMP    R12, #UnsetBase
+      BHS    %FT34
       ADR    R0, ErrorBlock_ArgRepeated
     [ International
       BL     TranslateError

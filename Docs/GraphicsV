@@ -30,7 +30,7 @@ Update pointer
 
 Set DAG
   R4 = 6
-  R0 = DAG
+  R0 = DAG (0 = display init, 1 = base, 2 = limit, 3 = vdu init)
   R1 = physical address
 
 Vet mode (reserved)
@@ -76,4 +76,36 @@ Read palette entry
   R2 = palette index
 Out:
   R1 = palette updated
+
+Render
+  R4 = 13
+  R0 = flags
+         bit 0 = synchronise
+         bit 1 = synchronise if unclaimed
+  R1 = operation
+  R2 -> parameter block
   
+  
+  
+  
+  
+Render calls:
+
+  R1 = 0   NOP
+  no parameters (R2  undefined) - NOP
+   
+  R1 = 1   Copy rectangle
+  R2+0 = source left
+  R2+4 = source bottom
+  R2+8 = dest left
+  R2+12 = dest bottom
+  R2+16 = width-1
+  R2+20 = height-1
+  
+  
+  R1 = 2   Fill rectangle
+  R2+0 = left
+  R2+4 = top
+  R2+8 = right
+  R2+12 = bottom
+  R2+16 -> OraEor block (on a 64-byte boundary)

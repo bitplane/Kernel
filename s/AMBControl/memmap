@@ -56,7 +56,7 @@
 ;
 ; entry: r0 = aborting address (data address for data abort, instruction address
 ;        for prefetch abort), r1-r7 trashable, no stack
-;        r1 = 1 for prefetch abort, 0 for data abort
+;        r2 = 1 for prefetch abort, 0 for data abort
 ;        FSR valid for data aborts, unpredictable for prefetch aborts
 ; exit:  r0 = non-zero (NE status) if abort was expected and fixed up, zero (EQ status) if not
 ;        FAR,FSR,SPSR_abt,lr_abt preserved
@@ -67,40 +67,40 @@ AMB_LazyFixUp ROUT
         LDR     r12,[r12]
         CMP     r12,#0
         BEQ     %FT90                                    ;not initialised!
-        LDR     r2,AMBFlags
-        TST     r2,#AMBFlag_LazyMapIn_disable :OR: AMBFlag_LazyMapIn_suspend
+        LDR     r1,AMBFlags
+        TST     r1,#AMBFlag_LazyMapIn_disable :OR: AMBFlag_LazyMapIn_suspend
         BNE     %FT90                                    ;not active
-        LDR     r2,AMBMappedInNode
-        CMP     r2,#0
+        LDR     r1,AMBMappedInNode
+        CMP     r1,#0
         BEQ     %FT90                                    ;no current node
         ARM_read_FSR r6                                  ;hang onto FSR in case we have to preserve it
-        TEQ     r1,#1                                    ;if data abort
+        TEQ     r2,#1                                    ;if data abort
         ANDNE   r3,r6,#&F
         TEQNE   r3,#7                                    ; and not a page translation fault
         BNE     %FT20                                    ; then not a lazy abort (and FAR may be invalid anyway)
-        LDR     r2,[r2,#AMBNode_Npages]
+        LDR     r2,[r1,#AMBNode_Npages]
         SUBS    r0,r0,#ApplicationStart
-        BMI     %FT20                                    ;abort not in current app space
+        BLO     %FT20                                    ;abort not in current app space
         MOV     r0,r0,LSR #Log2PageSize                  ;address now in terms of pages from ApplicationStart
-        CMP     r2,r0
-        BLS     %FT20                                    ;abort not in current app space
+        CMP     r0,r2
+        BHS     %FT20                                    ;abort not in current app space
 ;
 ; check/update the MappedIn bitmap
 ;
         ADR     r2,AMBMappedInRegister
+        MOV     r5,#1
         ADD     r2,r2,r0,LSR #5-2
         BIC     r2,r2,#3                                 ;r2 -> bitmap word affected
         AND     r3,r0,#31
-        MOV     r5,#1
         MOV     r5,r5,LSL r3                             ;mask for bit affected in bitmap word
         LDR     r3,[r2]
+        LDR     r4,AMBMappedInNpages                     ;count it
         TST     r3,r5                                    ;if page already mapped in, not a lazy abort
         BNE     %FT20
         ORR     r3,r3,r5                                 ;ok, mark that we are going to map this page in
         STR     r3,[r2]
-        LDR     r2,AMBMappedInNpages                     ;count it
-        ADD     r2,r2,#1
-        STR     r2,AMBMappedInNpages
+        ADD     r4,r4,#1
+        STR     r4,AMBMappedInNpages
 ;
 ; now map in the the page that went pop
 ;

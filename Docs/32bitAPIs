@@ -14,6 +14,18 @@ the top bits of addresses are liable to fail. This document summarises
 API changes to cover this.
 
 
+General notes
+-------------
+A number of APIs, particularly in the Window Manager, allow registers or
+other values to be a either be a pointer or <= 0. These APIs are being
+changed to only accept -1 or 0 as a non-pointer value.
+
+Also, some APIs are documented as only accepting 0 as a non-pointer value,
+such as the scaling factors in OS_SpriteOp 52, but actually treat any
+negative value as a non-pointer; these are being tightened up to match
+the documentation.
+
+
 OS_ReadLine
 -----------
 In existing OSes, R0 is interpreted as a 26-bit address, with 6 flag bits, 4
@@ -49,8 +61,9 @@ handler:
 Because of the way ReadLineV operates, any OS_ReadLine32 SWI on a 26-bit
 OS will return an error if R0 > 64MB.
 
-When using either SWI, applications for existing 26-bit OSes should ensure that the buffer
-is in a low address - eg allocated in the RMA or application space.
+When using either SWI, applications for existing 26-bit OSes should ensure
+that the buffer is in a low address - eg allocated in the RMA or application
+space.
 
 
 OS_SubstituteArgs

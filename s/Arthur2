@@ -838,7 +838,7 @@ GSTRANS ROUT                    ; enables interrupts
         ADD      R5, R5, R1                 ; 1st byte we can't write to.
         SWI      XOS_GSInit
 01      CMP      R3, R5
-        BGE      %FT03                    ; no rheum for byte.
+        BHS      %FT03                    ; no rheum for byte.
         SWI      XOS_GSRead
         BVS      %FT02                    ; bad string
         STRB     R1, [R3], #1

@@ -7,7 +7,7 @@
         GBLS    Date
         GBLA    OSVersionID
 
-OSVersionID SETA &A9
+OSVersionID SETA &AA
 
         [ STB
 Version SETA    Module_Version
@@ -15,8 +15,8 @@ VString SETS    Module_MajorVersion
 Date    SETS    Module_Date      ; version for STB/NC OS
         |
 Version SETA    500
-VString SETS    "5.00 alpha"
-Date    SETS    "03 Oct 2002"    ; version for RISC OS on desktop computers
+VString SETS    "5.00"
+Date    SETS    "28 Nov 2002"    ; version for RISC OS on desktop computers
         ]
 
         END

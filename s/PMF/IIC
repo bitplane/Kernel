@@ -831,9 +831,7 @@ IIC_Busy
         B       IIC_ExitError
 
 IICBusy_Error
-        DCD     &12345 ; Fix me
-        =       "IIC busy", 0
-        ALIGN
+        MakeErrorBlock  IIC_Busy
 
 IIC_Error
 	MOV	R0, #0
@@ -842,9 +840,7 @@ IIC_Error
         B       IIC_ExitError
 
 IICError_Error
-        DCD     &12345 ; Fix me
-        =       "IIC error", 0
-        ALIGN
+        MakeErrorBlock  IIC_Error
 
 interrupt_protected_end
 
@@ -882,6 +878,7 @@ IICAbort
      iicBL      TXAck
      iicBL      Stop
  ]
+        ADD     R13,R13,#&80
         Pull    "R7,R8,R9,R11,R12"
         MOV     PC,R14
 

@@ -671,23 +671,34 @@ DoBreakKey ROUT
         MOVNE   PC, R14                         ; no, then return
 
 ; This entry point is used by new SWI OS_Reset (TMD 06-Jan-94)
+; If it's break on the keyboard R0 <> the magic 'power off' word,when '&OFF' is
+; passed in R0 the power will be turned off assuming the hardware supports it
 
 PerformReset
 
-; offer the pre-reset service
-
+        Push    R0
         WritePSRc F_bit+I_bit+SVC_mode, R14
 
-; Ensure any CMOS operation aborted
-
-        BL      IICAbort
-
-        MOV     R1, #Service_PreReset
+        BL      IICAbort                        ; Ensure any CMOS operation aborted
+        MOV     R1, #Service_PreReset           ; offer the pre-reset service
         IssueService
 
         WritePSRc F_bit+I_bit+SVC_mode, R14     ; just in case!
+        Pull    R0
 
-        B       CONT_Break
+        LDR     R1, PowerDownMagic
+        TEQ     R0, R1
+        BNE     %FT15
+        [ :LNOT: HAL
+        LDR     r0, =&83900000                  ; Address in IOMD to force power off
+        LDR     r0, [r0]
+        |
+        AddressHAL
+        MOV     a1, #0
+        CallHAL HAL_Reset
+        ]
+15
+        B       CONT_Break                      ; If we can't turn the power off,we may end up back here anyway
         |
         MOV     PC, R14                         ; do nowt
         ]
@@ -695,6 +706,8 @@ PerformReset
 EscList
         =       1, &1B
         ALIGN
+PowerDownMagic
+        DCD     &46464F26
 
 ; *****************************************************************************
 ;

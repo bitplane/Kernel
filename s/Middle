@@ -723,10 +723,10 @@ UNDEF1
         LDR     R1, [R0, #15*4]
         Push    R1
 
+       [ :LNOT:No26bitCode
         LDR     R0, BranchThroughZeroInstruction ; load the B RESET1 instr.
         STR     R0, [R1, -R1]           ; and store it at zero again
 
-       [ :LNOT:No26bitCode
         BIC     R14, R14, #ARM_CC_Mask
        ]
         LDR     R0, =GeneralMOSBuffer+128 ; so can do deviant sharing !
@@ -865,8 +865,9 @@ ABORTD ROUT
 ADDREX ROUT
 ; This really can't happen. Honest
  [ No26bitCode
-        MSR     CPSR_c, #F32_bit :OR: I32_bit :OR: SVC32_mode ; FIQ off too
-        STR     R14, [R0, -R0]
+        ; ??? in ABT32 mode, with a stack?
+        Push    R14
+        SETPSR  F_bit :OR: I_bit, R14
  |
         TEQP    pc, #F_bit :OR: I_bit :OR: SVC_mode ; FIQ off too
         STR     R14, [R0, -R0]
@@ -874,26 +875,35 @@ ADDREX ROUT
         MOV     R14, #0
         LDR     R14, [R14, #ExceptionDump]
         STMIA   R14!, {R0-R7}
-        MOV     R0, R14
  [ No26bitCode
         MRS     R1, SPSR
         STR     R1, [R14, #(16-8)*4]            ; save PSR
-        LDR     R14, [R0, -R0]
-        STR     R14, [R14, #(15-8)*4]
+        Pull    R0
+        STR     R0, [R14, #(15-8)*4]
  ]
+        MOV     R0, R14
         BL      DumpyTheRegisters
 
         MakeErrorBlock AddressException
 
 
 ; Can branch through zero in any mode
+; We go through a trampoline which stores R1 and R14 (at R14 on entry)
 
+Branch0_NoTrampoline_DummyRegs
+        &       &DEADDEAD, &DEADDEAD
 RESET1 ROUT
+Branch0_NoTrampoline
+        ADR     R14, Branch0_NoTrampoline_DummyRegs
+Branch0_FromTrampoline
 
-        STR     R1, [R0, -R0]
         MOV     R1, #0
         LDR     R1, [R1, #ExceptionDump]
-        STMIA   R1, {R0-R14}
+        STMIA   R1, {R0-R13}
+        LDR     R0, [R14, #0]
+        STR     R0, [R1, #1*4]
+        LDR     R0, [R14, #4]
+        STR     R0, [R1, #14*4]
  [ XScaleJTAGDebug
         MRS     R0, CPSR
         AND     R0, R0, #&1F
@@ -903,8 +913,7 @@ RESET1 ROUT
         LDR     R0, [R13, #ProcessorFlags]
         ORR     R0, R0, #CPUFlag_XScaleJTAGconnected
         STR     R0, [R13, #ProcessorFlags]
-        LDR     R0, [R1, #0]
-        LDR     R1, [R0, -R0]
+        LDMIA   R1, {R0, R1}
         B       DebugStub
 20
  ]
@@ -922,18 +931,19 @@ RESET1 ROUT
         LDR     R1, [R1, #ExceptionDump]
         STR     R0, [R1, #15*4]
  ]
-        LDR     R0, [R0, -R0]
-        STR     R0, [R1, #1*4]
+        MOV     R0, #0
         SWI     XOS_EnterOS
 
         BL      UNDEF1
         MakeErrorBlock BranchThrough0
 
+ [ :LNOT: No26bitCode
 BranchThroughZeroInstruction
  [ ProcessorVectors
         LDR     PC, .+ProcVec_Branch0
  |
-        B       .+(RESET1-0)
+        B       .+Branch0_Trampoline
+ ]
  ]
 
  [ XScaleJTAGDebug
@@ -1786,39 +1796,44 @@ MachineAddressNVRAMError
         CMP     r0,#-1
         BEQ     %FT66
         CMP     r0,#osri6_maxvalue
-        MOVHI   r0,#0
         LDRLS   r0,[r3,r0,LSL #2]
+        MOVHI   r0,#0
         STR     r0,[r2],#4
         B       %BT62
 64
         CMP     r2,#osri6_maxvalue
-        MOVHI   r2,#0
         LDRLS   r2,[r3,r2,LSL #2]
+        MOVHI   r2,#0
         STR     r2,[sp,#2*4]
 66
         Pull    "r0-r3"
         ExitSWIHandler
 
 osri6_table
-    DCD  CamEntriesPointer        ;0
-    DCD  MaxCamEntry              ;1
-    DCD  PageFlags_Unavailable    ;2
-    DCD  PhysRamTable             ;3
-    DCD  0                        ;4 (was ARMA_Cleaner_flipflop, no longer exists in HALised kernel)
-    DCD  TickNodeChain            ;5
-    DCD  ROMModuleChain           ;6
-    DCD  DAList                   ;7
-    DCD  AppSpaceDANode           ;8
-    DCD  Module_List              ;9
-    DCD  ModuleSHT_Entries        ;10
-    DCD  ModuleSWI_HashTab        ;11
-    DCD  IOSystemType             ;12
-    DCD  L1PT                     ;13
-    DCD  L2PT                     ;14
-    DCD  UNDSTK                   ;15
-    DCD  SVCSTK                   ;16
-    DCD  SysHeapStart             ;17
-osri6_maxvalue * 17
+    DCD  CamEntriesPointer                            ;0
+    DCD  MaxCamEntry                                  ;1
+    DCD  PageFlags_Unavailable                        ;2
+    DCD  PhysRamTable                                 ;3
+    DCD  0                                            ;4 (was ARMA_Cleaner_flipflop)
+    DCD  TickNodeChain                                ;5
+    DCD  ROMModuleChain                               ;6
+    DCD  DAList                                       ;7
+    DCD  AppSpaceDANode                               ;8
+    DCD  Module_List                                  ;9
+    DCD  ModuleSHT_Entries                            ;10
+    DCD  ModuleSWI_HashTab                            ;11
+    DCD  IOSystemType                                 ;12
+    DCD  L1PT                                         ;13
+    DCD  L2PT                                         ;14
+    DCD  UNDSTK                                       ;15
+    DCD  SVCSTK                                       ;16
+    DCD  SysHeapStart                                 ;17
+    DCD  JTABLE-SWIRelocation                         ;18 - relocated base of OS SWI despatch table
+    DCD  DefaultIRQ1V+(Devices-DefaultIRQ1Vcode)      ;19 - relocated base of IRQ device head nodes
+    DCD  DefaultIRQ1V+(DevicesEnd-DefaultIRQ1Vcode)   ;20 - relocated end of IRQ device head nodes
+    DCD  IRQSTK                                       ;21 - top of the IRQ stack
+    DCD  SoundWorkSpace                               ;22 - workspace (8K) and buffers (2*4K)
+osri6_maxvalue * (.-4-osri6_table) :SHR: 2
 
 
 ; ReadSysInfo(7)  - read 32-bit Abort information for last unexpected abort
@@ -1833,9 +1848,8 @@ osri6_maxvalue * 17
 70
         Push    "r0"
         LDR     r0, =Abort32_dumparea
+        LDMIA   r0, {r2, r3}
         LDR     r1, [r0,#2*4]
-        LDR     r2, [r0]
-        LDR     r3, [r0,#4]
         Pull    "r0"
         ExitSWIHandler
 
@@ -1866,14 +1880,19 @@ osri6_maxvalue * 17
 ;     0     = Podule expansion card(s)
 ;     1     = PCI expansion card(s)
 ;     2     = additional processor(s)
-;     3     = auto power off
+;     3     = software power off
 ;     4..31 reserved (currently undefined)
 ;
 80
  [ HAL
+        Push    "r9,r14"
+        AddressHAL
+        SUB     sp, sp, #8
+        ADD     a2, sp, #0
+        ADD     a3, sp, #4
+        CallHAL HAL_PlatformInfo
+        Pull    "a2,a3,r9,r14"
         MOV     r0, #5
-        MOV     r1, #0
-        MOV     r2, #0
         ExitSWIHandler
  |
         Push    "r3-r5"

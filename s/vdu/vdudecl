@@ -54,6 +54,7 @@ PhysCursorStartAdr * CursorSoundPhysRAM
 HALDAG_VInit   *       0
 HALDAG_VStart  *       1
 HALDAG_VEnd    *       2
+HALDAG_VRender *       3
 
 
  [ ModeSelectors

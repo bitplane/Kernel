@@ -242,20 +242,21 @@ UNDStackSize        *   8*1024
 KbuffsMaxSize       *  64*1024
 DCacheCleanSize     * 256*1024  ;should be multiple of 64k
 
-AplWorkMaxSize      * &01C00000 ; 28M - temporary (need to decide this at boot time)
+AplWorkMaxSize      * &20000000 ; 512M - temporary (need to decide this at boot time)
 ;ScreenEndAdr        * &24000000 ; temporary - run time allocate
-FreePoolAddress     * &28000000 ; ditto
 
-RMAAddress          * &02100000 ; temporary - run time allocate
+RMAAddress          * AplWorkMaxSize ; temporary - run time allocate?
 ScreenMaxSize       * 480*1024
 
-RMAMaxSize          * &01700000 ; temporary - should be max
+RMAMaxSize          * &10000000 ; 256M
 
+FreePoolAddress     * RMAAddress + RMAMaxSize
 IOLimit             * &BA000000 ; initial lower limit on room for IO space (DA creation may move limit up)
 IO                  * &FA000000 ; works downwards
 HALWorkspace        * &FA000000
+HALWorkspaceSpace   * &00100000
 IRQStackAddress     * &FA100000
- [ {FALSE}
+ [ {TRUE}
 SVCStackAddress     * &FA200000
  |
 SVCStackAddress     * &01C00000
@@ -265,14 +266,14 @@ UNDStackAddress     * &FA400000
 PhysicalAccess      * &FAE00000
 DCacheCleanAddress  * &FAF00000 ; eg. for StrongARM, 256k of space, up to FAF40000
 KbuffsBaseAddress   * &FAF40000 ; kernel buffers for long command lines, size KbuffsMaxSize
- [ {FALSE}
+ [ {TRUE}
 CursorChunkAddress  * &FAFF0000
  |
 CursorChunkAddress  * &01F00000
  ]
 L2PT                * &FB000000
 L1PT                * &FB400000
- [ {FALSE}
+ [ {TRUE}
 SysHeapChunkAddress * &FB404000
 SysHeapAddress      * SysHeapChunkAddress
 SysHeapMaxSize      * &FB800000 - SysHeapAddress
@@ -282,6 +283,7 @@ SysHeapAddress      * SysHeapChunkAddress
 SysHeapMaxSize      * &001F8000
  ]
 CAM                 * &FB800000
+CAMspace            * 8*1024*1024 ; enough for 4GB of RAM
 
 IRQSTK              * IRQStackAddress + IRQStackSize
 ABTSTK              * ABTStackAddress + ABTStackSize
@@ -1082,6 +1084,16 @@ SyncCodeA_sema  #       1       ; re-entrancy semaphore for SynchroniseCodeAreas
  ! 0, "SyncCodeA_sema (byte) at ":CC::STR:(SyncCodeA_sema)
  ]
                ]
+; [ this was used on Phoebe as described below, now only used for Wimp free pool lock ]
+; word controlling rescue of VRAM that is not used by screen (and sorting into bottom of free pool) - VRAM is slower than SDRAM for Phoebe.
+; word organised as 3 fields - control field (byte) is not written by interrupt routine, so can be safely manipulated by foreground with IRQs enabled
+VRAMRescue_control    # 1            ; control bits manipulated by foreground, read by interrupt driven rescuer
+                                     ; Bit fields of VRAMRescue_control (VRRc_...) defined as follows:
+                                     ;
+VRRc_disable            * &01        ;   control bit  0      slow page rescue from Free Pool disabled completely, if set (disabled for no VRAM)
+VRRc_suspend            * &02        ;   control bit  1      slow page rescue suspended by outside agent, if set
+VRRc_wimp_lock          * &04        ;   control bit  2      slow page rescue suspended because Wimp_ClaimFreeMemory has claimed free pool, if set
+                                     ;   control bits 3..7   reserved (should be 0)
 
                 AlignSpace 4
 Oscli_CmdHashSum        # 4          ;for hashed command lookup
@@ -1133,6 +1145,7 @@ DRAMPhysTableSize *     (PhysRamTableEnd-DRAMPhysAddrA) / 8
 
  [ HAL
 VRAMFlags       #       4       ; Flags of VRAM block (from HAL's AddRAM call)
+L2PTUsed        #       4       ; Amount of memory used for L2PT
  |
 VRAMSize        #       4       ; Amount of VRAM (in bytes) (may be more than 2M) (at &200 last time I checked)
 VideoBandwidth  #       4       ; video bandwidth in bytes/sec
@@ -1193,6 +1206,16 @@ DCache_IndexSegStart     #  4
 DCache_RangeThreshold    #  4
 
 ProcessorArch            #  1
+ ]
+IOSystemType             #  1   ; 0 => old I/O subsystem, 1 => IOEB+82C710 system, 2..255 => ?
+ProcessorType            #  1   ; Processor type (handles 600 series onwards)
+                AlignSpace
+ProcessorFlags           #  4    ; Processor flags (IMB, Arch4 etc)
+ [ :DEF: ShowWS
+ ! 0, "ProcessorType  at  ":CC::STR:(ProcessorType)
+ ! 0, "ProcessorFlags at  ":CC::STR:(ProcessorFlags)
+ ]
+ [ HAL
 
                 AlignSpace
 
@@ -1216,17 +1239,6 @@ Proc_MMU_ChangingUncachedEntries  #       4
 
  ]
 
-IOSystemType    #       1       ; 0 => old I/O subsystem, 1 => IOEB+82C710 system, 2..255 => ?
-
- [ StrongARM
-ProcessorType   #       1       ; Processor type (handles 600 series onwards)
-                AlignSpace
-ProcessorFlags  #       4       ; Processor flags (IMB, Arch4 etc)
- [ :DEF: ShowWS
- ! 0, "ProcessorType  at  ":CC::STR:(ProcessorType)
- ! 0, "ProcessorFlags at  ":CC::STR:(ProcessorFlags)
- ]
- ]
 
 IOAllocPtr      #       4               ; current lowpoint of mapped I/O space (also upper limit on DAs)
 IOAllocLimit    #       4               ; current lowest allowed I/O space (DA creation may move this up)
@@ -1769,13 +1781,9 @@ SPARE_oldCursorSpace    |#|     &200            ; padding to avoid changing expo
 
 ; SWI despatcher
 
-Export_BranchToSWIExit         |#|     4
-        ASSERT  Export_BranchToSWIExit =  BranchToSWIExit
-        ASSERT ?Export_BranchToSWIExit = ?BranchToSWIExit
+BranchToSWIExit         |#|     4
 
-Export_SvcTable                |#|     &400
-        ASSERT  Export_SvcTable =  SvcTable
-        ASSERT ?Export_SvcTable = ?SvcTable
+SvcTable                |#|     &400
 
  [ :LNOT: HAL32
  ASSERT SvcTable = &01F033FC ; Required for SVC table pokers, 1.20 compatible
@@ -1860,17 +1868,13 @@ IRQSTK                  #       0       ; Overflow will give abort
  ]
 
                        #       SVCStackSize    ; svcstk size. Overflow will give abort
-Export_SVCSTK          #       0
-        ASSERT  Export_SVCSTK =  SVCSTK
-        ASSERT ?Export_SVCSTK = ?SVCSTK
+SVCSTK                 #       0
 
  [ HAL32
-Export_SysHeapStart    *       SysHeapAddress
+SysHeapStart           *       SysHeapAddress
  |
-Export_SysHeapStart    #       0
+SysHeapStart           #       0
  ]
-        ASSERT  Export_SysHeapStart =  SysHeapStart
-        ASSERT ?Export_SysHeapStart = ?SysHeapStart
 
 
 ; *****************************************************************************

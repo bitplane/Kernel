@@ -225,8 +225,8 @@ CmosScreenWillDo
     ! 0, "*** DUMMY CONT_Break, soft breaks/resets will not work yet with HAL"
 CONT_Break
         AddressHAL
+        MOV     a1, #1
         CallHAL HAL_Reset
-    B    CONT_Break
   ]
 
 
@@ -917,20 +917,9 @@ not_full_reset
         BL      Write
 
  [ HAL
-        AddressHAL
-        CheckHAL HAL_TouchscreenType
-        BEQ     dont_program_mousetype
-        CallHAL HAL_TouchscreenType
-        TST     R0, #&FF
-        BEQ     dont_program_mousetype
-
         MOV     R0, #MouseCMOS
-        MOV     R1, #6 ; To be assigned
+        MOV     R1, #PointerDevice_USB
         BL      Write
-
-        ! 0, "Sort out 16-bit sound + PS/2 mouse CMOS reset selection"
-
-dont_program_mousetype
 
 ; set print and sound CMOS (16bit sound)
         MOV     R0, #TutuCMOS
@@ -1522,6 +1511,20 @@ WallopDuffOnes
 
         BL      InitDynamicAreas
 
+; RMA
+        Push    "r0-r12"
+        MOV     r1, #ChangeDyn_RMA      ; Area number
+        MOV     r2, #4096               ; Initial size
+        MOV     r3, #RMAAddress         ; Base address
+        MOV     r4, #AP_RMA             ; Area flags
+        MOV     r5, #RMAMaxSize         ; Maximum size
+        ADRL    r6, DynAreaHandler_RMA  ; Pointer to handler
+        MOV     r7, r3                  ; Workspace ptr points at area itself
+        ADRL    r8, AreaName_RMA        ; Title string - node will have to be reallocated
+                                        ; after module init, to internationalise it
+        BL      DynArea_Create          ; ignore any error, we're stuffed if we get one!
+        Pull    "r0-r12"
+
 ; Screen
         Push    "r0-r12"
         MOV     r0, #ScreenSizeCMOS
@@ -1545,20 +1548,6 @@ WallopDuffOnes
         ADRL    r8, AreaName_Screen     ; area name
         BL      DynArea_Create
         STR     r3, [r7, #ScreenEndAddr]
-        Pull    "r0-r12"
-
-; RMA
-        Push    "r0-r12"
-        MOV     r1, #ChangeDyn_RMA      ; Area number
-        MOV     r2, #4096               ; Initial size
-        MOV     r3, #RMAAddress         ; Base address
-        MOV     r4, #AP_RMA             ; Area flags
-        MOV     r5, #RMAMaxSize         ; Maximum size
-        ADRL    r6, DynAreaHandler_RMA  ; Pointer to handler
-        MOV     r7, r3                  ; Workspace ptr points at area itself
-        ADRL    r8, AreaName_RMA        ; Title string - node will have to be reallocated
-                                        ; after module init, to internationalise it
-        BL      DynArea_Create          ; ignore any error, we're stuffed if we get one!
         Pull    "r0-r12"
 
   [ LongCommandLines :LAND: (:LNOT: HAL)
@@ -1603,8 +1592,16 @@ WallopDuffOnes
 
         MOV     r1, #ChangeDyn_RamFS    ; Area number
         MOV     r3, #-1                 ; Base address dynamic
-        MOV     r4, #AP_RAMDisc         ; Area flags
-        MOV     r5, #16*1024*1024       ; Limit maximum size to 16MB until JSR fixes FileCore
+        ARM_read_ID r4
+        AND     r4, r4, #&F000
+        CMP     r4, #&A000
+        MOVEQ   r4, #AP_RAMDisc_SA      ; Area flags, if StrongARM  (introduced for Ursula)
+        MOVNE   r4, #AP_RAMDisc         ; Area flags
+      [ {FALSE}
+        MOV     r5, #16*1024*1024       ; Limit maximum size to 16MB while fiddling with FileCore
+      |
+        MOV     r5, #128*1024*1024      ; A trade off between nice big disc and complete waste of address space
+      ]
         ADRL    r6, DynAreaHandler_RAMDisc ; Pointer to handler
         MOV     r7, #-1                 ; Use base address as workspace ptr
         ADRL    r8, AreaName_RAMDisc    ; Title string - node will have to be reallocated
@@ -1713,6 +1710,16 @@ ResetPart1Done                          ; R0 is reset type
         STRB    r0, [r0, #FIQclaim_interlock]
         STRB    r0, [r0, #CallBack_Flag]
         STR     r0, [r0, #CallBack_Vector]
+
+; Create the Branch Through 0 Trampoline in the system heap
+        MOV     R3, #Branch0_Trampoline_Size
+        BL      ClaimSysHeapNode
+        ADRVCL  R0, Branch0_Trampoline
+        ASSERT  Branch0_Trampoline_Init = 20
+        LDMVCIA R0, {R1,R3,R4,R5,R14}
+        STMVCIA R2, {R1,R3,R4,R5,R14}
+        MOVVC   R0, #0
+        STRVC   R2, [R0, #ProcVec_Branch0]
 
  [ :LNOT: No26bitCode
 
@@ -2038,7 +2045,7 @@ BranchThroughZeroInstruction2
  [ ProcessorVectors
         LDR     PC, .+ProcVec_Branch0
  |
-        B       .+(RESET1-0)
+        B       .+Branch0_Trampoline
  ]
 
 MonitorKeypadTable      ; internal key number, CMOS bits

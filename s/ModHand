@@ -634,7 +634,7 @@ Module_Enter    ROUT
        Pull    "R0-R4, R9, lr", VS
        BVS      BumDealInModule
 
-       BLGT     PreferIncarnation
+       BLNE     PreferIncarnation
        Pull    "R0-R4"
        MOV      R10, R2                     ; envstring pointer
        B        EnterIt
@@ -738,12 +738,12 @@ Module_Tidy      ROUT
          MOV     r1, #RMAAddress
          LDR     r2, [r1, #:INDEX:hpdend]
          SUBS    r0, r0, r1
-         CMPGT   r2, r0
-         ADRGTL  r0, ErrorBlock_CantKill
+         CMPHI   r2, r0
+         ADRHIL  r0, ErrorBlock_CantKill
        [ International
-         BLGT    TranslateError
+         BLHI    TranslateError
        |
-         SETV    GT
+         SETV    HI
        ]
 
          BLVC    Genocide                   ; warn all of impending calamity
@@ -925,19 +925,19 @@ ScanAllocBlock    ROUT
         ADD       R1, R1, R12
 
 01      CMP       R5, R3
-        BGE       %FT02
+        BHS       %FT02
         LDR       R7, [R5], #8
 
-        CMP       R7, R0          ; while entry at R5 LT R0 pokeout
-        STRLT     R8, [R5, #-8]
-        BLT       %BT01
+        CMP       R7, R0          ; while entry at R5 LO R0 pokeout
+        STRLO     R8, [R5, #-8]
+        BLO       %BT01
 
-        SUBGT     R5, R5, #8
+        SUBHI     R5, R5, #8
 
         LDR       R7, [R0]
         ADD       R0, R0, R7      ; next block
         CMP       R0, R1          ; step block until end
-        BLT       %BT01
+        BLO       %BT01
 02
         msr      ,CPSR_f, lr
         Pull     "R0, R1, R7, R8, PC"
@@ -1258,7 +1258,8 @@ Module_NewIncarnation ROUT
          BEQ     CheckTheROM
          CMP     R12, #0
          BEQ     Incarnation_needed
-         BGT     Incarnation_exists
+         CMP     R12, #-1
+         BNE     Incarnation_exists
          MOV     R9, R0                      ; node pointer
          MOV     R0, R1                      ; postfix
          MOV     R10, R1
@@ -1370,7 +1371,7 @@ Module_MakePreferred ROUT
         Push    "R0-R4, R9, lr"
         BL      lookup_commoned
         BVS     %FT01
-        BLGT    PreferIncarnation       ; only prefer it if found!
+        BLNE    PreferIncarnation       ; only prefer it if found!
 01
         STRVS   R0, [sp, #0]
         Pull    "R0-R4, R9, lr"
@@ -2180,7 +2181,11 @@ CheckHeader ROUT
 88
         ADR     R0, ErrorBlock_RMNot32bit
       [ International
-        BL      TranslateError
+        MOV     R3, R4
+        LDR     R4, [R1, #Module_Title]
+        ADD     R4, R1, R4
+        BL      TranslateError_UseR4
+        MOV     R4, R3
       |
         SETV
       ]
@@ -3183,14 +3188,18 @@ DelinkAndFreeModule ROUT
 
 ;*************************************************************************
 ;  common lookup for reinit, enter, die
+;
+; Exits with EQ if incarnation not specified, NE if incarnation specified
+; and found.
 
 lookup_commoned ROUT
        Push    "lr"
        WritePSRc SVC_mode, lr               ; we will exit with IRQs enabled
        BL       LookUp_Module               ; node ptr in R0
        BEQ      %FT01                       ; not found
+       CMP      R12, #-1
+       BEQ      %FT02                       ; incarnation not found
        CMP      R12, #0
-       BLT      %FT02                       ; incarnation not found
        MOV      R9, R0
        Pull    "PC"
 01

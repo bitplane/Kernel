@@ -340,6 +340,35 @@ FastCLS ROUT
         BL      TTXFastCLS                      ; else clear teletext map
         MOV     R0, #0                          ; and clear to zero
 10
+ [ UseGraphicsV
+        BL      CheckAcceleration
+        BNE     %FT15
+        MOV     R11, R13                        ; try to do an accelerated
+        BIC     R13, R13, #63                   ; rectangle fill - need an
+        MOV     R1, #&FFFFFFFF                  ; alignedOraEor block
+        MVN     R2, R0
+        MOV     R3, R1
+        MOV     R4, R2
+        Push    "R1-R4"
+        Push    "R1-R4"
+        Push    "R1-R4"
+        Push    "R1-R4"
+        MOV     R0, #0                          ; left
+        LDR     R1, [WsPtr, #YWindLimit]        ; top
+        LDR     R2, [WsPtr, #XWindLimit]        ; right (okay because checked BPC=BPP)
+        MOV     R3, #0                          ; bottom
+        MOV     R4, R13                         ; colour block
+        Push    "R0-R4"
+        MOV     R0, #GVRender_Sync
+        MOV     R1, #GVRender_FillRectangle
+        MOV     R2, R13
+        MOV     R4, #GraphicsV_Render
+        BL      CallGraphicsV
+        MOV     R13, R11
+        TEQ     R4, #GraphicsV_Complete
+        Pull    PC, EQ
+15
+ ]
         LDR     R8, [WsPtr, #ScreenStart]
         MOV     R1, R0
         MOV     R2, R0
@@ -1435,8 +1464,8 @@ FF
         TST     R6, #ClipBoxEnableBit
         BLNE    SetClipBoxToFullScreen
         LDR     R0, [WsPtr, #DriverBankAddr]    ; set driver's screen start
-        STR     R0, [WsPtr, #DisplayScreenStart]
         STR     R0, [WsPtr, #ScreenStart]
+	BL      SetDisplayScreenStart
 
         LDR     R0, [WsPtr, #DisplayBankAddr]
         BL      SetVinit                        ; program Vinit
@@ -1598,6 +1627,66 @@ GetBoxInfo
         MOV     R1, R3                          ; prepare to address top left
         B       AddressR0R1
 
+ [ UseGraphicsV
+;
+;       TextWindowToGraphics - current text window converted to graphics
+;
+;       TextBoxToGraphics - given text box converted to graphics coordinates
+;
+; in:   R0 = left
+;       R1 = bottom
+;       R2 = right
+;       R3 = top
+;
+; out:  R0-R3 converted to internal graphics coordinates
+;       R5 = number of pixels horizontally
+;       R6 = number of pixel rows vertically
+;       R7 = row height in pixels
+;       R8 = number of character rows vertically
+
+ScreenToGraphics
+        MOV     R0, #0
+        LDR     R1, [WsPtr, #ScrBRow]
+        LDR     R2, [WsPtr, #ScrRCol]
+        MOV     R3, #0
+        B       TextBoxToGraphics
+
+TextWindowToGraphics
+        ADD     R0, WsPtr, #TWLCol              ; R0 := TWLCol; R1 := TWBRow
+        LDMIA   R0, {R0-R3}                     ; R2 := TWRCol; R3 := TWTRow
+TextBoxToGraphics
+        SUB     R5, R2, R0
+        ADD     R5, R5, #1                      ; number of chars horiz
+        LDR     R6, [WsPtr, #Log2BPC]           ; should be log2 bytes/char
+        LDR     R7, [WsPtr, #Log2BPP]           ; should be log2 bits/pixel
+        ADD     R6, R6, #3
+
+        MOV     R0, R0, LSL R6                  ; number of bits horiz
+        MOV     R5, R5, LSL R6
+        MOV     R0, R0, LSR R7                  ; number of pixels horiz
+        MOV     R5, R5, LSR R7
+        ADD     R2, R0, R5                      ; recalculate right coord
+        SUB     R2, R2, #1
+
+        LDR     R6, [WsPtr, #ModeFlags]
+
+        MOV     R7, #8                          ; 8 pixels high
+        TST     R6, #Flag_GapMode               ; if gap mode
+        MOVNE   R7, #10                         ; then 10 pixels high
+        TST     R6, #Flag_DoubleVertical        ; if double mode
+        ADDNE   R7, R7, R7                      ; then double
+
+        SUB     R8, R1, R3
+        ADD     R8, R8, #1                      ; number of char rows vert
+        MUL     R3, R7, R3                      ; convert top to pixels (from top)
+        MUL     R6, R7, R8                      ; convert height to pixels
+        LDR     R1, [WsPtr, #YWindLimit]
+        SUB     R3, R1, R3                      ; Y-flip coordinate (bottom-left = 0,0)
+        SUB     R1, R3, R6                      ; recalculate bottom coord
+        ADD     R1, R1, #1
+
+        MOV     PC, R14
+ ]
 
 ; *****************************************************************************
 ;
@@ -1672,7 +1761,8 @@ HardScrollUp
         ADD     R0, R0, R1
         CMP     R0, R14
         SUBCS   R0, R0, R2
-        STR     R0, [WsPtr, #DisplayScreenStart]
+        BL      SetDisplayScreenStart
+        LDR     R14, [WsPtr, #ScreenEndAddr]
         STR     R0, [WsPtr, #ScreenStart]
 
         LDR     R0, [WsPtr, #DisplayStart]
@@ -1698,6 +1788,11 @@ ClearBottomScreenLine
 
 HardScrollSpriteUp
         Push    R14
+ [ UseGraphicsV
+        BL      TryCopyScreenUp
+        Pull    R14,EQ
+        BEQ     ClearBottomScreenLine
+ ]
         BL      GetScreenInfo           ; get box info for whole 'screen'
         LDR     R0, [WsPtr, #RowMult]
         BL      SoftScrollUp2
@@ -1717,6 +1812,11 @@ SoftScrollUp
         TST     R6, #TeletextMode
         BNE     TTXSoftScrollUp
 
+ [ UseGraphicsV
+        BL      TryCopyWindowUp
+        Pull    R14, EQ
+        BEQ     ClearBottomLine
+ ]
         BL      GetWindowInfo
 
 ;       R2 = address of top left
@@ -1789,6 +1889,54 @@ ScrollLineUp
 
         MOV     PC, R14
 
+ [ UseGraphicsV
+; *****************************************************************************
+;
+;       TryCopyScreenUp - use GraphicsV to copy screen up
+;
+; in:   nothing
+; out:  R0-R11 corrupted
+;       Z flag set if successful
+
+TryCopyScreenUp
+        Push    R14
+        BL      CheckAcceleration
+        Pull    PC, NE                  ; return with Z clear (unsuccessful)
+        BL      ScreenToGraphics
+TryCopyUpCommon
+        SUB     R4, R2, R0              ; width-1
+        SUB     R5, R3, R1              ; height-1
+        SUBS    R5, R5, R7              ; less one row
+        Pull    PC,MI                   ; return with Z clear (unsuccessful)
+        MOV     R2, R0                  ; dstL=srcL
+        ADD     R3, R1, R7              ; dstB=srcB +1row
+        Push    "R0-R5"
+        MOV     R0, #3
+        MOV     R1, #1
+        MOV     R2, R13
+        MOV     R4, #GraphicsV_Render
+        BL      CallGraphicsV
+        ADD     R13, R13, #6*4
+        TEQ     R4, #GraphicsV_Complete
+        Pull    PC
+
+; .............................................................................
+;
+;       TryCopyWindowUp - use GraphicsV to copy window up
+;
+; in:   nothing
+; out:  R0-R11 corrupted
+;       Z flag set if successful
+
+TryCopyWindowUp
+        LDR     R0, [WsPtr, #VduSprite]
+        TEQ     R0, #0                  ; don't try it if outputting to sprite
+        MOVNE   PC, R14                 ; return with Z clear (unsuccessful)
+        Push    R14
+        ADR     R14, TryCopyUpCommon
+        B       TextWindowToGraphics
+ ]
+
 ; *****************************************************************************
 ;
 ;       ScrollDown - Scroll the current text window down
@@ -1813,7 +1961,8 @@ HardScrollDown
         ADD     R3, R0, R2
         CMP     R3, R14                         ; if < then need wrap
         MOVCC   R0, R3
-        STR     R0, [WsPtr, #DisplayScreenStart]
+        BL      SetDisplayScreenStart
+        LDR     R14, [WsPtr, #ScreenEndAddr]
         STR     R0, [WsPtr, #ScreenStart]
 
         LDR     R0, [WsPtr, #DisplayStart]
@@ -1981,6 +2130,27 @@ SetVendDefault
         LDR     r1, [WsPtr, #TotalScreenSize]
         ADD     r1, r1, r2                      ; physical address of Vend
         MOV     r0, #HALDAG_VEnd
+        B       Do_HALDAG
+
+SetDisplayScreenStart
+        Push    "r0-r2,lr"
+        BL      SetVrender
+        Pull    "r0-r2,pc"
+
+SetVrender
+        STR     r0, [WsPtr, #DisplayScreenStart]
+        LDR     r2, [WsPtr, #ScreenEndAddr]
+        SUB     r1, r0, r2
+        LDR     r2, [WsPtr, #TotalScreenSize]
+        ADD     r1, r1, r2                      ; now we have offset of Vrender in video RAM
+        LDR     r0, [WsPtr, #TeletextOffset]
+        ADD     r1, r1, r0                      ; add on teletext bank offset
+        CMP     r1, r2                          ; if out of range
+        SUBCS   r1, r1, r2                      ; then subtract total size
+        MOV     r2, #0
+        LDR     r2, [r2, #VideoPhysAddr]        ; now we have physical address
+        ADD     r1, r1, r2
+        MOV     r0, #HALDAG_VRender
         B       Do_HALDAG
 
 SetVinit
@@ -2731,7 +2901,9 @@ CSWaitLoop
         BLMI    Page_ProcessCallbacksIdle
         BMI     CSWaitLoop              ; and wait for change (NB C=1 now)
 Page18
+ [ {FALSE}
         BL      LEDsOff                 ; put LEDs back to normal
+ ]
         BL      PreWrchCursor           ; get rid of cursor again
 
 ; CTRL and SHIFT are not both down
@@ -2821,9 +2993,11 @@ BotRowCheck
 
 CtrlShiftTest ROUT
 	BCC     %FT05
+ [ {FALSE}
         Push    R14
         BL      LEDsOn
         Pull    R14
+ ]
 05      MOV     R0, #0
         LDRB    R0, [R0, #ESC_Status]
         TST     R0, #&40                ; escape condition ?
@@ -3137,7 +3311,7 @@ ConvertGCOLToColourNumber ROUT
         AND     R1, R0, #4_0300 :SHL: 14        ; finally extract the blue component
         ORR     R2, R2, R1, LSL #12
         ORR     R2, R2, LR, LSL #22             ; combine in the tint and blue
-        ORR     R0, R2, R2, LSR #4              ; ensure physcial colour yeilds pure-white!
+        ORR     R0, R2, R2, LSR #4              ; ensure physcial colour yields pure-white!
 
         SWI     XColourTrans_ReturnColourNumber
 

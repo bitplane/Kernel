@@ -109,6 +109,7 @@ UndStackSize            *       8*1024
 CamEntriesForVicky      *       UndStackSoftCamChunk + UndStackSize
  [ :LNOT: HAL
 UNDSTK                  *       CamEntriesForVicky ; points to end of stack
+CAMspace                *       &02000000-CamEntriesForVicky
  [ No26bitCode
 AbtStack                *       &02000000
 AbtStackSize            *       8*1024
@@ -374,6 +375,12 @@ BangL2PT_sledgehammer
 
         Pull    "pc"
 
+
+PPLTransL1
+        &       (AP_Full * L1_APMult) + L1_Section        ; R any W any
+        &       (AP_Read * L1_APMult) + L1_Section        ; R any W sup
+        &       (AP_None * L1_APMult) + L1_Section        ; R sup W sup
+        &       (AP_ROM  * L1_APMult) + L1_Section        ; R any W none
 
 PPLTrans
         &       (AP_Full * L2_APMult) + L2_SmallPage      ; R any W any
@@ -2458,7 +2465,7 @@ UndPreVeneer    ROUT
 PAbPreVeneer    ROUT
         Push    "r0-r7, lr"               ; wahey, we have an abort stack
         SUB     r0, lr_abort, #4          ; aborting address
-        MOV     r1,#1
+        MOV     r2, #1
         BL      AMB_LazyFixUp             ; can trash r0-r7, returns NE status if claimed and fixed up
         Pull    "r0-r7, lr", NE           ; restore regs and
         SUBNES  pc, lr_abort, #4          ; restart aborting instruction if fixed up
@@ -2526,7 +2533,7 @@ DAbPreVeneer    ROUT
 
   [ ChocolateAMB
         ARM_read_FAR r0                         ; aborting address
-        MOV     r1,#0
+        MOV     r2, #0
         BL      AMB_LazyFixUp                   ; can trash r0-r7, returns NE status if claimed and fixed up
         LDR     lr_abort, [r13_abort, #15*4]    ; restore lr_abort
         LDMIA   r13_abort, {r0-r7}              ; restore regs
@@ -2687,7 +2694,7 @@ DAbPreVeneer    ROUT
         ANDS    r0, r10, #1 :SHL: 20            ; r0 = 0 => STM
         MOVNE   r0, #1                          ;    = 1 => LDM
         LDR     r1, [r1, #8*4]                  ; get SPSR_abort
-        TST     r1, #3                          ; test if transfer took place in USR mode
+        TST     r1, #&F                         ; test if transfer took place in USR mode
         ORRNE   r0, r0, #2                      ; if not then set bit 1 of flags word in r0
         MOV     r1, sp                          ; block to transfer from/into
         BIC     r2, r2, #3                      ; LDM/STM always present word-aligned address
@@ -2896,7 +2903,7 @@ DAbPreVeneer    ROUT
         Push    "r5"                            ; create stack frame with this value in it
 65
         LDR     r1, [sp, #(1+8)*4]              ; get SPSR_abort
-        TST     r1, #3                          ; test if transfer took place in USR mode
+        TST     r1, #&F                         ; test if transfer took place in USR mode
         ORRNE   r0, r0, #2                      ; if not then set bit 1 of flags word in r0
 
         MOV     r1, sp                          ; r1 -> data block
@@ -3266,8 +3273,6 @@ CheckPage
         AND     r7, r2, #&000FF000                      ; extract bits which are to form L2 offset
 
         LDR     lr, [lr, r7, LSR #10]                   ; lr = L2PT entry
-        ANDS    r7, lr, #3                              ; 00 => trans.fault, 01 => large page
-                                                        ; 10 => small page, 11 => reserved (fault)
  [ HAL
         Push    "r0-r3,r12,lr"
         LDR     r0, [sp, #6*4]
@@ -3275,6 +3280,8 @@ CheckPage
         Pull    "r0-r3,r12,lr"
         ADD     sp, sp, #4
  ]
+        ANDS    r7, lr, #3                              ; 00 => trans.fault, 01 => large page
+                                                        ; 10 => small page, 11 => reserved (fault)
         TEQNE   r7, #3
         BEQ     Fault
         TEQ     r7, #2                          ; if small page

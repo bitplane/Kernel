@@ -246,6 +246,14 @@ Conversion_Swi_Names
         AddSwiNameToDecodeTab  ConvertNetStation
         AddSwiNameToDecodeTab  ConvertFixedFileSize
         AddSwiNameToDecodeTab  ConvertFileSize
+        AddSwiNameToDecodeTab  ConvertHex16
+        AddSwiNameToDecodeTab  ConvertCardinal8
+        AddSwiNameToDecodeTab  ConvertInteger8
+        AddSwiNameToDecodeTab  ConvertBinary8
+        AddSwiNameToDecodeTab  ConvertSpacedCardinal8
+        AddSwiNameToDecodeTab  ConvertSpacedInteger8
+        AddSwiNameToDecodeTab  ConvertFixedFileSize64
+        AddSwiNameToDecodeTab  ConvertFileSize64
         =  0
         ALIGN
 

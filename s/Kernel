@@ -270,11 +270,14 @@ MinAplWork * 40*1024         ; minimum size of AplWork
 
 ; Fixed addresses
 
-MEMCADR  * &3600000
- [ HAL32 :LAND: {FALSE}
+MEMCADR  * &03600000
+        GBLL    ROMatTop
+ [ HAL32 :LAND: {TRUE}
 ROM      * &FC000000
+ROMatTop SETL {TRUE}
  |
-ROM      * &3800000
+ROM      * &03800000
+ROMLimit * &04000000
  ]
 OSMD     * &11111111
 
@@ -437,7 +440,7 @@ EndMOSROMVecs
 ; This is the table of default processor vectors which is copied to 0 page.
 
 DefaultProcVecs
-        &       RESET1
+        &       Branch0_NoTrampoline
         &       UndPreVeneer
         &       SVC
         &       PAbPreVeneer
@@ -473,6 +476,20 @@ AdXPreVeneer    *       ProcVecPreVeneers+(.-DefaultPreVeneers)
         LDR     PC, DefaultPreVeneers-ProcVecPreVeneers+AdXHan
 
         ASSERT  (.-DefaultPreVeneers) = ProcVecPreVeneersSize
+
+; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; This is the trampoline in the system heap used to handle branch through 0.
+
+Branch0_Trampoline
+        STR     r1, Branch0_Trampoline + Branch0_Trampoline_SavedR1
+        STR     lr, Branch0_Trampoline + Branch0_Trampoline_SavedR14
+        ADD     lr, pc, #4
+        LDR     pc, .+4
+        &       Branch0_FromTrampoline
+Branch0_Trampoline_Init     * .-Branch0_Trampoline
+Branch0_Trampoline_SavedR1  * .-Branch0_Trampoline
+Branch0_Trampoline_SavedR14 * .-Branch0_Trampoline+4
+Branch0_Trampoline_Size     * .-Branch0_Trampoline+8
 
 
  [ :LNOT: IncludeTestSrc :LAND: :LNOT: HAL
@@ -512,16 +529,18 @@ EndData
 
 SVCDespatcher ROUT
 
-SLVK_SetV * SWIDespatch + {PC}-SVCDespatcher
+SWIRelocation * SVCDespatcher-SWIDespatch
+
+SLVK_SetV * {PC}-SWIRelocation
 
         ORR     lr, lr, #V_bit
 
-SLVK_TestV * SWIDespatch + {PC}-SVCDespatcher
+SLVK_TestV * {PC}-SWIRelocation
  ! 0,"SLVK_TestV at ":CC:(:STR:SLVK_TestV)
 
         ORRVS   lr, lr, #V_bit
 
-SLVK * SWIDespatch + {PC}-SVCDespatcher
+SLVK * {PC}-SWIRelocation
  ! 0,"SLVK       at ":CC:(:STR:SLVK)
 Local_SLVK
 
@@ -532,7 +551,7 @@ Local_SLVK
         TST     lr, #V_bit
         BNE     %FT50
 
-SWIReturnWithCallBackFlag * SWIDespatch + {PC}-SVCDespatcher
+SWIReturnWithCallBackFlag * {PC}-SWIRelocation
  ! 0,"SWIReturnWithCallBackFlag at ":CC:(:STR:SWIReturnWithCallBackFlag)
 
 40      TEQ     r11, #0
@@ -543,19 +562,19 @@ SWIReturnWithCallBackFlag * SWIDespatch + {PC}-SVCDespatcher
         Pull    "r10-r12", EQ
         MOVEQS  pc, lr
 
-        B       callback_checking + SVCDespatcher - SWIDespatch
+        B       callback_checking + SWIRelocation
 
- ! 0,"VSetReturn at ":CC:(:STR:(SWIDespatch + {PC}-SVCDespatcher))
+ ! 0,"VSetReturn at ":CC:(:STR:({PC}-SWIRelocation))
 50      TST     r12, #Auto_Error_SWI_bit
         BNE     %BT40
 
-        B       VSet_GenerateError + SVCDespatcher - SWIDespatch
+        B       VSet_GenerateError + SWIRelocation
 
 
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ; The SWI Despatch routine
 
-SVC * SWIDespatch + {PC}-SVCDespatcher
+SVC * {PC}-SWIRelocation
 
         Push    "r10-r12"
  [ No26bitCode
@@ -578,21 +597,21 @@ SVC * SWIDespatch + {PC}-SVCDespatcher
 
         BIC     r14, r12, #V_bit        ; clear V (some SWIs need original PSR in r12)
 
-SVC_CallASWI * SWIDespatch + {PC}-SVCDespatcher ; CallASWI,CallASWIR12 re-entry point
+SVC_CallASWI * {PC}-SWIRelocation       ; CallASWI,CallASWIR12 re-entry point
 
         BIC     r11, r11, #Auto_Error_SWI_bit
 
         CMP     r11, #OS_WriteI
         LDRLO   pc, [pc, r11, LSL #2]
 
-        B       NotMainMOSSwi + SVCDespatcher - SWIDespatch
+        B       NotMainMOSSwi + SWIRelocation
 
  ASSERT {PC}-SVCDespatcher = SWIDespatch_Size
 
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ; The SWI table
 
-JTABLE  & SWIWriteC             ; this entry never gets used (see ^)
+JTABLE  & SWIWriteC
         & SWIWriteS
         & SWIWrite0
         & SWINewLine
@@ -890,8 +909,14 @@ callback_checking
         BEQ     Do_CallBack
         TST     r11, #CBack_Postpone    ; only one postponement
         BNE     Do_CallBack             ; allowed.
+ [ ROMatTop
         CMP     r0, #ROM
-        BGE     Do_CallBack
+        BHS     Do_CallBack
+ |
+        CMP     r0, #ROM
+        RSBHIS  r12, r0, #ROMLimit
+        BHI     Do_CallBack
+ ]
 
         MSR     CPSR_c, #I32_bit + SVC32_mode  ; ints off while flag updated
         LDRB    r11, [r10, #CallBack_Flag]
@@ -1012,8 +1037,9 @@ SWIWriteC ROUT
 
         MSR     CPSR_c, #SVC2632        ; enable interrupts
 
-        STR     lr, [sp, #-4]!
+        Push    lr
 
+ [ ROMatTop
         LDR     r11, [r11, #VecPtrTab+WrchV*4] ; load top node pointer
         CMP     r11, #ROM
   [ StrongARM
@@ -1026,6 +1052,9 @@ SWIWriteC ROUT
         BCS     PMFWrchDirect
         BCC     WrchThruVector
   ]
+ |
+        B       WrchThruVector
+ ]
 ReturnFromVectoredWrch
         Pull    lr
         B       SLVK_TestV

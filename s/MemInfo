@@ -60,12 +60,13 @@ MemReturn
         B       MemoryReadPhys                  ; 7
         B       MemoryAmounts                   ; 8
         B       MemoryIOSpace                   ; 9
-        B       %BT20                           ; Reason code 10 reserved (for MemoryFreePoolLock).
+        B       MemoryFreePoolLock              ; 10
         B       %BT20                           ; Reason code 11 reserved (for PCImapping).
         B       RecommendPage                   ; 12
         B       MapIOpermanent                  ; 13
         B       AccessPhysAddr                  ; 14
         B       ReleasePhysAddr                 ; 15
+        B       MemoryAreaInfo                  ; 16
 40
 
 
@@ -749,7 +750,43 @@ easi_space_table
 ;----------------------------------------------------------------------------------------
 ; MemoryFreePoolLock
 ;
-; See code on Ursula branch
+;
+;       In:     r0 bits 0..7  = 10 (reason code 10)
+;               r0 bit  8     = 1 if call is by Wimp (reserved for Acorn use), 0 otherwise
+;               r0 bits 9..31 reserved (must be 0)
+;               r1 = 0  to resume any background actions that may manipulate FreePool mapping
+;                       (currently, this is just VRAMRescue)
+;                  = 1  to suspend any background actions that may manipulate FreePool mapping
+;                  all other values reserved (undefined behaviour)
+;
+;       Out:    r1 = previous state (1=suspended, 0=not suspended)
+;
+; A suspend call from the Wimp will be taken to mean that the whole FreePool is locked, and
+; memory cannot be moved (supports Wimp_ClaimFreeMemory)
+;
+; VRAM rescue doesn't happen in this Kernel, but we still support the call for the Wimp.
+;
+MemoryFreePoolLock ROUT
+        Push    "r2,r3,lr"
+        MOV     r3,#0
+        LDRB    lr,[r3,#VRAMRescue_control]
+        TEQ     r1,#0
+        BNE     %FT10
+;flush TLB(s) for resume - needed for Wimp resume, precaution for other - no cache flush
+;since Free Pool is uncached
+        ARM_flush_TLB r2
+10
+        TST     r0,#&100                    ;is it Wimp?
+        MOVEQ   r2,#VRRc_suspend
+        MOVNE   r2,#VRRc_wimp_lock
+        TEQ     r1,#0
+        AND     r1,lr,r2                    ;previous state
+        BICEQ   lr,lr,r2
+        ORRNE   lr,lr,r2
+        STRB    lr,[r3,#VRAMRescue_control] ;set/clear relevant bit
+        TEQ     r1,#0
+        MOVNE   r1,#1
+        Pull    "r2,r3,pc"
 
 ;----------------------------------------------------------------------------------------
 ;PCImapping - reserved for Acorn use (PCI manager)
@@ -856,9 +893,14 @@ RP_error
 ;
 ;       In:     r0 bits 0..7  = 13 (reason code 13)
 ;               r0 bit  8     = 1 to map bufferable space (0 is normal, non-bufferable)
-;               r0 bits 9..15 = 0 (reserved flags)
+;               r0 bit  9     = 1 to map cacheable space (0 is normal, non-cacheable)
+;               r0 bits 10..12 = 0 (reserved for cache policy)
+;               r0 bits 13..15 = 0 (reserved flags)
 ;               r0 bit  16    = 1 to doubly map
-;               r0 bits 17..31 = 0 (reserved flags)
+;               r0 bit  17    = 1 if access privileges specified
+;               r0 bits 18..23 = 0 (reserved flags)
+;               r0 bits 24..27 = access privileges (if bit 17 set)
+;               r0 bits 28..31 = 0 (reserved flags)
 ;               r1 = physical address of base of IO space required
 ;               r2 = size of IO space required (bytes)
 ;
@@ -868,11 +910,19 @@ RP_error
 MapIOpermanent ROUT
         Push    "r0-r2,r12,lr"
         MOV     lr, r0
-        TST     lr, #&100           ;test bufferable bit
+        TST     lr, #1:SHL:8        ;test bufferable bit
         MOVNE   r0, #L1_B
         MOVEQ   r0, #0
+        TST     lr, #1:SHL:9        ;test bufferable bit
+        ORRNE   r0, r0, #L1_C
         TST     lr, #1:SHL:16
         ORRNE   r0, r0, #MapInFlag_DoublyMapped
+        TST     lr, #1:SHL:17
+        ANDNE   lr, lr, #2_1111:SHL:24
+        ADRNEL  r12, PPLTransL1
+        LDRNE   r12, [r12, lr, LSR #22]
+        ORRNE   r0, r0, #MapInFlag_APSpecified
+        ORRNE   r0, r0, r12
         BL      RISCOS_MapInIO
         MOV     r3, r0
         CMP     r3, #0              ;MOV,CMP rather than MOVS to be sure to clear V
@@ -933,5 +983,126 @@ ReleasePhysAddr
         BL      RISCOS_ReleasePhysicalAddress
         Pull    "r0-r3,r12,pc"
 
+;----------------------------------------------------------------------------------------
+;
+;        In:    r0 = flags
+;                       bit     meaning
+;                       0-7     16 (reason code)
+;                       8-15    1=cursor/system/sound
+;                               2=IRQ stack
+;                               3=SVC stack
+;                               4=ABT stack
+;                               5=UND stack
+;                               6=Soft CAM
+;                               7=Level 1 page tables
+;                               8=Level 2 page tables
+;                               9=HAL workspace
+;                               10=Kernel buffers
+;                       16-31   reserved (set to 0)
+;
+;       Out:    r1 = base of area
+;               r2 = address space allocated for area (whole number of pages)
+;               r3 = actual memory used by area (whole number of pages)
+;               all values 0 if not present, or incorporated into another area
+;
+;       Return size of various low-level memory regions
+MemoryAreaInfo ROUT
+        Entry   "r0"
+        MOV     r1, #0
+        MOV     r2, #0
+        MOV     r3, #0
+        MOV     lr, r0, LSR #8
+        AND     lr, lr, #&FF
+        CMP     lr, #(MAI_TableEnd - MAI_TableStart)/4
+        ADDLO   pc, pc, lr, LSL #2
+        B       %FT70
+MAI_TableStart
+        B       %FT70
+        B       MAI_CursSysSound
+        B       MAI_IRQStk
+        B       MAI_SVCStk
+        B       MAI_ABTStk
+        B       MAI_UNDStk
+        B       MAI_SoftCAM
+        B       MAI_L1PT
+        B       MAI_L2PT
+        B       MAI_HALWs
+        B       MAI_Kbuffs
+MAI_TableEnd
+
+70
+        ADRL    r0, ErrorBlock_BadParameters
+        SETV
+        STR     r0, [sp, #Proc_RegOffset+0]
+        EXIT
+
+MAI_CursSysSound
+        LDR     r1, =CursorChunkAddress
+        MOV     r2, #32*1024
+        MOV     r3, r2
+        EXIT
+
+MAI_IRQStk
+ [ IRQSTK < CursorChunkAddress :LOR: IRQSTK > CursorChunkAddress+32*1024
+        LDR     r1, =IRQStackAddress
+        MOV     r2, #IRQSTK-IRQStackAddress
+        MOV     r3, r2
+ ]
+        EXIT
+
+MAI_SVCStk
+        LDR     r1, =SVCStackAddress
+        MOV     r2, #SVCSTK-SVCStackAddress
+        MOV     r3, r2
+        EXIT
+
+MAI_ABTStk
+ [ No26bitCode
+        LDR     r1, =ABTStackAddress
+        MOV     r2, #ABTSTK-ABTStackAddress
+        MOV     r3, r2
+ ]
+        EXIT
+
+MAI_UNDStk
+        LDR     r1, =UNDSTK :AND: &FFF00000
+        LDR     r2, =UNDSTK :AND: &000FFFFF
+        MOV     r3, r2
+        EXIT
+
+MAI_SoftCAM
+        MOV     r0, #ZeroPage
+        LDR     r1, [r0, #CamEntriesPointer]
+        LDR     r2, =CAMspace
+        LDR     r3, [r0, #SoftCamMapSize]
+        EXIT
+
+MAI_L1PT
+        LDR     r1, =L1PT
+        MOV     r2, #16*1024
+        MOV     r3, r2
+        EXIT
+
+MAI_L2PT
+        MOV     r0, #ZeroPage
+        LDR     r1, =L2PT
+        MOV     r2, #4*1024*1024
+        LDR     r3, [r0, #L2PTUsed]
+        EXIT
+
+ [ HAL
+MAI_HALWs
+        MOV     r0, #ZeroPage
+        LDR     r1, =HALWorkspace
+        MOV     r2, #HALWorkspaceSpace
+        LDR     r3, [r0, #HAL_WsSize]
+ ]
+        EXIT
+
+MAI_Kbuffs
+        LDR     r1, =KbuffsBaseAddress
+        MOV     r2, #KbuffsMaxSize
+        LDR     r3, =(KbuffsSize + &FFF) :AND: :NOT: &FFF
+        EXIT
 
         END

@@ -1253,11 +1253,18 @@ SolPlFast10
         ShiftR  R2,R3, R6,R7            ; shift R3,R2 right R6 places
                                         ; we only need result word R2
         LDR     R4, [WsPtr, #SPltLMask-SPltScrAdr] ; on leftmost word
-        AND     R2, R2, R4              ; mask down to just the required pixels
+        AND     R3, R2, R4              ; mask down to just the required pixels
 
-        LDR     R3, [R0]                ; plot 1 word
-        BIC     R3, R3, R4              ; knock out mask bits
-        ORR     R3, R3, R2              ; and or sprite bits
+ [ AvoidScreenReads
+        CMP     R4, #&FFFFFFFF
+        LDRNE   R2, [R0]                ; plot 1 word
+        BICNE   R2, R2, R4              ; knock out mask bits
+        ORRNE   R3, R2, R3              ; and or sprite bits
+ |
+        LDR     R2, [R0]                ; plot 1 word
+        BIC     R2, R2, R4              ; knock out mask bits
+        ORR     R3, R2, R3              ; and or sprite bits
+ ]
         STR     R3, [R0], #4
 
         SUBS    R1, R1, #1
@@ -1265,6 +1272,20 @@ SolPlFast10
                                         ; else try for blocks of 7
         SUBS    R1, R1, #7
         BLT     SolPlFast30
+
+        TEQ     R6, #0                  ; if shift needed, use loop 20
+        BNE     SolPlFast20             ; else loop 15
+
+SolPlFast15
+
+;       R0    ,R1         ,R5
+;       ScrAdr,ColCnt,    ,MemAdr
+
+        LDMIA   R5!, {R2-R4,R8-R11}     ; read 7 words
+        STMIA   R0!, {R2-R4,R8-R11}     ; write 7 words back to screen
+        SUBS    R1, R1, #7
+        BGE     SolPlFast15
+        B       SolPlFast30
 
 SolPlFast20
 
@@ -1300,16 +1321,27 @@ SolPlFast40
 
         ShiftR  R2,R3, R6,R7            ; shift R3,R2 right R6 places
                                         ; we only need result word R2
-        LDREQ   R4, [WsPtr, #SPltRMask-SPltScrAdr] ; if rightmost word,
-        ANDEQ   R2, R2, R4              ; mask down to just the required pixels
-
-        LDREQ   R3, [R0]
-        BICEQ   R3, R3, R4
-        ORREQ   R2, R2, R3
+        BEQ     SolPlFast45             ; if rightmost word, jump out.
         STR     R2, [R0], #4
 
         SUBS    R1, R1, #1
-        BGE     SolPlFast40
+        B       SolPlFast40
+
+SolPlFast45
+        LDR     R4, [WsPtr, #SPltRMask-SPltScrAdr]
+        AND     R3, R2, R4              ; mask down to just the required pixels
+
+ [ AvoidScreenReads
+        CMP     R4, #&FFFFFFFF
+        LDRNE   R2, [R0]                ; plot 1 word
+        BICNE   R2, R2, R4              ; knock out mask bits
+        ORRNE   R3, R2, R3              ; and or sprite bits
+ |
+        LDR     R2, [R0]                ; plot 1 word
+        BIC     R2, R2, R4              ; knock out mask bits
+        ORR     R3, R2, R3              ; and or sprite bits
+ ]
+        STR     R3, [R0], #4
 
 SolPlFast50                             ; now try the next scanline
         LDMDB   WsPtr, {R1,R2,R3,R4}    ; R1   ,R2    ,R3    ,R4

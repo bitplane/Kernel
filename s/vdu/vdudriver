@@ -312,7 +312,7 @@ VduInit ROUT
         LDR     R0, [WsPtr, #TotalScreenSize]
         RSB     R0, R0, R14
         STR     R0, [WsPtr, #DisplayStart]
-        STR     R0, [WsPtr, #DisplayScreenStart]
+        BL	SetDisplayScreenStart
         STR     R0, [WsPtr, #ScreenStart]
         STR     R0, [WsPtr, #CursorAddr]
         STR     R0, [WsPtr, #InputCursorAddr]
@@ -896,7 +896,7 @@ TV_Mode_string
         MOV     r1, r0, LSL #20
         MOV     r0, #13                         ; map in permanently
         ORR     r0, r0, #1:SHL:8                ; buffered, uncached
-        ORR     r0, r0, #1:SHL:16               ; doubly map
+        ORR     r0, r0, #1:SHL:16+1:SHL:17      ; doubly map, access permission specified
         SWI     XOS_Memory
         BVS     %FT581
         STR     r2, [WsPtr, #TotalScreenSize]
