@@ -709,10 +709,15 @@ MMUon_nol1ptoverlap
         LDR     a3, =32*1024
         BL      Init_MapInRAM
 
-; Allocate the cursor/system/sound block
+; Allocate the cursor/system/sound block - first the cached bit
         LDR     a1, =CursorChunkAddress
         LDR     a2, =(AP_Read * L2_APMult) + L2_C + L2_B  ; Should be AP_None?
-        LDR     a3, =32*1024
+        LDR     a3, =SoundDMABuffers - CursorChunkAddress
+        BL      Init_MapInRAM
+; then the uncached bit
+        LDR     a1, =SoundDMABuffers
+        LDR     a2, =(AP_Read * L2_APMult) + L2_B  ; Should be AP_None?
+        LDR     a3, =?SoundDMABuffers
         BL      Init_MapInRAM
 
  [ MinorL2PThack
