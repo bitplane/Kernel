@@ -59,17 +59,14 @@ Initial_IRQ_Code ROUT
 ;  BNE somebodysonIRQ1V
 ;  .... fall into default IRQ1V code
 
-        MOV      r11, #0
-        Pull     r0
-        STR      r0, [r11, #IRQsema]
-
-        TEQ      r0, #0
-        BNE      %F10
         Push     "r10"
         MOV      r10, #UnthreadV
         BL       CallVector
         Pull     "r10"
-10
+
+        MOV      r11, #0
+        Pull     r0
+        STR      r0, [r11, #IRQsema]
 
   [ :LNOT:No26bitCode
         MRS      r0, CPSR
