@@ -1025,10 +1025,18 @@ TV_Mode_string
         MOVMI   R2, #0
         STR     R2, [R0, #VIDCList3_VertiFrontPorch]  ;add to front porch, clamp at 0
 
-;remember pixel rate (kHz) from VIDCList3
+;remember pixel rate (kHz) and border settings from VIDCList3
 ;
         LDR     R2, [R0, #VIDCList3_PixelRate]
         STR     R2, [WsPtr, #PixelRate]
+        LDR     R2, [R0, #VIDCList3_HorizLeftBorder]
+        STR     R2, [WsPtr, #BorderL]
+        LDR     R2, [R0, #VIDCList3_VertiBottomBorder]
+        STR     R2, [WsPtr, #BorderB]
+        LDR     R2, [R0, #VIDCList3_HorizRightBorder]
+        STR     R2, [WsPtr, #BorderR]
+        LDR     R2, [R0, #VIDCList3_VertiTopBorder]
+        STR     R2, [WsPtr, #BorderT]
 
 ;remember DPMSState (if specified) from VIDCList3
 ;

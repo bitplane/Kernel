@@ -105,6 +105,10 @@ NumModeVars * NotRVVTBarWobblyBitscounter
         NotRVVTBarWobblyBits    GcolOraEorAddr
         NotRVVTBarWobblyBits    VIDCClockSpeed
         NotRVVTBarWobblyBits    PixelRate
+        NotRVVTBarWobblyBits    BorderL
+        NotRVVTBarWobblyBits    BorderB
+        NotRVVTBarWobblyBits    BorderR
+        NotRVVTBarWobblyBits    BorderT
 
         NotRVVTBarWobblyBits    WindowWidth, &100
         NotRVVTBarWobblyBits    WindowHeight

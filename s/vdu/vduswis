@@ -203,6 +203,10 @@ SWIRVVTabModeEnd
         RVVT    GcolOraEorAddr
         RVVT    VIDCClockSpeed
         RVVT    PixelRate
+        RVVT    BorderL
+        RVVT    BorderB
+        RVVT    BorderR
+        RVVT    BorderT
 SWIRVVTabEnd
 
         ALIGN

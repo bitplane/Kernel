@@ -740,6 +740,11 @@ CurrentMonitorType # 4  ; initialised from configured one
 
 PixelRate # 4   ; Pixel Rate in kHz
 
+BorderL # 4             ; Size of border
+BorderB # 4
+BorderR # 4
+BorderT # 4
+
 GraphicWs # 300 ; All graphics workspace is overlaid here
 EndGraphicWs # 0
 
@@ -796,9 +801,9 @@ HALVideoFeatures   # 4               ; features word from HAL
  [ :LNOT: UseGraphicsV
 HWPixelFormats     # 4               ; pixel formats word from HAL
 HWBufferAlign      # 4               ; buffer alignment word from HAL
-                # 40*4 - 6*PointerBlkSize ; SPARE (avoiding changes of exported addresses for now)
+                # 36*4 - 6*PointerBlkSize ; SPARE (avoiding changes of exported addresses for now)
  |
-                # 42*4 - 6*PointerBlkSize ; SPARE (avoiding changes of exported addresses for now)
+                # 38*4 - 6*PointerBlkSize ; SPARE (avoiding changes of exported addresses for now)
  ]
 
 TextFgColour    # 4             ; Fg/Bg colour stored as a colour number, computed on VDU 18 and re-poked!
