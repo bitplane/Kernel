@@ -1290,8 +1290,20 @@ PushModeInfoCommonNoService
         Push    "r0-r2,r4"
         MOV     r4, #GraphicsV_DisplayFeatures
         BL      CallGraphicsV
-        TEQ     r4, #0
-        TSTEQ   r0, #1                          ; bit 0 is h/w scroll support
+  ; claim or release falsevsync vector if vsyncs supported/not supported
+        Push    "r0"
+        TST     r0, #1<<4                       ; NE = VSyncs not generated?
+        MOV     a1, #TickerV
+        LDR     a2, =FalseVsyncIRQ
+        LDR     a3, =OsbyteVars
+        BEQ     %ft2
+        SWI     XOS_Claim
+        B       %ft1
+2       SWI     XOS_Release
+1
+        Pull    "r0"
+
+        TST     r0, #1                          ; bit 0 is h/w scroll support
         Pull    "r0-r2,r4"
  |
         LDR     r14, [WsPtr, #HALVideoFeatures]

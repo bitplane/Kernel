@@ -798,7 +798,14 @@ FillInDefaultIRQ1VDevices
         ADDNE   a1, a1, a1, LSL #1
         ADDNE   a1, v1, a1, LSL #2
         STMNEIB a1, {a2, a3}
+;        BNE     %ft1
+;        ; here if no vsync handler .. fudge it from tickerv
+;        MOV     a1, #TickerV
+;        LDR     a2, =FalseVsyncIRQ
+;        LDR     a3, =OsbyteVars
+;        SWI     XOS_Claim
 
+1
  [ CDVPoduleIRQs
 ; Now Podule bits
         MOV     a1, #IRQDesp_Link_Unshared
@@ -1492,6 +1499,13 @@ TickOne ROUT
 ; ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
         ALIGN 32
+FalseVsyncIRQ ROUT
+        MOV     R1, #0
+        LDR     R0, [R1, #MetroGnome]
+        TST     R0, #1
+        MOVEQ   pc, lr
+        Push    "lr"
+        B       VsyncIRQ_ExtEntry
 
 VsyncIRQ ROUT
 

@@ -1,7 +1,6 @@
 GraphicsV
 ---------
-R4 = reason code
-
+R4 = reason code .. Bits 31..24 = display number, default 0
 
 
 VSync interrupt occured (Driver -> Kernel)
@@ -67,6 +66,7 @@ out:
 		  (bit 1 => hardware pointer)
 		  (bit 2 => interlace with progressive framestore)
 		  (bit 3 => separate framestore)
+		  (bit 4 => no VSyncs generated)
   R1 = pixel formats (bits 0-5 => 2^n bpp supported)
   R2 = buffer alignment requirement in bytes (power of 2)
 

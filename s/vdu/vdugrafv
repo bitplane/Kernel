@@ -38,9 +38,11 @@
         ASSERT  GraphicsV_Render = 13
         ASSERT  GraphicsV_IICOp = 14
 
+
 MOSGraphicsV ROUT
-        CMP     r4, #13
+        CMP     r4, #(MOSGraphicsV_TableEnd - MOSGraphicsV_Table) / 4
         ADDLS   pc, pc, r4, LSL #2
+MOSGraphicsV_Table
         MOV     pc, lr                  ; reason code not known, so pass it on
         MOV     pc, lr                  ; 0
         B       GV_VSync                ; 1
@@ -57,6 +59,7 @@ MOSGraphicsV ROUT
         MOV     pc, lr                  ; 12
         B       GV_Render               ; 13
         B       GV_IICOp                ; 14
+MOSGraphicsV_TableEnd
 
 GV_VSync        ROUT
  [ {FALSE}
