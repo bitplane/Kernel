@@ -200,8 +200,8 @@ CantUseHLineOrVLine
                                         ; in R0..R8
 
         TST R11,#&20                    ;If first point excluded
-        BLNE AdvLineParm                ; then advance to first pixel and
-        SUBNE R10,R10,#1                ;      dec DotCycleCount
+        SUBNE R10,R10,#1                ; then dec DotCycleCount and
+        BLNE AdvLineParm                ;      advance to first pixel and
 
         TST R11,#&08                    ;If last point excluded
         SUBEQ R10,R10,#1                ; then dec DotCycleCount
@@ -872,7 +872,7 @@ AdvanceDotPattern
 
         STMIA rDotPtr,{rDotCnt,rDotPatLSW,rDotPatMSW}
 
-        MOVS PC,Link
+        MOV PC,Link
 ;
 ;---------------------------------------------------------------------------
 ;

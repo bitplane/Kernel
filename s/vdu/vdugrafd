@@ -38,7 +38,7 @@
 
 BlockCopyMove ROUT
         TST     R2, #3                          ; Do nowt on 'MoveOnly' codes
-        MOVEQS  PC, R14
+        MOVEQ   PC, R14
 
         SaveRetAdr
 

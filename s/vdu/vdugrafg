@@ -348,34 +348,27 @@ SpriteIsCurrentDest
 SpriteDispatchReturn
         ADD     R11, WsPtr, #RetnReg0
         LDMIA   R11, {R0-R9}            ; Restore R0-R9
- [ Fix5
         MOV     R10, R13                ; Point at old returned registers
         Push    "R0-R9"                 ; Save new returned registers on stack
         LDMIA   R10, {R0-R9}            ; Load old returned registers
         STMIA   R11, {R0-R9}            ; and put them in the dump area
         Pull    "R0-R9"                 ; restore new returned registers
         ADD     R13, R13, #10*4         ; remove stack frame
- ]
-        [ :LNOT: AssemblingArthur :LAND: :LNOT: Module
-        SWIVS   XOS_GenerateError
-        ]
         Pull    "R10-R12,PC"
 
 SpriteVecHandler
         Push    "R10-R12"
-        TEQP    PC, #SVC_mode           ; Re-enable interupts
+        WritePSRc SVC_mode, WsPtr       ; Re-enable interupts
 
         VDWS    WsPtr                   ; Point R12 at Vdu driver workspace
         ADD     R11, WsPtr, #RetnReg0
 
- [ Fix5
         SUB     R13, R13, #10*4         ; Create stack frame for old RetnRegs
         MOV     R10, R13                ; Keep pointer to this frame
         Push    "R0-R9"                 ; Save new regs while we copy old ones
         LDMIA   R11, {R0-R9}            ; Load old regs
         STMIA   R10, {R0-R9}            ; and push them onto stack
         Pull    "R0-R9"                 ; Restore new regs
- ]
         STMIA   R11, {R0-R9}            ; Dump R0-R9
 
         CMP     R0, #RangeC + &100      ; if top bits out of range
@@ -389,7 +382,11 @@ SpriteVecHandler
         BCS     BadReasonCode
 
         ADR     R10, SwiSpriteOpCallTb
+ [ No26bitCode
+        ADR     R14, SpriteDispatchReturn ; return address
+ |
         ADR     R14, SpriteDispatchReturn + SVC_mode ; return address
+ ]
         LDR     R11, [R10, R0, LSL #2]  ; load (offset<<8) + flags
 
         TST     R11, #SSO_ScreenNotAllowed ; if call can specify screen (R2=0)
@@ -700,8 +697,13 @@ SetupSprModeData ROUT
         Push    R5
         ADD     R5, WsPtr, #SprReadNColour
         STMIA   R5, {R6-R11}            ; SprRead..SprLog2BPC
+ [ No26bitCode
+        CLRV
+        Pull    "R5, PC"
+ |
         Pull    "R5, R14"
         BICS    PC, R14, #V_bit
+ ]
 
 15
         ADD     R13, R13, #PushedInfoSize
@@ -756,7 +758,7 @@ ClearSprites ROUT
 
         LDR     R0, [WsPtr, #RetnReg0]  ; if rangeb or rangec
         CMP     R0, #RangeB
-        BICCSS  PC, R14, #V_bit         ; then return immediately
+        BHS     DoesNowt                ; exit immediately
 
 ; else its rangea, so drop thru to ...
 
@@ -769,7 +771,7 @@ ClearSpritePtrName ROUT
         MOV     R0, #13
         STRB    R0, [WsPtr, #SpChooseName+12]   ; *SChoose <null name>
 DoesNowt
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; *****************************************************************************
 ;
@@ -789,7 +791,7 @@ ReadAreaCB ROUT
         LDMIA   R1, {R2,R3,R4,R5}               ; saEnd,saNumber,saFirst,saFree
         ADD     R11, WsPtr, #RetnReg2
         STMIA   R11, {R2,R3,R4,R5}
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; *****************************************************************************
 ;
@@ -837,17 +839,18 @@ ReturnName ROUT
         LDR     R5, [R1, #saNumber]     ; check for 1 <= R4 <= saNumber
         CMP     R4, #1
         CMPGE   R5, R4
+        BGE     %FT05
 
-        ADRLTL  R0, SpriteErr_DoesntExist ; out of range, so generate error
+        ADRL    R0, SpriteErr_DoesntExist ; out of range, so generate error
       [ International
-        Push    "lr",LT
-        BLLT    TranslateError_VClear
-        Pull    "lr",LT
+        Push    "lr"
+        BL      TranslateError_VClear
+        Pull    "lr"
       ]
-        STRLT   R0, [WsPtr, #RetnReg0]
-        ORRLTS  PC, R14, #V_bit
+        STR     R0, [WsPtr, #RetnReg0]
+        RETURNVS
 
-        LDR     R5, [R1, #saFirst]
+05      LDR     R5, [R1, #saFirst]
         ADD     R5, R5, R1              ; ptr to 1st sprite
 10
         SUBS    R4, R4, #1
@@ -861,7 +864,7 @@ ReturnName ROUT
         MOVLS   R3, #0                  ; if was 0 or 1 then set R3 to 0
         STRLS   R3, [WsPtr, #RetnReg3]
         STREQB  R3, [R2]                ; if was 1 then store 0 terminator
-        BICLSS  PC, R14, #V_bit         ; if was 0 or 1 then exit
+        MOVLS   PC, R14                 ; if was 0 or 1 then exit (assume SUB cleared V)
 
         CMP     R3, #SpriteNameSize     ; if length > maximum sprite name len
         MOVHI   R3, #SpriteNameSize     ; then limit to maximum sprite name len
@@ -880,7 +883,7 @@ ReturnName ROUT
         STRB    R4, [R2]
         SUB     R3, R2, R6              ; R3 = no. of characters,
         STR     R3, [WsPtr, #RetnReg3]  ; excluding terminator
-        BICS    PC, R14, #V_bit         ; indicate no error
+        RETURNVC                        ; indicate no error
 
 ; *****************************************************************************
 ;
@@ -902,12 +905,12 @@ RenameSprite ROUT
         ADD     R8, R2, #spName
         STMIA   R8, {R9-R11}
         KillSpChoosePtr                 ; in case it points to renamed sprite
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 AlreadyExists                           ; sprite with new name already exists
         Pull    "R3, R14"
         TEQ     R2, R3                  ; if it's the same one, then exit VC
-        BICEQS  PC, R14, #V_bit         ; (SRename/SCopy fred fred is allowed)
+        RETURNVC                        ; (SRename/SCopy fred fred is allowed)
 
         ADRL    R0, SpriteErr_SpriteAlreadyExists
       [ International
@@ -916,7 +919,7 @@ AlreadyExists                           ; sprite with new name already exists
         Pull    "lr"
       ]
         STR     R0, [WsPtr,#RetnReg0]
-        ORRS    PC, R14, #V_bit
+        RETURNVS
 
 ; *****************************************************************************
 ;
@@ -979,7 +982,7 @@ ReadSpriteSize ROUT
         ADD     R11, WsPtr, #RetnReg3
         STMIA   R11, {R3-R6}
 
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; *****************************************************************************
 ;
@@ -1223,28 +1226,9 @@ PutSprite ROUT
         ADD     R3, WsPtr, #NewPtX
         LDMIA   R3, {R3, R4}            ; plot sprite at NewPt(X,Y)
 PutSpri20
-   [ {TRUE}
         GraphicsMode R0
-        ADRNEL  R0, SpriteErr_NotGraphics
-      [ International
-        Push    "lr",NE
-        BLNE    TranslateError
-        Pull    "lr",NE
-      ]
-        STRNE   R0, [WsPtr, #RetnReg0]
-        ORRNES  PC, R14, #V_bit         ; quit with error if not graphics mode
-   |
-        LDR     R0, [WsPtr, #NPix]
-        TEQ     R0, #0
-        ADREQL  R0, SpriteErr_NotGraphics
-      [ International
-        Push    "lr",EQ
-        BLEQ    TranslateError
-        Pull    "lr",EQ
-      ]
-        STREQ   R0, [WsPtr, #RetnReg0]
-        ORREQS  PC, R14, #V_bit         ; quit with error if not graphics mode
-    ]
+        BNE     PutSpriNotGraphics      ; quit with error if not graphics mode
+
         Push    "WsPtr, R14"            ; push both so R12,R14 are free for use
 
         Push    "R2"                    ; save the pointer to the sprite
@@ -1374,7 +1358,18 @@ ComplicatedExit
         SWI     XOS_RestoreCursors
 SpriteOffScreen
         Pull    "WsPtr, R14"
-        BICS    PC, R14, #V_bit
+        RETURNVC
+
+PutSpriNotGraphics
+        ADRL    R0, SpriteErr_NotGraphics
+      [ International
+        Push    "lr"
+        BL      TranslateError
+        Pull    "lr"
+      ]
+        STR     R0, [WsPtr, #RetnReg0]
+        RETURNVS
+
 
 ; Complicated case
 
@@ -1748,7 +1743,7 @@ NTrnPl50
         SWI     XOS_RestoreCursors
 
         Pull    "WsPtr, R14"
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; get a mask word without incrementing the pointers
 
@@ -1757,16 +1752,21 @@ getmaskword_noinc ROUT
 
         LDR     R4, [WsPtr, #SPltMaskBit-SPltScrAdr]
         LDR     R5, [WsPtr, #SPltMaskPtr-SPltScrAdr]
-        BL      getmaskword
+        BL      getmaskword                             ; preserves flags
         STR     R4, [WsPtr, #SPltMaskBit-SPltScrAdr]
         STR     R5, [WsPtr, #SPltMaskPtr-SPltScrAdr]
 
-        LDMFD   R13!,{R4,R5,R15}^
+        LDMFD   R13!,{R4,R5,R15}                        ; must preserve flags
 
 ; get a mask word, and increment pointers
 
 getmaskword ROUT
+ [ No26bitCode
+        Push    "R2,R4,R5,R6,R7,R8,R14"
+        mrs    ,R8, CPSR
+ |
         Push    "R2,R4,R5,R6,R7,R14"
+ ]
 
 ;R6 -> mask
 ;R7 = bit offset
@@ -1808,7 +1808,12 @@ getmaskword ROUT
 
         ;result in R3, MaskBit/MaskPtr adjusted
 
+ [ No26bitCode
+        msr    ,CPSR_f, R8
+        LDMFD   R13!,{R2,R4,R5,R6,R7,R8,R15} ; must save flags
+ |
         LDMFD   R13!,{R2,R4,R5,R6,R7,R15}^ ; must save flags
+ ]
 
         LTORG
 
@@ -1937,7 +1942,7 @@ TrnPl50                                 ; now try the next scanline
         SWI     XOS_RestoreCursors
 
         Pull    "WsPtr, R14"
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
         LTORG
 
@@ -2268,7 +2273,7 @@ PlotNewMask ROUT
         SWI XOS_RestoreCursors
 
         Pull    "WsPtr, R14"
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; *****************************************************************************
 ;
@@ -2286,28 +2291,8 @@ PlotMask ROUT
         ADD     R3, WsPtr, #NewPtX
         LDMIA   R3, {R3, R4}            ; plot sprite at NewPt(X,Y)
 PlotMa20
-    [ {TRUE}
         GraphicsMode R0
-        ADRNEL  R0, SpriteErr_NotGraphics
-      [ International
-        Push    "lr",NE
-        BLNE    TranslateError
-        Pull    "lr",NE
-      ]
-        STRNE   R0, [WsPtr, #RetnReg0]
-        ORRNES  PC, Link, #V_bit        ; quit with error if not graphics mode
-    |
-        LDR     R0, [WsPtr, #NPix]
-        TEQ     R0, #0
-        ADREQL  R0, SpriteErr_NotGraphics
-      [ International
-        Push    "lr",EQ
-        BLEQ    TranslateError
-        Pull    "lr",EQ
-      ]
-        STREQ   R0, [WsPtr, #RetnReg0]
-        ORREQS  PC, Link, #V_bit        ; quit with error if not graphics mode
-    ]
+        BNE     PutSpriNotGraphics      ; quit with error if not graphics mode
 
         LDR     R5, [WsPtr, #GPLBMD]    ; background GCOL action
         ORR     R5, R5, #8              ; force 'use mask'
@@ -2462,7 +2447,7 @@ PlotMa20
         SWI XOS_RestoreCursors
 
         Pull    "WsPtr, R14"
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; Sprite has no mask or gcol says dont use it, so draw a rectangle
 
@@ -2674,12 +2659,22 @@ GenSpritePlotParmBlk ROUT
         ADD     R11, WsPtr, #SPltMskAdr
         STMIB   R11, {R8,R9}            ; SPltLMask,SPltRMask
 
+ [ No26bitCode
+        CLRV
+        Pull    PC
+ |
         Pull    R14
         BICS    PC, R14, #V_bit         ; VC some/all of sprite in window
+ ]
 
 20
+ [ No26bitCode
+        SETV
+        Pull    PC
+ |
         Pull    R14
         ORRS    PC, R14, #V_bit         ; VS sprite completely outside window
+ ]
 
 
         END

@@ -72,11 +72,10 @@ CircleOutline ROUT
 
 20
         LDMIA   R9, {R0-R7}                     ; reload the parameter block
-        TEQ     R0, #0                          ; if xPnt<>0
-        BLNE    AdvCircleParm                   ; then step to next point
-        BNE     %BT10                           ; and go round again
-
-        Pull    PC                              ; else finish
+        TEQ     R0, #0                          ; if xPnt=0
+        Pull    PC,EQ                           ; then finish
+        BL      AdvCircleParm                   ; else step to next point
+        B       %BT10                           ; and go round again
 
 ; *****************************************************************************
 ;
@@ -460,7 +459,7 @@ SegmentLineOff ROUT
         TSTEQ   R0, #&3000000                   ; Quad2 or Quad3
         STRNE   R1, [WsPtr, #LowerSegLinePtr]   ; then kill lower segment line
 
-        MOVS    PC, R14
+        MOV     PC, R14
 
 ; *****************************************************************************
 ;
@@ -633,7 +632,7 @@ Reflect
         ADD R11,WsPtr,#ArcPoint0X
         STMIA R11,{R0,R1, R2,R3, R7,R8, R9,R10} ;And store the lot for later on
 
-        MOVS PC,Link
+        MOV PC,Link
 ;
 ;
 ;

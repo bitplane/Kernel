@@ -2406,7 +2406,7 @@ RdCh32Bit_Loop
         ADD     R2, R2, R8
         BCC     RdCh32Bit_Loop
 
-        MOVS    PC,LR
+        MOV     PC,LR
 
       ]
 
@@ -3036,7 +3036,7 @@ BEL     ROUT
 
 CompileTextBg ROUT
 
-        Push    "R0-R1,LR"
+        Entry   "R0-R1"
 
         LDR     R1, [WsPtr, #NColour]
         CMP     R1, #63                         ; is this a daft mode?
@@ -3048,11 +3048,11 @@ CompileTextBg ROUT
         BLCS    ConvertGCOLToColourNumber
         STRVC   R0, [WsPtr, #TextBgColour]
 
-        Pull    "R0-R1,PC",,^
+        EXIT
 
 CompileTextFg   ROUT
 
-        Push    "R0-R1,LR"
+        Entry   "R0-R1"
 
         LDR     R1, [WsPtr, #NColour]
         CMP     R1, #63                         ; is this a daft mode?
@@ -3064,7 +3064,7 @@ CompileTextFg   ROUT
         BLCS    ConvertGCOLToColourNumber       ; convert colour using ColourTrans
         STRVC   R0, [WsPtr, #TextFgColour]      ;   store the value away - assume it worked!?!@?
 
-        Pull    "R0-R1,PC",,^
+        EXIT
 
 
 ; *****************************************************************************
@@ -3082,7 +3082,7 @@ CompileTextFg   ROUT
 
 ConvertGCOLToColourNumber ROUT
 
-        Push    "R1-R2, LR"
+        EntryS  "R1-R2"
 
         LDR     R1, [WsPtr, #NColour]
         CMP     R1, #63
@@ -3103,7 +3103,7 @@ ConvertGCOLToColourNumber ROUT
 
         SWI     XColourTrans_ReturnColourNumber
 
-        Pull    "R1-R2, PC",,^
+        EXITS
 20
         MOV     r1, r0, LSR #6                  ; r1 =   0  0  0  0  0  0 T1 T0
         AND     r2, r0, #2_00100001             ; r2 =   0  0 B3  0  0  0  0 R2
@@ -3112,7 +3112,7 @@ ConvertGCOLToColourNumber ROUT
         ORR     r1, r1, r2, LSR #1              ; r1 =  B3  0  0  0 B2 R2 T1 T0
         AND     r2, r0, #2_00001110             ; r2 =   0  0  0  0 G3 G2 R3  0
         ORR     r0, r1, r2, LSL #3              ; r0 =  B3 G3 G2 R3 B2 R2 T1 T0
-        Pull    "R1-R2, PC",,^
+        EXITS
 
         LTORG
 

@@ -133,7 +133,7 @@ GetSpr05
         BL      SelectSprite
         SWI     XOS_RestoreCursors
         Pull    R14
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 70
         ADRL    R0, SpriteErr_NotGraphics
@@ -144,7 +144,7 @@ GetSpr05
         STR     R0, [WsPtr, #RetnReg0]
 80                                      ; return point after an error
         Pull    R14
-        ORRS    PC, R14, #V_bit
+        RETURNVS
 
 ; come here if sprite already exists
 ; we want to extend or reduce existing sprite as necessary
@@ -215,7 +215,7 @@ GetSpr05
 
         SWI     XOS_RestoreCursors
         Pull    R14
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; *****************************************************************************
 
@@ -360,7 +360,12 @@ PaintSprite ROUT
 ; out:  Flags preserved
 
 PaintBlock ROUT
+ [ No26bitCode
+        mrs    ,R4, CPSR
+        Push    "R4,R14"
+ |
         Push    R14
+ ]
         LDR     R4, [WsPtr, #SGetWidth]
         ADD     R4, R4, #1
 10
@@ -372,8 +377,13 @@ PaintBlock ROUT
         SUBS    R5, R5, #1
         BNE     %BT10
 
-        Pull    R14
-        MOVS    PC, R14                 ; we must preserve the flags
+ [ No26bitCode
+        Pull    "R4,R14"
+        msr    ,CPSR_f, R4
+        MOV     PC,R14
+ |
+        Pull    PC,,^                 ; we must preserve the flags
+ ]
 
 ; *****************************************************************************
 ;
@@ -398,7 +408,7 @@ PaintRow ROUT
         SUBS    R4, R4, #1
         BNE     %BT10
         Pull    R4
-        MOVS    PC, R14
+        MOV     PC, R14
 
 ; *****************************************************************************
 ;
@@ -440,7 +450,7 @@ CreateSprite ROUT
         STMIA   R1, {R4-R7}
 
         Pull    R14
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; *****************************************************************************
 ;
@@ -592,7 +602,7 @@ PostCreateHeader
 
 11
         Pull    "R1, R14"
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 10
         ADRL    R0, SpriteErr_NoRoom
@@ -601,7 +611,7 @@ PostCreateHeader
       ]
         STR     R0, [WsPtr, #RetnReg0]
         Pull    "R0, R1, R14"           ; junk palflag, sprite area ptr
-        ORRS    PC, R14, #V_bit
+        RETURNVS
 
 ; *****************************************************************************
 ;
@@ -848,7 +858,7 @@ PreCreateHeader ROUT
         ADD     R4, R4, R3, LSL #2      ; total size in bytes
 
         Pull    R14
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; *****************************************************************************
 ;
@@ -940,7 +950,7 @@ CreateMask ROUT
         BNE     %BT20
 
         Pull    R14
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; *****************************************************************************
 ;
@@ -971,7 +981,7 @@ RemoveMask ROUT
         STR     R5, [R2, #spTrans]
 10
         Pull    R14
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; *****************************************************************************
 ;

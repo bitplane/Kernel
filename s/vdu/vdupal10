@@ -36,7 +36,7 @@
 
 MOSPaletteV ROUT
         CMP     r4, #1
-        MOVCCS  pc, lr
+        MOVCC   pc, lr
         BEQ     PV_ReadPalette
         CMP     r4, #3
         BCC     PV_SetPalette
@@ -46,7 +46,7 @@ MOSPaletteV ROUT
         BEQ     PV_SetDefaultPalette
         CMP     r4, #7
         BCC     PV_BlankScreen
-        MOVS    pc, lr                  ; reason code not known, so pass it on
+        MOV     pc, lr                  ; reason code not known, so pass it on
 
 ; *****************************************************************************
 
@@ -84,11 +84,12 @@ PV_SetDefaultPalette ROUT
         MOV     r4, #0                  ; no flashing
 20
         CMP     r0, #16
-        BLCC    UpdateSettingStraightRGB
-        ADDCC   r0, r0, #1
-        BCC     %BT20
+        BHS     %FT25
+        BL      UpdateSettingStraightRGB
+        ADD     r0, r0, #1
+        B       %BT20
 
-        MOV     r2, #0                  ; Set border to black (sup 0)
+25      MOV     r2, #0                  ; Set border to black (sup 0)
         BL      BorderInitEntry
 
         MOV     r4, #0                  ; indicate PaletteV operation complete
@@ -249,7 +250,7 @@ PV_SetPalette ROUT
         BEQ     PointerColour
 
         Pull    "r0-r3"
-        MOVS    pc, lr                  ; else not defined
+        MOV     pc, lr                  ; else not defined
 
 ; *****************************************************************************
 
@@ -350,7 +351,7 @@ UpdateSettingStraightRGB ENTRY "r2,r5,r6"
         STRCC   r6, [r2]                ; poke VIDC if setting 2nd colour and in 2nd state
 20
         PLP
-        EXITS                           ; restore registers, claim vector
+        EXIT                            ; restore registers, claim vector
 
 ; *****************************************************************************
 ;
@@ -380,7 +381,7 @@ UpdateHiResRGB ENTRY "r5"
         BLNE    UpdateOneHiResSetting
         Pull    "lr"
         PLP
-        EXITS
+        EXIT
 
 UpdateOneHiResSetting ENTRY "r1,r2,r6-r9"
         LDRB    lr, [WsPtr, #ScreenBlankFlag]
@@ -416,7 +417,7 @@ UpdateOneHiResSetting ENTRY "r1,r2,r6-r9"
         TEQ     r4, r7                  ; if not done all 16 entries
         BNE     %BT10                   ; then loop
 
-        EXITS
+        EXIT
 
         LTORG
 
@@ -491,6 +492,9 @@ PV_ReadPalette ROUT
         Pull    "r10, r11, pc"
 
 FudgeRGB ROUT
+ [ No26bitCode
+        mrs    ,r4, CPSR
+ ]
         BIC     r11, r11, #&C8          ; knock out top bit R, top 2 bits G
         BIC     r11, r11, #&800         ; knock out top bit B
 
@@ -502,7 +506,11 @@ FudgeRGB ROUT
         ORRNE   r11, r11, #&80
         TST     r0, #&80                ; override top bit of blue
         ORRNE   r11, r11, #&800
+ [ No26bitCode
+        msr    ,CPSR_f, r4
+ |
         MOVS    pc, lr
+ ]
 
 ; *****************************************************************************
 ;
@@ -581,11 +589,9 @@ PV_BlankScreen ROUT
         MOV     r1, #(1 :SHL: 10) :OR: (3 :SHL: 8) ; bits to modify
         SWI     XOS_UpdateMEMC
 
-        MOV     r0, pc
-        ORR     lr, r0, #I_bit          ; disable IRQs so we don't get a flash in the middle
-        TEQP    lr, #0
+        PHPSEI  r0, lr                  ; disable IRQs so we don't get a flash in the middle
         BL      UpdateAllPalette        ; update all palette, including border + pointer
-        TEQP    r0, #0                  ; restore old IRQ state
+        PLP     r0                      ; restore old IRQ state
 99
         MOV     r0, r3
         MOV     r4, #0

@@ -65,11 +65,11 @@ Squeeze_NLongs      # 4                                 ; number of "long" entri
         ASSERT  @=0
 
 CheckForSqueezedModule ROUT
-        BIC     lr, lr, #V_bit                          ; prepare for normal exit (V clear)
+        CLRV                                            ; prepare for normal exit (V clear)
         LDR     R6, [R9, #Module_code_pointer]          ; R6 -> module code
         LDR     R5, [R6, #Module_Init]                  ; R5 = offset to init entry
         EORS    R5, R5, #&80000000                      ; take off top bit
-        MOVMIS  PC, lr                                  ; if -ve now, then it's a normal module, so exit doing nothing
+        MOVMI   PC, lr                                  ; if -ve now, then it's a normal module, so exit doing nothing
 
 ; it's a squeezed module, R5 = size of compressed module
 
@@ -315,7 +315,8 @@ doneDecode
 ;        DLINE   "Returning new module to OS"
 
         STR     R3, [R9, #Module_code_pointer]  ; point module node at expanded module
-        Pull    PC,,^                   ; exit (VC)
+        CLRV
+        Pull    PC                      ; exit (VC)
 
 ; come here if failed to claim block for tables
 
@@ -331,8 +332,8 @@ ExpandFailed2
 ; come here if failed to claim block for expanded module
 
 ExpandFailed1
-        Pull    "R6-R12, lr"            ; restore registers
-        ORRS    PC, lr, #V_bit          ; and exit V set
+        SETV
+        Pull    "R6-R12, pc"            ; restore registers, and exit V set
 
 ; subroutine to free a block in RMA
 ; in: R2 -> block

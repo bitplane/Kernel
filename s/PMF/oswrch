@@ -194,6 +194,6 @@ SpoolBadExit
         SWI     XOS_Find                ; and close file (R0=0, R1=handle)
         Pull    "R1, R14"
         MOVVC   R0, R1                  ; if closed OK, then restore old error
-        ORRS    PC, R14, #V_bit         ; still indicate error
+        RETURNVS                        ; still indicate error
 
         END

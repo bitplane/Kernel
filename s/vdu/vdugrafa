@@ -72,7 +72,7 @@ GenLineParm ROUT
         ADDMI   R2, R3, R2
 
         RSB     R2, R4, R2, ASR #1 ; Bres = Bres/2 - DeltaY
-        MOVS    PC, R14         ; Return
+        MOV     PC, R14         ; Return
 
 ; *****************************************************************************
 ;
@@ -105,7 +105,7 @@ AdvLineParm ROUT
                                 ; Advance X
         SUBGE   R2, R2, R4      ; Sub DeltaY from Bres to advance in X dirn
         ADDGE   R0, R0, R5      ; Add or subtract 1 dependent on sign DeltaX
-        MOVS    PC, R14
+        MOV     PC, R14
 
 ; *****************************************************************************
 ;

@@ -164,9 +164,12 @@ Vdu23_17
 
         ; amg: only do foreground or background as appropriate
         CMP     R0,#1
-        BLNE    CompileTextFg
-        BLEQ    CompileTextBg                   ; update TextFgColour/TextBgColour
-
+        BEQ     %FT05
+        BL      CompileTextFg
+        B       %FT10
+05
+        BL      CompileTextBg                   ; update TextFgColour/TextBgColour
+10
         Pull    "lr"
 
 SetColoursDirty

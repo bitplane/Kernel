@@ -160,7 +160,7 @@ ScreenSave ROUT
         BVS     %FT30
         SWI     XOS_RestoreCursors
         Pull    R14
-        BICS    PC, R14, #V_bit         ; no error, return VC
+        RETURNVC                        ; no error, return VC
 
 20
         ADRL    R0, SpriteErr_NotGraphics
@@ -180,7 +180,7 @@ ScreenSave ROUT
 35
         SWI     XOS_RestoreCursors
         Pull    R14
-        ORRS    PC, R14, #V_bit
+        RETURNVS
 
 ScrSavSpriteName
         = "screendump", 0
@@ -427,7 +427,7 @@ ScreenLoad ROUT
 55
         SWI     XOS_RestoreCursors
         Pull    R14
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 60
         ADRL    R0,SpriteErr_NotGraphics
@@ -443,7 +443,7 @@ ScreenLoad ROUT
         STRVS   R0, [WsPtr, #RetnReg0]
         SWI     XOS_RestoreCursors
         Pull    R14
-        ORRS    PC, R14, #V_bit
+        RETURNVS
 
 
         END

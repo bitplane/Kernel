@@ -53,7 +53,7 @@ MergeSpriteFile ROUT
         SUB     R2, R3, #4
         BL      MergeSpriteAreas ; in: R1 -> destination, R2 -> source, V=0
         Pull    R14
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; *****************************************************************************
 ;
@@ -158,7 +158,7 @@ LoadFile ROUT
 20
         Pull    "R1-R6, R14"            ; return with error
         STR     R0, [WsPtr, #RetnReg0]
-        ORRS    PC, R14, #V_bit         ; R1-R11 preserved
+        RETURNVS                        ; R1-R11 preserved
 
 ; *****************************************************************************
 ;
@@ -204,7 +204,7 @@ SaveSpriteFile ROUT
         Pull    "lr"
       ]
         STR     R0, [WsPtr, #RetnReg0]
-        ORRS    PC, R14, #V_bit
+        RETURNVS
 
         LTORG
 
@@ -249,7 +249,7 @@ MergeSpriteAreas ROUT
         Pull    "lr"
       ]
         STR     R0, [WsPtr, #RetnReg0]
-        ORRS    PC, R14, #V_bit
+        RETURNVS
 
 ; *****************************************************************************
 ;
@@ -288,7 +288,7 @@ AddSprite
         STR     R3, [R1, #saFree]
 
         Pull    "R1, R3-R5, R14"
-        BICS    PC, R14, #V_bit         ; ignore 'not found' from DeleteSprite
+        RETURNVC                        ; ignore 'not found' from DeleteSprite
 
 10
         Pull    "R1, R3-R5, R14"
@@ -299,7 +299,7 @@ AddSprite
         Pull    "lr"
       ]
         STR     R0, [WsPtr, #RetnReg0]
-        ORRS    PC, R14, #V_bit
+        RETURNVS
 
 ; *****************************************************************************
 ;
@@ -372,7 +372,7 @@ ExtendHorizontally ROUT
 20
         STR     R3, [R2, #spRBit]
         Pull    "R3-R6, R9-R11, R14"
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; *****************************************************************************
 ;
@@ -433,7 +433,7 @@ ReduceHorizontally ROUT
         STR     R5, [R2, #spWidth]
 20
         Pull    "R3-R6, R9-R11, R14"
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; *****************************************************************************
 ;
@@ -455,12 +455,12 @@ InsertRow ROUT
         BVS     %FT20
 
         Pull    "R0,R4,R14"
-        BICS    PC, R14, #V_bit         ; exit OK
+        RETURNVC                        ; exit OK
 
 20
         STR     R0, [WsPtr, #RetnReg0]
         Pull    "R0,R4,R14"
-        ORRS    PC, R14, #V_bit         ; exit with error
+        RETURNVS                        ; exit with error
 
 ; *****************************************************************************
 ;
@@ -482,12 +482,12 @@ DeleteRow ROUT
         BVS     %FT20
 
         Pull    "R0,R4,R14"
-        BICS    PC, R14, #V_bit         ; exit OK
+        RETURNVC                        ; exit OK
 
 20
         STR     R0, [WsPtr, #RetnReg0]
         Pull    "R0,R4,R14"
-        ORRS    PC, R14, #V_bit         ; exit with error
+        RETURNVS                        ; exit with error
 
 ; *****************************************************************************
 ;
@@ -509,12 +509,12 @@ InsertCol ROUT
         BVS     %FT20
 
         Pull    "R0,R4,R14"
-        BICS    PC, R14, #V_bit         ; exit OK
+        RETURNVC                        ; exit OK
 
 20
         STR     R0, [WsPtr, #RetnReg0]
         Pull    "R0,R4,R14"
-        ORRS    PC, R14, #V_bit         ; exit with error
+        RETURNVS                        ; exit with error
 
 ; *****************************************************************************
 ;
@@ -536,12 +536,12 @@ DeleteCol ROUT
         BVS     %FT20
 
         Pull    "R0,R4,R14"
-        BICS    PC, R14, #V_bit         ; exit OK
+        RETURNVC                        ; exit OK
 
 20
         STR     R0, [WsPtr, #RetnReg0]
         Pull    "R0,R4,R14"
-        ORRS    PC, R14, #V_bit         ; exit with error
+        RETURNVS                        ; exit with error
 
 ; *****************************************************************************
 ;
@@ -588,7 +588,7 @@ ExtendSprite10
         STR     R9, [R2, #spNext]       ; update spNext
 
         Pull    "R3, R8-R11, R14"
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 10
         ADRL    R0, SpriteErr_NoRoomToInsert
@@ -597,7 +597,7 @@ ExtendSprite10
       ]
         STR     R0, [WsPtr, #RetnReg0]
         Pull    "R3, R8-R11, R14"
-        ORRS    PC, R14, #V_bit
+        RETURNVS
 
 ; *****************************************************************************
 ;
@@ -627,7 +627,7 @@ InsertWords ROUT
         SUB     R11, R11, R9            ; size (bytes) to copy
         CopyUp  R9,R10,R11, R14,R8      ; To,From,Size,Temp, Temp2
         Pull    "R8-R11, R14"
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; *****************************************************************************
 ;
@@ -655,7 +655,7 @@ ClearWords ROUT
         SUBNES  R9, R9, #1
         BNE     %BT10
         Pull    "R9-R11, R14"
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; *****************************************************************************
 ;
@@ -751,24 +751,26 @@ ReadPixelColour ROUT
         MOVGT   R3, R3
         SUB     R2, R2, #spPalette
         CMP     R2, #&0800
+        BEQ     %FT05
 
         ;see comment below - for this call to work we have to temporarily
         ;set NColour to SprReadNColour
 
-        LDRNE   R8,[WsPtr,#NColour]
-        STRNE   R6,[WsPtr,#NColour]
+        LDR     R8,[WsPtr,#NColour]
+        STR     R6,[WsPtr,#NColour]
 
-        BLNE    ExtractTintAndColour    ; else extract colour & tint from pixel
+        BL      ExtractTintAndColour    ; else extract colour & tint from pixel
 
-        STRNE   R8,[WsPtr,#NColour]
-
-        MOVEQ   R2, R0
-        MOVEQ   R3, #0
+        STR     R8,[WsPtr,#NColour]
+        B       %FT10
+05
+        MOV     R2, R0
+        MOV     R3, #0
 10
         STR     R2, [WsPtr, #RetnReg5]  ; pass colour in R5
         STR     R3, [WsPtr, #RetnReg6]  ; and tint in R6
         Pull    R14
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; *****************************************************************************
 ;
@@ -854,7 +856,7 @@ WritePixelColour ROUT
         ORR     R0, R0, R5, LSL R7
         STR     R0, [R6]
         Pull    R14
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; *****************************************************************************
 ;
@@ -891,7 +893,7 @@ ReadPixelMask ROUT
 10
         STR     R5, [WsPtr, #RetnReg5]
         Pull    R14
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; *****************************************************************************
 ;
@@ -928,7 +930,7 @@ WritePixelMask ROUT
         STR     R0, [R6, R9]
 10
         Pull    R14
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 ; *****************************************************************************
 ;
@@ -1015,7 +1017,7 @@ SpriteGenAddr
         ADD     R6, R6, R8              ; byte address of word in sprite
 
         Pull    "R1-R5, R8-R11, LR"
-        BICS    PC,Link,#V_bit
+        RETURNVC
 
 90
         ADRL    R0, SpriteErr_InvalidRowOrCol
@@ -1026,7 +1028,7 @@ SpriteGenAddr
       ]
         STR     R0, [WsPtr, #RetnReg0]
         Pull    "R1-R5, R8-R11, LR"
-        ORRS    PC, R14, #V_bit
+        RETURNVS
 
 
 ; *****************************************************************************
@@ -1094,8 +1096,8 @@ GetMaskspWidth ROUT
 
 RemoveLeftHandWastage ROUT
         LDR     R0, [R2, #spLBit]
-        TEQ     R0, #0                  ; is there any wastage ?
-        BICEQS  PC, R14, #V_bit         ; no, then exit straight away
+        CMP     R0, #0                  ; is there any wastage ?
+        MOVEQ   PC, R14                 ; no, then exit straight away
 
         Push    "R1, R2, R14"           ; get stack the same as in DeleteCol
         LDR     R11, [R2, #spImage]
@@ -1154,13 +1156,13 @@ LHWastageEntry
         LDMFD   R13, {R1,R2}
         BL      ReduceHorizontally
         Pull    "R1-R2, R14"
-        BICS    PC, R14, #V_bit
+        RETURNVC
 
 60
         STR     R0, [WsPtr, #RetnReg0]
 70
         Pull    "R1-R2, R14"
-        ORRS    PC, R14, #V_bit
+        RETURNVS
 
 
 ; ******************************************************************************

@@ -352,14 +352,13 @@ PollPointer
         LDRB    r1, MouseType
         MOV     r2, #0                  ; Default to no movement.
         MOV     r3, #0
-        MOV     r9, pc                  ; Save current PSR.
-        TEQP    pc, #SVC_mode + I_bit   ; Call PointerV in SVC mode, no IRQs.
+        SavePSR r9                      ; Save current PSR.
+        WritePSRc SVC_mode+I_bit, r10   ; Call PointerV in SVC mode, no IRQs.
         MOV     r10, #PointerV          ; Call PointerV to get movements & button states
         Push    "lr"                    ; Save SVC lr.
         BL      CallVector
         Pull    "lr"                    ; Restore SVC lr.
-        TEQP    r9, #0
-        NOP
+        RestPSR r9
         [ STB
         TEQ     r2, #0
         TEQEQ   r3, #0
@@ -367,7 +366,7 @@ PollPointer
         STRNEB  lr, MousePresent
         BLNE    ProcessMouseXY
         |
-        BL	ProcessMouseXY
+        BL      ProcessMouseXY
         ]
 
         Pull    "r12,pc"
