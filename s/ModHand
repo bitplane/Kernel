@@ -22,6 +22,8 @@ ExtraRMANeeded * 24*1024 ; Amount you get extra on top of what you configured
                      GBLL ModHand_IntrinsicBI
 ModHand_IntrinsicBI  SETL {TRUE} :LAND: ChocolateOSMod  ;base module incarnation 'node' is in module node
 
+                        GBLL ModHand_InitDieServices
+ModHand_InitDieServices SETL {TRUE} :LAND: ModHand_IntrinsicBI
 
 ; Test version, incorporating multiple incarnation attempt
 
@@ -655,6 +657,9 @@ Module_ReInit   ROUT
        MOV      R10, #1                     ; fatal die
        BL       CallDie
        BVS      %FT03
+     [ ModHand_InitDieServices
+       BL       IssueServicePostFinal
+     ]
 
        SUB      R10, R1, #1
        BL       EnvStringSkipName
@@ -662,6 +667,9 @@ Module_ReInit   ROUT
        BL       CallInit
        BLVS     LoseModuleSpace_if_its_the_only_incarnation
        STRVC    R12, [R3, #Incarnation_Link]
+     [ ModHand_InitDieServices
+       BLVC     IssueServicePostInit
+     ]
 03     STRVS    R0, [stack]
        Pull    "R0-R4, R9, lr"
         B       SLVK_TestV
@@ -1981,6 +1989,9 @@ Add_Incarnation_AltEntry
          LDRVC   R3, [R9, #Module_incarnation_list]
          STRVC   R3, [R2, #Incarnation_Link]
          STRVC   R2, [R9, #Module_incarnation_list]
+       [ ModHand_InitDieServices
+         BLVC    IssueServicePostInit
+       ]
          Pull   "R0-R3, PC"
 
 ;*************************************************************
@@ -3009,6 +3020,9 @@ KillIncarnation  ROUT
          BLNE    CallDie                     ; tidy up anyway
          STRVS   R0, [stack]
          Pull   "R0-R2, R6, R10, PC", VS
+       [ ModHand_InitDieServices
+         BL      IssueServicePostFinal
+       ]
   [ ModHand_IntrinsicBI
          SUB     R2, R12, R9
          CMP     R2, #ModInfo
@@ -3710,6 +3724,70 @@ RMInsert_Code ALTENTRY
         B       UnplugInsertEntry
 
         MakeErrorBlock RMNotFoundInROM
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+ [ ModHand_InitDieServices
+; IssueServicePostInit
+; On entry
+;  R9  -> module chain node
+;  R12 -> incarnation node
+; On exit
+;  R0-R3 corrupted
+;  flags preserved
+
+IssueServicePostInit
+        Push    "R4-R5, lr"
+        MRS     R5, CPSR
+
+        ASSERT  ModHand_IntrinsicBI     ; can't be bothered to support old world
+
+        LDR     R2, [R9, #Module_code_pointer]
+        LDR     R0, [R2, #Module_HelpStr]
+        ADD     R0, R2, R0
+        BL      GetVerNoFromHelpString
+        MOV     R0, R2
+        LDR     R2, [R0, #Module_Title]
+        ADD     R2, R0, R2
+        MOV     R4, R1
+        MOV     R1, #Service_ModulePostInit
+        SUB     R3, R12, R9
+        SUBS    R3, R3, #ModInfo        ; R3 = 0 if intrinsic base incarnation
+        ADDNE   R3, R12, #Incarnation_Postfix
+        SWI     XOS_ServiceCall
+
+        MSR     CPSR_f, R5
+        Pull    "R4-R5, pc"
+
+; IssueServicePostFinal
+; On entry
+;  R9  -> module chain node
+;  R12 -> incarnation node (incarnation workspace is already freed)
+; On exit
+;  R0 corrupted
+;  flags corrupted
+
+IssueServicePostFinal
+        Push    "R1-R4, lr"
+
+        ASSERT  ModHand_IntrinsicBI     ; can't be bothered to support old world
+
+        LDR     R2, [R9, #Module_code_pointer]
+        LDR     R0, [R2, #Module_HelpStr]
+        ADD     R0, R2, R0
+        BL      GetVerNoFromHelpString
+        MOV     R0, R2
+        LDR     R2, [R0, #Module_Title]
+        ADD     R2, R0, R2
+        MOV     R4, R1
+        MOV     R1, #Service_ModulePostFinal
+        SUB     R3, R12, R9
+        SUBS    R3, R3, #ModInfo        ; R3 = 0 if intrinsic base incarnation
+        ADDNE   R3, R12, #Incarnation_Postfix
+        SWI     XOS_ServiceCall
+
+        Pull    "R1-R4, pc"
+ ]
 
 ;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

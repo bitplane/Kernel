@@ -22,6 +22,7 @@ OldOpt  SETA    {OPT}
                        GBLL Included_Hdr_HALDevice
 Included_Hdr_HALDevice SETL {TRUE}
 
+
                         ^       0
 HALDevice_Type          #       2
 HALDevice_ID            #       2
@@ -38,6 +39,47 @@ HALDevice_Device        #       4
 HALDevice_TestIRQ       #       4
                         #       8
 HALDeviceSize           *       :INDEX: @
+
+
+HALDeviceType_Video     *       1 :SHL: 8
+                        ^       1
+HALDeviceVideo_VDU      #       1       ; VDU display
+
+HALDeviceType_Audio     *       2 :SHL: 8
+                        ^       1
+HALDeviceAudio_PCM16    #       1       ; 16-bit PCM sound output
+
+HALDeviceType_SysPeri   *       3 :SHL: 8
+                        ^       1
+HALDeviceSysPeri_IntC   #       1       ; Interrupt controller
+HALDeviceSysPeri_DMAC   #       1       ; DMA controller
+HALDeviceSysPeri_DMAB   #       1       ; DMA channel - buffer type
+HALDeviceSysPeri_DMAL   #       1       ; DMA channel - list type
+
+HALDeviceType_Comms     *       4 :SHL: 8
+                        ^       1
+HALDeviceComms_UART     #       1       ; UART
+
+
+HALDeviceBus_Pro        *       0 :SHL: 28
+                        ^       0
+HALDeviceProBus_Core    #       1 :SHL: 24
+HALDeviceProBus_CoPro   #       1 :SHL: 24
+
+HALDeviceBus_Sys        *       1 :SHL: 28
+                        ^       0
+HALDeviceSysBus_AHB     #       1 :SHL: 24
+HALDeviceSysBus_ASB     #       1 :SHL: 24
+
+HALDeviceBus_Peri       *       2 :SHL: 28
+                        ^       0
+HALDevicePeriBus_APB    #       1 :SHL: 24
+
+HALDeviceBus_Exp        *       3 :SHL: 28
+                        ^       0
+HALDeviceExpBus_Acorn   #       1 :SHL: 24
+HALDeviceExpBus_ISA     #       1 :SHL: 24
+HALDeviceExpBus_PCI     #       1 :SHL: 24
 
  ]
 

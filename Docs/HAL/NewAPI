@@ -94,12 +94,13 @@ Location
 The location describes the location of the device in terms of the bus architecture
 of the computer. Again, it is grouped by bytes.
 
-   Bits 31-24: Bus type
+   Bits 31-28: Bus type
                      0 => processor (0 = core, 1 = coprocessor)
                      1 => main system bus (0 = AHB, 1 = ASB)
                      2 => peripheral bus (0 = APB)
                      3 => expansion bus (0 = Acorn Expansion Card, 1 = ISA, 2 = PCI)
-   Bits 23-16: Bus
+   Bits 27-24: Bus sub-type (see above)
+   Bits 23-16: Bus number
    Bits 15-8:  Card number (PCI, expansion card etc) / chip select number
    Bits 7-0:   Unit number
 
@@ -207,7 +208,8 @@ providing a call to enumerate devices of a particular type.
 
 SWI OS_Hardware 4 (SWI &7A)
 ---------------------------
-On entry: R0 = type to match
+On entry: R0 bits 0-15  = type to match
+             bits 16-31 = maximum major version number to match
           R1 = 0 to start an enumeration, else preserved from last call
           R8 = 4
 On exit:  R1 = -1 if there are no (more) devices of this type
@@ -215,10 +217,10 @@ On exit:  R1 = -1 if there are no (more) devices of this type
           Other registers preserved
 
 
-Service_Device  (Service Call &??)
-----------------------------------
+Service_Hardware  (Service Call &D9)
+------------------------------------
 On entry: R0 bits 0-7 = sub-reason code, bits 8-31 flags (undefined, ignore)
-          R1 = reason code (&??)
+          R1 = reason code (&D9)
           R2 -> device
 On exit:  Depends on sub-reason code
 
