@@ -134,7 +134,7 @@ ChecksumCMOS    SETL   {TRUE}
                 GBLL    SqueezeMods     ; whether squeezed modules are allowed
 SqueezeMods     SETL    {TRUE}
 
-                GBLL    International   ; whether text and error messages come from  messaeges file.
+                GBLL    International   ; whether text and error messages come from  messages file.
 International   SETL    {TRUE}
 
                 GBLL    CacheCommonErrors       ; whether common internationalised errors are cached in sysheap
@@ -318,6 +318,9 @@ DebugHALTX      SETL    {FALSE}
 
                 GBLL    DebugHeaps              ; initialise claimed and freed blocks
 DebugHeaps      SETL    {FALSE}                 ; (may slow things down unacceptably)
+              [ DebugHeaps
+                ! 0, "*** WARNING *** Heap debugging assembled in"
+              ]
 
 ; ChangeDynamicArea and related options
 
@@ -343,12 +346,8 @@ FixCallBacks    SETL    {TRUE}                  ; also addresses some atomicity 
                 GBLL    InterlacedPointer
 InterlacedPointer SETL {TRUE} :LAND: STB                ; enable code to do proper interlaced pointer
 
-                GBLL    ValidateCMOS            ; Apply special CMOS-corruption detection code, and do minimal default settings.
-ValidateCMOS    SETL    {TRUE}
-
-              [ DebugHeaps
-                ! 0, "*** WARNING *** Heap debugging assembled in"
-              ]
+                GBLL    ValidateCMOS            ; Apply special CMOS-corruption detection code,
+ValidateCMOS    SETL    {TRUE}                  ; and do minimal default settings.
 
                 GBLS    GetMessages
               [ International
@@ -364,7 +363,7 @@ DebugForcedReset SETL   {FALSE}
 ConfiguredLang  SETA    11                      ; default configured language
 
                 GBLA    FirstUnpluggableModule
-FirstUnpluggableModule SETA 8                   ; Podule, FileSwitch, ResourceFS, Messages, MessageTrans,
+FirstUnpluggableModule  SETA 8                  ; Podule, FileSwitch, ResourceFS, Messages, MessageTrans,
                                                 ; TerritoryManager, UKTerritory
 
  [ DebugForcedReset

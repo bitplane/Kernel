@@ -998,6 +998,8 @@ This call must not be made after RISCOS_Start.
         bit 1: CMOS reset inhibited (eg protection link on Risc PC)
         bit 2: perform a CMOS reset (if bit 1 clear and bit 0 set - eg front panel
                                      button held down on an NC)
+        bit 3: there is no CMOS (the Kernel must use a RAM cache)
+        bit 4: the RAM has already been cleared to zero
 
 On entry:
   SVC32 mode

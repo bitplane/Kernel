@@ -693,6 +693,27 @@ Application_Delink ROUT
 ; Returns V set if can't relink all
 
 Application_Relink ROUT
+ [ {TRUE}
+; Run through the buffer BACKWARDS to ensure that the vectors are
+; reinstalled in the same order.
+      Push   "R0-R3, lr"
+      MOV     R3, R0            ; R3 -> start of buffer
+      MOV     R10, R0
+01    LDR     R0, [R10], #12    ; search forwards to find terminator
+      CMP     R0, #-1
+      BNE     %BT01
+      SUB     R10, R10, #12     ; R10 -> terminator
+02    CMP     R10, R3           ; loop backwards until we get to start
+      Pull   "R0-R3, lr", EQ
+      ExitSWIHandler EQ
+
+      LDMDB   R10!, {R0-R2}
+      SWI     XOS_AddToVector
+      BVC     %BT02
+      STR     R0, [stack]
+      Pull   "R0-R3, lr"
+      B      SLVK_SetV
+ |
       Push   "R0-R2, lr"
       MOV     R10, R0
 02    LDR     R0, [R10], #4
@@ -706,6 +727,7 @@ Application_Relink ROUT
       STR     R0, [stack]
       Pull   "R0-R2, lr"
       B      SLVK_SetV
+ ]
 
 ;********************************************************************
 ; Now the stuff that issues service calls; also deals with the MOS

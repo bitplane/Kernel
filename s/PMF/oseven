@@ -46,11 +46,12 @@ MOSDoPrint ROUT
         Pull    "R12,PC"
 
 MOSDoPrintWS                                    ; entry point when R12-> BYTEWS
+        CLRV
         LDRB    R1, WrchDest
-        CMP     R1, #4                          ; is printer disabled ?
-        MOVNE   PC, R14                         ; yes, then return (and V:=0)
+        TST     R1, #4                          ; is 'printer disabled' bit set ?
+        MOVNE   PC, R14                         ; yes, then return with V clear
 SWIPrintCharEntry
-        LDRB    R1, PrinterDrivType             ; is it user/net ???
+        LDRB    R1, PrinterDrivType             ; get the stream type
         B       FudgePrinterInsert
 
 ; *****************************************************************************
@@ -90,7 +91,7 @@ WRITE   ROUT
 
 ; *****************************************************************************
 ;
-;       FudgePrinterInsert - Write byte to net printer
+;       FudgePrinterInsert - Write byte to printer stream
 ;
 ; in:   R0 = character to send
 ;       R1 = printer type (3..255)
