@@ -395,7 +395,7 @@ Osbyte0C
 Osbyte0D ROUT
 Osbyte0E ROUT
         CMP     R1, #32                 ; if illegal event number
-        MOVCS   R2, #0                  ; then return + say was disabled
+        MOVCS   R2, #&FF                ; then return + say was enabled
         BCS     %FT10
 
         ADD     R3, WsPtr, #:INDEX: EventSemaphores
@@ -405,8 +405,8 @@ Osbyte0E ROUT
         SUBEQ   R0, R2, #1              ; decrement semaphore
         ADDNE   R0, R2, #1              ; increment semaphore
 
-        CMP     R0, #&100               ; C=1 => wrapped, so don't store back
-        STRCCB  R0, [R3, R1]
+        CMP     R2, #&FF                ; Z=1 => already saturated, so don't store back
+        STRNEB  R0, [R3, R1]
 10
         MOV     R1, R2                  ; R1 = R2 = old semaphore
         MyOsbyte
