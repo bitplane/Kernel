@@ -1173,18 +1173,14 @@ ProcVecPreVeneers       #       ProcVecPreVeneersSize
                         #       (&300-@)
 Export_DebuggerSpace    #       16*8    ; Debugger module needs some zero page
 
-  [ E2ROMSupport
-NVRamSize       #       1               ; Size of NVRam (E2ROM & CMOS) fitted in 256byte units
-RTCFitted       #       1               ; flag =1 iff RTC is fitted
-  ]
+; NVRAM support
 
-  [ E2ROMSupport
+NVRamSize	#	1		; Size of NVRam (E2ROM & CMOS) fitted in 256byte units
+RTCFitted	#	1		; flag =1 iff RTC is fitted
 NVRamBase       #       1               ; Base of NVRam
 NVRamSpeed      #       1               ; Clock hold time in 0.5µs units
 NVRamPageSize   #       1               ; Page size for writing (log2)
 NVRamWriteSize  #       1               ; Size of writable region (256byte units)
-  ]
-
 
                 AlignSpace
 
