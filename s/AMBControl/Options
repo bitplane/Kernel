@@ -1,0 +1,47 @@
+; Copyright 1996 Acorn Computers Ltd
+;
+; Licensed under the Apache License, Version 2.0 (the "License");
+; you may not use this file except in compliance with the License.
+; You may obtain a copy of the License at
+;
+;     http://www.apache.org/licenses/LICENSE-2.0
+;
+; Unless required by applicable law or agreed to in writing, software
+; distributed under the License is distributed on an "AS IS" BASIS,
+; WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+; See the License for the specific language governing permissions and
+; limitations under the License.
+;
+
+AMBMagicNodeID     * &4E424D41        ;"AMBN"
+
+AMBInitialMaxNodes * 256
+AMBGrowMaxNodes    * 64
+
+
+;Bin pages by physical address, for quick mapping from page number to
+;physical address. Bin entry holds physical address of first page in bin.
+;Bin size must be no bigger than minimum physical RAM fragment to be found
+;in machine. eg. 512k size gives 128 pages in a bin, so shift of 7 and
+;mask of &7F. Max practical bin size is 1M (mask must be immediate constant).
+;
+AMBPhysBinShift    * 7
+AMBPhysBinMask     * &7F
+
+
+ApplicationStart  * (32*1024)
+PageSize          * (4*1024)
+Log2PageSize      * 12             ;for shifts
+
+AbsMaxAppSize     * (28*1024*1024) ;28 Mb application space limit for RISC OS
+
+;maximum logical space size cleaned by range strategy
+;
+AMB_ARMA_CleanRange_thresh * 256*1024
+
+
+                GBLL    ValidateAMBHandles     ; whether to check handles given to AppMAMBan
+ValidateAMBHandles  SETL    {FALSE}
+
+
+       END
