@@ -2724,7 +2724,7 @@ CSWaitLoop
         SEC                             ; set leds
         BL      CtrlShiftTest
         BCC     Page18
-        BLMI    Page_ProcessCallbacks
+        BLMI    Page_ProcessCallbacksIdle
         BMI     CSWaitLoop              ; and wait for change (NB C=1 now)
 Page18
         BL      PreWrchCursor           ; get rid of cursor again
@@ -2748,7 +2748,7 @@ Page30
         BCC     Page35                  ; CTRL no longer down
         LDROSB  R1, CentiCounter
         CMP     R1, #1
-        BLCS    Page_ProcessCallbacks
+        BLCS    Page_ProcessCallbacksIdle
         BCS     Page30                  ; loop with carry set
 Page35
         BL      PreWrchCursor           ; remove cursor again
@@ -2787,7 +2787,7 @@ Page50                                  ; NB C=0 on entry from above
 PageWaitLoop
         SEC
         BL      CtrlShiftTest
-        BLPL    Page_ProcessCallbacks
+        BLPL    Page_ProcessCallbacksIdle
         BPL     PageWaitLoop
         BL      PreWrchCursor
 
@@ -2838,6 +2838,15 @@ CtrlShiftTest ROUT
         MOV     PC, R14
 
 Page_ProcessCallbacks
+        Entry
+        ; See if there are any pending callbacks
+        MOV     R0, #0
+        LDRB    R14, [R0, #CallBack_Flag]
+        TST     R14, #CBack_VectorReq
+        BLNE    process_callback_chain
+        EXIT
+
+Page_ProcessCallbacksIdle
         EntryS                          ; routine must preserve flags
         ; See if there are any pending callbacks
         MOV     R0, #0
