@@ -1008,7 +1008,7 @@ ChecksumSubBlock ROUT
         MOV     R1, #2
         BL      IIC_OpV
 
-        LDR     R1, [R13, #24]          ; read back checksum
+        LDR     R1, [R13, #20]          ; read back checksum
         ADD     R1, R1, R4              ; update checksum
         ADD     R13, R13, #12*2+4+4
 
