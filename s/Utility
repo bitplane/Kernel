@@ -33,8 +33,7 @@ UtilityMod
         &       Util_SWITab-UtilityMod
         &       0
  [ International_Help <> 0
-   ;     &       MessageFileName-UtilityMod
-        &       UtilityMod
+        &       MessageFileName-UtilityMod
  |
         &       0
  ]

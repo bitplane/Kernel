@@ -984,7 +984,14 @@ not_full_reset
         BL      Write
 
         ! 0, "Sort out 16-bit sound + PS/2 mouse CMOS reset selection"
+
 dont_program_mousetype
+
+; set print and sound CMOS (16bit sound)
+        MOV     R0, #TutuCMOS
+        MOV     R1, #2_10100100  ; tbs chars valid, ctrlchars '|x'
+        BL      Write
+
  |
 
  [ MorrisSupport

@@ -1171,11 +1171,18 @@ CheckForOverlappingAreas Entry "r0-r5"
 
 
 FixedAreasTable                                         ; table of fixed areas (address, size)
-; [ HAL32
-;  ! 0, "Sort out FixedAreasTable"
-; |
+ [ HAL
+        ! 0, "Sort out FixedAreasTable"
         &       0,                      AplWorkMaxSize  ; application space
-; ]
+        &       CursorChunkAddress,     64*1024                 ; 32K for cursor, 32K for "nowhere"
+ [ OSROM_ImageSize > 8192
+        &       &03000000,              8*1024*1024+OSROM_ImageSize*1024    ; I/O + ROM
+ |
+        &       &03000000,              16*1024*1024            ; I/O + ROM
+ ]
+        &       IO,                     &FFFFFFFF-IO    ; Kernel workspace (fix - what about dynamic allocs)
+ |
+        &       0,                      AplWorkMaxSize  ; application space
         &       UndStackSoftCamChunk,   1024*1024               ; undefined stack / soft cam map
         &       CursorChunkAddress,     64*1024                 ; 32K for cursor, 32K for "nowhere"
         &       L2PT,                   4*1024*1024             ; L2PT (and L1PT)
@@ -1184,15 +1191,14 @@ FixedAreasTable                                         ; table of fixed areas (
  |
         &       &03000000,              16*1024*1024            ; I/O + ROM
  ]
- [ :LNOT: HAL
         &       PhysSpace,              512*1024*1024   ; PhysSpace
  [ No26bitCode
         &       AbtStack,               AbtStackSize
  ]
- ]
  [ ShadowROM
         &       &FF800000,              &007FFFFF       ; Shadow ROM (length has been bodged to avoid wrap problems)
  ]
+ ] ; HAL
         &       -1,                     0               ; termination
 
 ;**************************************************************************
