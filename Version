@@ -14,9 +14,9 @@ Version SETA    Module_Version
 VString SETS    Module_MajorVersion
 Date    SETS    Module_Date      ; version for STB/NC OS
         |
-Version SETA    505
-VString SETS    "5.05"
-Date    SETS    "04 Mar 2004"    ; version for RISC OS on desktop computers
+Version SETA    506
+VString SETS    "5.06"
+Date    SETS    "06 May 2004"    ; version for RISC OS on desktop computers
 
                                  ; you may also wish to update the welcome
                                  ; and OS information dialogue box templates

@@ -23,7 +23,7 @@
 ; Date   5.9.86
 ;
         GBLL NewStyleEcfs
-NewStyleEcfs   SETL  1=1
+NewStyleEcfs   SETL  {TRUE}
 
         GBLL    DoVdu23_0_12
 DoVdu23_0_12   SETL  {FALSE}
@@ -162,18 +162,18 @@ VduInit ROUT
         STR     R0, [WsPtr, #ClipBoxEnable]       ; no clip box calculating
         STRB    R0, [WsPtr, #ExternalFramestore]
 
- [ :LNOT:UseGraphicsV
         Push    "r4, r9, r12"
         mjsAddressHAL
         MOV     r4, r12                       ; temp WsPtr
+        mjsCallHAL HAL_Video_Features
+        STR     r0, [r4, #HALVideoFeatures]
+ [ :LNOT:UseGraphicsV
         mjsCallHAL HAL_Video_PixelFormats
         STR     r0, [r4, #HWPixelFormats]
-        mjsCallHAL HAL_Video_Features
-        STR     r0, [r4, #HWVideoFeatures]
         mjsCallHAL HAL_Video_BufferAlignment
         STR     r0, [r4, #HWBufferAlign]
-        Pull    "r4, r9, r12"
  ]
+        Pull    "r4, r9, r12"
 
         ;;; sort this out!
         ! 0, "mjsHAL not doing anything useful with HAL_Video_BufferAlignment"
@@ -275,33 +275,34 @@ VduInit ROUT
 ;                  logical and physical copies of both flash states, 260*4 words
 ;                  3 lookup tables for r,g,b mapping, 3*256 bytes
 ;
-        MOV     r3, #260*4
-        ADD     r3, r3, #260*4*4 + 3*256
+        LDR     r3, =Pal_Blocksize
         BL      ClaimSysHeapNode           ; this had better succeed!
 
+        ASSERT  :INDEX:Pal_Blank = 0
         STR     r2, [WsPtr, #BlankPalAddr]
-        ADD     r3, r2, #260*4
+        ADD     r3, r2, #Pal_LogFirst
         STR     r3, [WsPtr, #FirPalAddr]
-        ADD     r3, r3, #260*4
+        ADD     r3, r2, #Pal_LogSecond
         STR     r3, [WsPtr, #SecPalAddr]
 
 ; initialise blank palette to all solid black
 
         MOV     r3, #0
-        MOV     r4, #260
+        MOV     r4, #PalEntries
 04      STR     r3, [r2], #4
         SUBS    r4, r4, #1
         BNE     %BT04
 
-        ADD     r2, r2, #260*4*4   ; r2 -> rgb tables
+        ADD     r2, r2, #Pal_RTable-(Pal_Blank+4*PalEntries) ; r2 -> rgb tables
 
 ; initialise red, green and blue transfer function tables to 1-1 mapping
 
         MOV     r0, #0
 05
-        STRB    r0, [r2, #&200]                 ; store in blue table
-        STRB    r0, [r2, #&100]                 ; store in green table
-        STRB    r0, [r2], #1                    ; store in red table, and advance
+        STRB    r0, [r2, #Pal_STable-Pal_RTable] ; store in supremacy table
+        STRB    r0, [r2, #Pal_BTable-Pal_RTable] ; store in blue table
+        STRB    r0, [r2, #Pal_GTable-Pal_RTable] ; store in green table
+        STRB    r0, [r2], #1                     ; store in red table, and advance
         ADD     r0, r0, #1
         CMP     r0, #256
         BCC     %BT05
@@ -677,6 +678,12 @@ ModePromoTable
       DCB    8,  &FF     ; 47
       DCB    4,   49     ; 48
       DCB    8,  &FF     ; 49
+      DCB    1,   51     ; 50
+      DCB    2,   52     ; 51
+      DCB    4,   53     ; 52
+      DCB    8,  &FF     ; 53
+
+      ASSERT (.-ModePromoTable)=(NumModes*2)
 ;
       ALIGN
 
@@ -717,7 +724,7 @@ ModeChangeSub ROUT
         CMP     r2, #256
         BHS     mchsub_3
         AND     r1, r2, #&7F
-        CMP     r1, #50                      ; mode number
+        CMP     r1, #NumModes                ; mode number
         BHS     mchsub_3
         Push    "r3, r4"
  [ UseGraphicsV
@@ -751,7 +758,6 @@ mchsub_2
         Pull    "r3, r4"
 ;
 mchsub_3
-; BKPT &600D
         MOV     R1, #Service_PreModeChange
         IssueService
         TEQ     R1, #0                  ; was service claimed ?
@@ -1280,7 +1286,7 @@ PushModeInfoCommonNoService
         TSTEQ   r0, #1                          ; bit 0 is h/w scroll support
         Pull    "r0-r2,r4"
  |
-        LDR     r14, [WsPtr, #HWVideoFeatures]
+        LDR     r14, [WsPtr, #HALVideoFeatures]
         TST     r14, #1                         ; bit 0 is h/w scroll support
  ]
         LDREQ   r14, [r9, #wkModeFlags]

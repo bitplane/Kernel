@@ -21,6 +21,7 @@ OS_Start        #       1
 OS_MapInIO      #       1
 OS_AddDevice    #       1
 OS_LogToPhys    #       1
+OS_IICOpV       #       1
 
 HighestOSEntry  *       :INDEX: @ - 1
 

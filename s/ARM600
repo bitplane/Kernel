@@ -2351,8 +2351,8 @@ MMUControl_ModifyControl ROUT
         LDRB    r5,[r3, #ProcessorArch]
         PHPSEI  r4                      ; disable IRQs while we modify soft copy (and possibly switch caches off/on)
 
-        LDR     lr, [r3, #MMUControlSoftCopy]
         CMP     r5,#ARMv4
+        LDRLO   lr, [r3, #MMUControlSoftCopy]
         ARM_read_control lr,HS
 ;        MOVHS   lr,lr,LSL #19
 ;        MOVHS   lr,lr,LSR #19           ; if ARMv4 or later, we can read control reg. - trust this more than soft copy
@@ -2362,13 +2362,16 @@ MMUControl_ModifyControl ROUT
         LDR     r5, [r3, #ProcessorFlags]
         TST     r5, #CPUFlag_SplitCache
         BEQ     %FT05
-        TST     r2,#&4                  ; if split caches, then I bit mirrors C bit
-        ORRNE   r2,r2,#&1000
-        BICEQ   r2,r2,#&1000
+ [ {FALSE}
+        TST     r2,#MMUC_C              ; if split caches, then I bit mirrors C bit
+        ORRNE   r2,r2,#MMUC_I
+        BICEQ   r2,r2,#MMUC_I
+ ]
 05
         STR     r2, [r3, #MMUControlSoftCopy]
         BIC     lr, r2, r1              ; lr = bits going from 0->1
         TST     lr, #MMUC_C             ; if cache turning on then flush cache before we do it
+        TSTEQ   lr, #MMUC_I
         BEQ     %FT10
 
         Push    "r0"
@@ -2387,6 +2390,7 @@ MMUControl_ModifyControl ROUT
         ARM_write_control r2
         BIC     lr, r1, r2              ; lr = bits going from 1->0
         TST     lr, #MMUC_C             ; if cache turning off then flush cache afterwards
+        TSTNE   lr, #MMUC_I
         BEQ     %FT20
         Push    "r0"
         MOV     r0, #0
@@ -2399,8 +2403,8 @@ MMUControl_ModifyControl ROUT
 MMUC_modcon_readonly
         MOV     r3, #0
         LDRB    r5, [r3, #ProcessorArch]
-        LDR     lr, [r3, #MMUControlSoftCopy]
         CMP     r5, #ARMv4
+        LDRLO   lr, [r3, #MMUControlSoftCopy]
         ARM_read_control lr,HS
 ;        MOVHS   lr,lr,LSL #19
 ;        MOVHS   lr,lr,LSR #19           ; if ARMv4 or later, we can read control reg. - trust this more than soft copy

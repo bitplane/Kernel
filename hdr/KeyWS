@@ -46,7 +46,8 @@ LastLED         #       1               ; last request for LED change, so we don
 MouseType       #       1               ; current pointer device type
 MousePresent    #       1               ; mouse detected
 MouseReporting  #       1               ; mouse is sending reports itself
-
+NoDebounce      #       1               ; NZ => no kernel key debounce
+                                        ; set if R2="NoKd" on KeyV 0 entry
 
                 # 3 :AND: (- :INDEX: @)
 

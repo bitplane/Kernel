@@ -28,6 +28,27 @@ Update pointer
   R2 = y pos
   R3 -> shape descriptor
 
+ R3 points to shape_t descriptor block:
+   typedef struct shape_t
+   {
+	uint8	width;	    /* unpadded width in bytes (see notes) */
+	uint8	height;	    /* in pixels */
+	uint8	padding[2]; /* 2 bytes of padding for field alignment */
+	void   *buffLA;	    /* logical address of buffer holding pixel data */
+	void   *buffPA;	    /* corresponding physical address of buffer */
+   }
+
+ Notes:
+ 1) if flags bit 0 is 0 (pointer off), x, y, shape are undefined
+ 2) the shape data from RISC OS is always padded with transparent pixels
+    on the rhs, to a width of 32 pixels (8 bytes)
+ 3) pointer clipping is the responsibility of the HAL (eg. may be able to
+    allow display of pointer in border region on some h/w)
+ 4) buffer for pixel data is aligned to a multiple of 256 bytes or better
+
+ This call is made by the OS at a time to allow smoothly displayed changes
+ (on a VSync)
+
 Set DAG
   R4 = 6
   R0 = DAG (0 = display init, 1 = base, 2 = limit, 3 = vdu init)
@@ -43,9 +64,9 @@ Features
   R4 = 8
 out:
   R0 = flags word (bit 0 => hardware scroll)
-                  (bit 1 => hardware pointer)
-                  (bit 2 => interlace with progressive framestore)
-                  (bit 3 => separate framestore)
+		  (bit 1 => hardware pointer)
+		  (bit 2 => interlace with progressive framestore)
+		  (bit 3 => separate framestore)
   R1 = pixel formats (bits 0-5 => 2^n bpp supported)
   R2 = buffer alignment requirement in bytes (power of 2)
 
@@ -80,8 +101,8 @@ Out:
 Render
   R4 = 13
   R0 = flags
-         bit 0 = synchronise
-         bit 1 = synchronise if unclaimed
+	 bit 0 = synchronise
+	 bit 1 = synchronise if unclaimed
   R1 = operation
   R2 -> parameter block
   

@@ -48,6 +48,8 @@
 ; 25-Nov-93 SMC Key handler and keyboard driver now trigger each other correctly.
 ; 25-Apr-94 RCM ReadCh modified for Stork's power saving scheme.
 ;
+; 28-Apr-04 JWB Added magic switch to turn off kernel kbd debounce
+;               r2 on KEYV vector 0 = 'NoKd' to disable debounce
 
         GBLL    MouseBufferFix
 MouseBufferFix SETL {TRUE}
@@ -225,6 +227,7 @@ LEDsOff Push    "r0,r1,r11,lr"
 ;
 ;       Handle new keyboard id.
 ;       In:     r1 = keyboard id
+;               r2 = magic 'NoKd' to disable kernel debouncing
 ;               r11 = KeyWorkSpace
 ;       Out:    preserve flags
 ;
@@ -236,8 +239,14 @@ GotKbId
         LDR     r0, KeyVec
         Push    r0                      ; Save old key handler so we know if it's changed.
 
+        LDR     lr, NoKbMagic
+        TEQ     r2, lr
+        MOVNE   lr, #0
+        STRB    lr, NoDebounce          ; remember kernel debounce switch
+
         LDRB    r8, LastKbId
         TEQ     r8, r1                  ; If we have a different keyboard id then
+
         BLNE    IssueKeyboardService    ;   issue service.
 
         LDR     lr, KeyVec              ; Get possibly new key handler.
@@ -246,6 +255,11 @@ GotKbId
         BLEQ    KeyboardEnable          ;   handler has not initialised with OS_InstallKeyHandler so we try.
 
         EXITS
+
+
+NoKbMagic DCD   &4e6f4b64               ; Magic of NoKd to signal no kernel
+                                        ;   debounce
+
 
 ; *****************************************************************************
 ; Initialise keyboard handler and enable keyboard driver.
@@ -287,6 +301,7 @@ KeyboardEnable
 ;
 ;       In:     r0 = reason code 0
 ;               r1 = keyboard id
+;               r2 = magic 'NoKd' if kernel debouncing to be disabled
 ;       or
 ;               r0 = reason code 1 or 2
 ;               r1 = key code
@@ -352,9 +367,16 @@ GotKey ROUT
         STRB    R0, OldKey              ; make current key old
 20
         STRB    R2, CurrKey             ; update current
-        MOV     R0, #2
+        LDRB    r1, NoDebounce          ; check debouncing?
+        TEQ     r1, #0
+        MOVEQ   R0, #2                  ; Eq.. normal kernel debounce
+        MOVNE   R0, #0                  ; NE.. no kernel debounce
         STRB    R0, Debouncing
+        LDROSB  R0, KeyRepDelay, NE     ; and load delay
         STRB    R0, AutoRepeatCount     ; generate char after 2 100Hz ticks
+
+        MOVNE   r1,#2                   ; mark as first key
+        BLNE    GenerateChar            ; R2 = key number
 
         B       %FT50
 

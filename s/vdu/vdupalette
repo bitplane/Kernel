@@ -87,7 +87,8 @@ SetPal  EntryS
         MOV     lr, r1
         LDRB    r0, [lr, #0]            ; r0 = logical colour
         LDRB    r1, [lr, #1]
-        AND     r2, r1, #&80            ; r2 = sup bit
+        ANDS    r2, r1, #&80
+        MOVNE   r2, #&FF                ; r2 = supremacy (&00 or &FF)
         BIC     r1, r1, #&80            ; r1 = type of colour
         CMP     r1, #16                 ; r1 < 16 => BBC style colour
         BCS     %FT10
@@ -116,11 +117,11 @@ SetPal  EntryS
 
 10
         LDRB    r3, [lr, #2]            ; r3 = red
-        ORR     r2, r2, r3, LSL #8      ; r2 = &0000RRS0
+        ORR     r2, r2, r3, LSL #8      ; r2 = &0000RRSS
         LDRB    r3, [lr, #3]            ; r3 = green
-        ORR     r2, r2, r3, LSL #16     ; r2 = &00GGRRS0
+        ORR     r2, r2, r3, LSL #16     ; r2 = &00GGRRSS
         LDRB    r3, [lr, #4]            ; r3 = blue
-        ORR     r2, r2, r3, LSL #24     ; r2 = &BBGGRRS0
+        ORR     r2, r2, r3, LSL #24     ; r2 = &BBGGRRSS
 20
         BL      CallSetPalette
         EXITS

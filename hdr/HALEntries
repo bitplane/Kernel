@@ -21,9 +21,11 @@ HALDesc_Size            #       4
 HALDesc_Entries         #       4
 HALDesc_NumEntries      #       4
 HALDesc_Workspace       #       4
+HALDesc_VideoRAMSize    #       4
 HALDesc_size            #       4
 
 HALFlag_NCNBWorkspace   *       1:SHL:0
+HALFlag_LimitVideoRAM   *       1:SHL:1
 
 ; Entries to the HAL from the OS
 
@@ -150,6 +152,12 @@ EntryNo_HAL_KbdScanFinish       #       1
 EntryNo_HAL_KbdScanInterrupt    #       1
 
 EntryNo_HAL_PhysInfo            #       1
+
+EntryNo_HAL_USBControllerInfo   #       1
+
+EntryNo_HAL_MonitorLeadID       #       1
+
+EntryNo_HAL_Video_Render        #       1
 
 ; Various flags and constants
 

@@ -1089,7 +1089,7 @@ DefaultCMOSTable ; list of non-zero options wanted :
         =       SoundCMOS,      &F0     ; speaker on, volume 7, channel 1
 
         =       LanguageCMOS,   ConfiguredLang
-        =       YearCMOS,       02
+        =       YearCMOS,       04
         =       YearCMOS+1,     20
  [ :LNOT: Select16BitSound
         =       TutuCMOS,       2_0100  ; tbs chars valid, ctrlchars '|x'

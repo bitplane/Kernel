@@ -1122,6 +1122,9 @@ DeviceVector_Release ROUT
         B       %FT04
 
 03      LDR     r2, [r12, #IRQDesp_Link]; freeable = nextnode
+ [ HAL
+        BIC     r2, r2, #IRQDesp_Link_Unshared
+ ]
         LDMIA   r2,  {r0, r1, r3}       ; copy next node into head posn
         STMIA   r12, {r0, r1, r3}
 

@@ -35,6 +35,9 @@ UseVLineOnSolidLines  SETL {TRUE}       ; to plot vertical solid lines
         GBLL AvoidScreenReads           ; When TRUE, use extra code to avoid
 AvoidScreenReads      SETL {TRUE}       ; reading the screen when we can avoid it
 
+        GBLL DefaultSupremacy           ; When TRUE, 16bpp and 32bpp modes' default
+DefaultSupremacy      SETL {FALSE}      ; palettes use top bits for supremacy
+
 ;
 ; Register usage
 ; ==============
@@ -85,6 +88,20 @@ ModeSelector_MaxSize    *       ModeSelector_ModeVars+(NumModeVars * 8)+4
                                         ; plus terminator on end
 
  ]
+
+; Layout of palette space
+PalEntries              *       256+1+3
+                        ^       0
+Pal_Blank               #       PalEntries*4    ; Blank palette (for screen saver)
+Pal_LogFirst            #       PalEntries*4    ; Logical palette (as read/written by user)
+Pal_LogSecond           #       PalEntries*4
+Pal_PhysFirst           #       PalEntries*4    ; Physical palette (post transfer function)
+Pal_PhysSecond          #       PalEntries*4
+Pal_RTable              #       256             ; Logical->physical lookup tables for R,G,B,S
+Pal_GTable              #       256
+Pal_BTable              #       256
+Pal_STable              #       256
+Pal_Blocksize           #       0
 
 
 

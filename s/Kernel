@@ -249,7 +249,7 @@ v8      RN      11
         LDR$cond pc, [sb, #-(EntryNo_$rout+1) * 4]
         MEND
 
-; Checks whether a HAL routine exits. If it does, a1 points to it (probably
+; Checks whether a HAL routine exists. If it does, a1 points to it (probably
 ; not useful), and Z is clear. lr corrupted.
         MACRO
         CheckHAL $rout
@@ -365,6 +365,7 @@ RISCOS_Entries
         DCD     RISCOS_MapInIO   - RISCOS_Entries
         DCD     RISCOS_AddDevice - RISCOS_Entries
         DCD     RISCOS_LogToPhys - RISCOS_Entries
+        DCD     RISCOS_IICOpV    - RISCOS_Entries
 RISCOS_Entries_End
 
   |

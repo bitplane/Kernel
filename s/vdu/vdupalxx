@@ -67,9 +67,12 @@
         ASSERT  paletteV_VIDCDisable = 12
         ASSERT  paletteV_VIDCRestore = 13
  ]
+        ASSERT  paletteV_ReadGammaCorrection = 14
+        ASSERT  paletteV_ReadSupremacyTransfer = 15
+        ASSERT  paletteV_SetSupremacyTransfer = 16
 
 MOSPaletteV ROUT
-        CMP     r4, #13
+        CMP     r4, #16
         ADDLS   pc, pc, r4, LSL #2
         MOV     pc, lr                  ; reason code not known, so pass it on
         MOV     pc, lr                  ; 0
@@ -95,6 +98,9 @@ MOSPaletteV ROUT
         MOV     pc, lr                  ; 12
         MOV     pc, lr                  ; 13
  ]
+        B       PV_ReadGammaCorrect     ; 22
+        B       PV_ReadSupremacyXfer    ; 23
+        B       PV_SetSupremacyXfer     ; 24
 
 ; *****************************************************************************
 
@@ -299,6 +305,16 @@ palmetatab
         B       FinishDefault
 
 paldat16tab
+ [ DefaultSupremacy
+        &       &00000800       ; palette bit 0
+        &       &00081000       ;             1
+        &       &08102100       ;             2
+        &       &102142FF       ;             3
+        &       &21428400       ;             4
+        &       &42840000       ;             5
+        &       &84000000       ;             6
+        &       &00000000       ;             7
+ |
         &       &00000800       ; palette bit 0
         &       &00081000       ;             1
         &       &08102100       ;             2
@@ -307,12 +323,23 @@ paldat16tab
         &       &42840000       ;             5
         &       &84000000       ;             6
         &       &00000000       ;             7
+ ]
 
 paldat32 ROUT
         ADR     r5, paldat32tab
         B       palmetatab
 
 paldat32tab
+ [ DefaultSupremacy
+        &       &01010101       ; palette bit 0
+        &       &02020202       ;             1
+        &       &04040404       ;             2
+        &       &08080808       ;             3
+        &       &10101010       ;             4
+        &       &20202020       ;             5
+        &       &40404040       ;             6
+        &       &80808080       ;             7
+ |
         &       &01010100       ; palette bit 0
         &       &02020200       ;             1
         &       &04040400       ;             2
@@ -321,6 +348,7 @@ paldat32tab
         &       &20202000       ;             5
         &       &40404000       ;             6
         &       &80808000       ;             7
+ ]
 
 paldatend
 
@@ -593,7 +621,7 @@ UpdateSettingCommon ROUT
         TST     r1, #1
         BEQ     %FT10                   ; skip if not setting 1st colour
         LDR     r2, [WsPtr, #FirPalAddr]
-        ADD     r8, r2, #(256+1+3)*4*4  ; r8 -> rgb transfer tables
+        ADD     r8, r2, #Pal_RTable-Pal_LogFirst ; r8 -> rgb transfer tables
         STR     r3, [r2, r0, LSL #2]!   ; store in logical colour and write back pointer
         AND     r6, r3, #&0000FF00      ; r6 = red << 8
         LDRB    r6, [r8, r6, LSR #8]    ; r6 = gamma(red)
@@ -605,9 +633,11 @@ UpdateSettingCommon ROUT
         AND     r9, r3, #&FF000000      ; r9 = blue << 24
         LDRB    r9, [r8, r9, LSR #24]   ; r9 = gamma(blue)
         ORR     r6, r6, r9, LSL #16     ; r6 = gamma(red) + (gamma(green)<<8) + (gamma(blue)<<16)
-        AND     r9, r3, #&000000FF      ; knock out rgb from original
-        ORR     r6, r9, r6, LSL #8      ; and or in new bits
-        STR     r6, [r2, #(256+1+3)*4*2] ; store in physical copy
+        ADD     r8, r8, #&100           ; r8 -> supremacy transfer
+        AND     r9, r3, #&000000FF      ; r9 = supremacy
+        LDRB    r9, [r8, r9]            ; r9 = transfer(supremacy)
+        ORR     r6, r9, r6, LSL #8      ; r6 = gamma(rgb) + transfer(supremacy)
+        STR     r6, [r2, #Pal_PhysFirst-Pal_LogFirst] ; store in physical copy
 
         BCC     %FT10                   ; only hit hardware if flash state = first
 
@@ -641,7 +671,7 @@ UpdateSettingCommon ROUT
         TST     r1, #2
         BEQ     %FT20                   ; skip if not setting 2nd colour
         LDR     r2, [WsPtr, #SecPalAddr]
-        ADD     r8, r2, #(256+1+3)*4*3  ; r8 -> rgb transfer tables
+        ADD     r8, r2, #Pal_RTable-Pal_LogSecond ; r8 -> rgb transfer tables
         STR     r3, [r2, r0, LSL #2]!   ; store in logical copy and write back
 
         AND     r6, r3, #&0000FF00      ; r6 = red << 8
@@ -654,9 +684,11 @@ UpdateSettingCommon ROUT
         AND     r9, r3, #&FF000000      ; r9 = blue << 24
         LDRB    r9, [r8, r9, LSR #24]   ; r9 = gamma(blue)
         ORR     r6, r6, r9, LSL #16     ; r6 = gamma(red) + (gamma(green)<<8) + (gamma(blue)<<16)
-        AND     r9, r3, #&000000FF      ; knock out rgb from original
-        ORR     r6, r9, r6, LSL #8      ; and or in new bits
-        STR     r6, [r2, #(256+1+3)*4*2] ; store in physical copy
+        ADD     r8, r8, #&100           ; r8 -> supremacy transfer
+        AND     r9, r3, #&000000FF      ; r9 = supremacy
+        LDRB    r9, [r8, r9]            ; r9 = transfer(supremacy)
+        ORR     r6, r9, r6, LSL #8      ; r6 = gamma(rgb) + transfer(supremacy)
+        STR     r6, [r2, #Pal_PhysSecond-Pal_LogSecond] ; store in physical copy
 
         BCS     %FT20                   ; only hit hardware if flash state = second
 
@@ -862,7 +894,7 @@ PV_1stFlashState ROUT
         LDRB    r1, [WsPtr, #ScreenBlankFlag]
         TEQ     r1, #0
         LDREQ   r1, [WsPtr, #FirPalAddr]
-        ADDEQ   r1, r1, #(256+1+3)*4*2     ; move pointer to physical palette copy
+        ADDEQ   r1, r1, #Pal_PhysFirst - Pal_LogFirst ; move pointer to physical palette copy
         LDRNE   r1, [WsPtr, #BlankPalAddr]
 DoR0Flash
         MOV     r0, #0                  ; type 0 (normal)
@@ -890,7 +922,7 @@ PV_2ndFlashState ROUT
         LDRB    r1, [WsPtr, #ScreenBlankFlag]
         TEQ     r1, #0
         LDREQ   r1, [WsPtr, #SecPalAddr]
-        ADDEQ   r1, r1, #(256+1+3)*4*2  ; move pointer to physical palette copy
+        ADDEQ   r1, r1, #Pal_PhysFirst-Pal_LogFirst ; move pointer to physical palette copy
         LDRNE   r1, [WsPtr, #BlankPalAddr]
         B       DoR0Flash
 
@@ -911,7 +943,7 @@ UpdateAllPalette ROUT
         CMP     r0, #1
         LDRCS   r1, [WsPtr, #FirPalAddr]   ; FlashState = 1 => 1st state, 0 => 2nd state
         LDRCC   r1, [WsPtr, #SecPalAddr]
-        ADD     r1, r1, #(256+1+3)*4*2     ; move pointer to physical palette copy
+        ADD     r1, r1, #Pal_PhysFirst-Pal_LogFirst ; move pointer to physical palette copy
         LDRB    r10, [WsPtr, #ScreenBlankFlag]
         TEQ     r10, #0
         LDRNE   r1, [WsPtr, #BlankPalAddr] ; blank palette after all
@@ -1018,6 +1050,46 @@ PV_BlankScreen ROUT
 
 ; *****************************************************************************
 ;
+;       PV_ReadGammaCorrect - Read gamma correction tables
+;
+; in:   r0 -> red table
+;       r1 -> green table
+;       r2 -> blue table
+;
+; out:  r4 = 0
+
+PV_ReadGammaCorrect ROUT
+        Push    "r0-r3"
+        LDR     r4, [WsPtr, #FirPalAddr]
+        ADD     r4, r4, #Pal_RTable-Pal_LogFirst; point to gamma tables
+        ADD     r3, r4, #256
+10
+        LDR     lr, [r4], #4
+        STR     lr, [r0], #4
+        TEQ     r4, r3
+        BNE     %BT10
+
+        ASSERT  Pal_GTable = Pal_RTable+256
+        ADD     r3, r4, #256
+20
+        LDR     lr, [r4], #4
+        STR     lr, [r1], #4
+        TEQ     r4, r3
+        BNE     %BT20
+
+        ASSERT  Pal_BTable = Pal_GTable+256
+        ADD     r3, r4, #256
+30
+        LDR     lr, [r4], #4
+        STR     lr, [r2], #4
+        TEQ     r4, r3
+        BNE     %BT30
+
+        MOV     r4, #0
+        Pull    "r0-r3, pc"
+
+; *****************************************************************************
+;
 ;       PV_GammaCorrect - Update gamma correction tables
 ;
 ; in:   r0 -> red table
@@ -1027,9 +1099,9 @@ PV_BlankScreen ROUT
 ; out:  r4 = 0
 
 PV_GammaCorrect ROUT
-        Push    "r0-r3,r5-r8"
+        Push    "r0-r3"
         LDR     r4, [WsPtr, #FirPalAddr]
-        ADD     r4, r4, #(256+1+3)*4*4          ; point to gamma tables
+        ADD     r4, r4, #Pal_RTable-Pal_LogFirst; point to gamma tables
         ADD     r3, r4, #256
 10
         LDR     lr, [r0], #4
@@ -1037,6 +1109,7 @@ PV_GammaCorrect ROUT
         TEQ     r4, r3
         BNE     %BT10
 
+        ASSERT  Pal_GTable = Pal_RTable+256
         ADD     r3, r4, #256
 20
         LDR     lr, [r1], #4
@@ -1044,6 +1117,7 @@ PV_GammaCorrect ROUT
         TEQ     r4, r3
         BNE     %BT20
 
+        ASSERT  Pal_BTable = Pal_GTable+256
         ADD     r3, r4, #256
 30
         LDR     lr, [r2], #4
@@ -1051,15 +1125,26 @@ PV_GammaCorrect ROUT
         TEQ     r4, r3
         BNE     %BT30
 
-; now go through the logical palette, recomputing the physical from it using the new tables
+        BL      RecomputeLogicalPalette
 
-        SUB     r0, r4, #3*256                  ; r0 -> red table
-        SUB     r1, r4, #2*256                  ; r1 -> green table
-        SUB     r2, r4, #1*256                  ; r2 -> blue table
+        MOV     r4, #0
+        Pull    "r0-r3, pc"
+
+
+; go through the logical palette, recomputing the physical from it using the new tables
+;
+; out:  r0-r4 corrupted
+
+RecomputeLogicalPalette ROUT
+        Push    "r5-r8, lr"
 
         LDR     r4, [WsPtr, #FirPalAddr]        ; r4 -> start of logical palette
-        ADD     r5, r4, #260*4*2                ; r5 -> start of physical palette
+        ADD     r5, r4, #Pal_PhysFirst-Pal_LogFirst ; r5 -> start of physical palette
         MOV     r6, r5                          ; r6 = r5 = end of logical palette
+        ADD     r0, r4, #Pal_RTable-Pal_LogFirst; r0 -> red table
+        ADD     r1, r4, #Pal_GTable-Pal_LogFirst; r1 -> green table
+        ADD     r2, r4, #Pal_BTable-Pal_LogFirst; r2 -> blue table
+        ADD     r3, r4, #Pal_STable-Pal_LogFirst; r3 -> supremacy table
 40
         LDR     r7, [r4], #4                    ; get word
         AND     r8, r7, #&0000FF00              ; r8 = red << 8
@@ -1070,7 +1155,8 @@ PV_GammaCorrect ROUT
         AND     lr, r7, #&FF000000              ; lr = blue << 24
         LDRB    lr, [r2, lr, LSR #24]           ; lr = gamma(blue)
         ORR     r8, r8, lr, LSL #16             ; r8 = gamma(red) + (gamma(green)<<8) + (gamma(blue)<<16)
-        AND     lr, r7, #&000000FF              ; lr = 000000SS
+        AND     lr, r7, #&000000FF              ; lr = supremacy
+        LDRB    lr, [r3, lr]                    ; lr = transfer(supremacy)
         ORR     r8, lr, r8, LSL #8              ; r8 = gamma-corrected BBGGRRSS value
         STR     r8, [r5], #4                    ; store word
         TEQ     r4, r6
@@ -1078,8 +1164,53 @@ PV_GammaCorrect ROUT
 
         BL      UpdateAllPalette
 
+        Pull    "r5-r8, pc"
+
+; *****************************************************************************
+;
+;       PV_ReadSupremacyXfer - Read supremacy transfer table
+;
+; in:   r0 -> supremacy table
+;
+; out:  r4 = 0
+
+PV_ReadSupremacyXfer ROUT
+        Push    "r0,r3"
+        LDR     r4, [WsPtr, #FirPalAddr]
+        ADD     r4, r4, #Pal_STable-Pal_LogFirst; point to supremacy table
+        ADD     r3, r4, #256
+10
+        LDR     lr, [r4], #4
+        STR     lr, [r0], #4
+        TEQ     r4, r3
+        BNE     %BT10
+
         MOV     r4, #0
-        Pull    "r0-r3,r5-r8, pc"
+        Pull    "r0,r3, pc"
+
+; *****************************************************************************
+;
+;       PV_SetSupremacyXfer - Read supremacy transfer table
+;
+; in:   r0 -> supremacy table
+;
+; out:  r4 = 0
+
+PV_SetSupremacyXfer ROUT
+        Push    "r0-r3"
+        LDR     r4, [WsPtr, #FirPalAddr]
+        ADD     r4, r4, #Pal_STable-Pal_LogFirst; point to supremacy table
+        ADD     r3, r4, #256
+10
+        LDR     lr, [r0], #4
+        STR     lr, [r4], #4
+        TEQ     r4, r3
+        BNE     %BT10
+
+        BL      RecomputeLogicalPalette
+
+        MOV     r4, #0
+        Pull    "r0-r3, pc"
 
 
  [ LCDInvert

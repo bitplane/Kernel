@@ -310,8 +310,8 @@ RISCOS_Start
         MOV     v2, v2, LSL #12
         MOV     v4, v1                          ; Allocate first block as video memory
         MOV     v6, v2
-        TEQ     v8, a4                          ; Was this the only block? If so, leave 1M
-        SUBEQS  v6, v6, #1024*1024
+        TEQ     v8, a4                          ; Was this the only block? If so, leave 16M
+        SUBEQS  v6, v6, #16*1024*1024
         MOVCC   v6, v2, LSR #1                  ; If that overflowed, take half the bank.
         CMP     v6, #32*1024*1024
         MOVHS   v6, #32*1024*1024               ; Limit allocation to 32M (arbitrary)
@@ -902,6 +902,16 @@ MMUon_nol1ptoverlap
 ; Allocate backing L2PT for the free pool
         MOV     a1, #FreePoolAddress
         LDR     a2, [v8, #RAMLIMIT]
+        ; Need to round this up to 4M boundary, as AllocateL2PT only does
+        ; individual (1M) sections, rather than 4 at a time, corresponding
+        ; to a L2PT page. The following space is available for dynamic areas,
+        ; and ChangeDyn.s will get upset if it sees only some out of a set of 4
+        ; section entries pointing to the L2PT page.
+        ASSERT  FreePoolAddress :MOD: (4*1024*1024) = 0
+        ADD     a2, a2, #4*1024*1024
+        SUB     a2, a2, #1
+        MOV     a2, a2, LSR #22
+        MOV     a2, a2, LSL #22
         ORR     a3, v5, #AP_None * L2X_APMult
         BL      AllocateL2PT
 ; And for application space
@@ -1857,6 +1867,12 @@ RISCOS_LogToPhys
         MOVCS   a1, #-1
         Pull    "r4,r5,r8,r9,pc"
 
+; kernel_oserror *RISCOS_IICOpV(int ndesc, IICDesc *descs)
+RISCOS_IICOpV
+        Push    "lr"
+        BL      IIC_OpV
+        MOVVC   a1, #0
+        Pull    "pc"
 
 SetUpHALEntryTable ROUT
         LDR     a1, =ZeroPage
