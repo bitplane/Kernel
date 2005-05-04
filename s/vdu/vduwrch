@@ -1925,6 +1925,7 @@ TryCopyUpCommon
         Pull    PC,MI                   ; return with Z clear (unsuccessful)
         MOV     R2, R0                  ; dstL=srcL
         ADD     R3, R1, R7              ; dstB=srcB +1row
+TryCopyCommon
         Push    "R0-R5"
         MOV     R0, #3
         MOV     R1, #1
@@ -1949,6 +1950,45 @@ TryCopyWindowUp
         MOVNE   PC, R14                 ; return with Z clear (unsuccessful)
         Push    R14
         ADR     R14, TryCopyUpCommon
+        B       TextWindowToGraphics
+
+; *****************************************************************************
+;
+;       TryCopyScreenDown - use GraphicsV to copy screen down
+;
+; in:   nothing
+; out:  R0-R11 corrupted
+;       Z flag set if successful
+
+TryCopyScreenDown
+        Push    R14
+        BL      CheckAcceleration
+        Pull    PC, NE                  ; return with Z clear (unsuccessful)
+        BL      ScreenToGraphics
+TryCopyDownCommon
+        SUB     R4, R2, R0              ; width-1
+        SUB     R5, R3, R1              ; height-1
+        SUBS    R5, R5, R7              ; less one row
+        Pull    PC,MI                   ; return with Z clear (unsuccessful)
+        MOV     R2, R0                  ; dstL=srcL
+        MOV     R3, R1                  ; dstB=bot
+        ADD     R1, R1, R7              ; srcB=bot +1row
+        B       TryCopyCommon
+
+; .............................................................................
+;
+;       TryCopyWindowDown - use GraphicsV to copy window down
+;
+; in:   nothing
+; out:  R0-R11 corrupted
+;       Z flag set if successful
+
+TryCopyWindowDown
+        LDR     R0, [WsPtr, #VduSprite]
+        TEQ     R0, #0                  ; don't try it if outputting to sprite
+        MOVNE   PC, R14                 ; return with Z clear (unsuccessful)
+        Push    R14
+        ADR     R14, TryCopyDownCommon
         B       TextWindowToGraphics
  ]
 
@@ -2006,6 +2046,11 @@ HardScrollSpriteDown
         Push    R14
         TST     R6, #TeletextMode
         BNE     TTXSoftScrollDown
+ [ UseGraphicsV
+        BL      TryCopyScreenDown
+        Pull    R14, EQ
+        BEQ     ClearTopLine
+ ]
         BL      GetScreenInfo           ; get box info for whole 'screen'
 
         MOV     R0, #0
@@ -2030,6 +2075,11 @@ SoftScrollDown
         TST     R6, #TeletextMode
         BNE     TTXSoftScrollDown
 
+ [ UseGraphicsV
+        BL      TryCopyWindowDown
+        Pull    R14, EQ
+        BEQ     ClearTopLine
+ ]
         BL      GetWindowInfo
 
 ;       R2 = address of top left
