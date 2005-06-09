@@ -165,6 +165,9 @@ EntryNo_HAL_USBPortIRQ          #       1
 
 EntryNo_HAL_Video_IICOp         #       1
 
+EntryNo_HAL_TimerIRQClear       #       1
+EntryNo_HAL_TimerIRQStatus      #       1
+
 KnownHALEntries                 #       0       ; Used inside Kernel
 
 ; Various flags and constants
