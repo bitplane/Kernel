@@ -439,14 +439,14 @@ PrintMatch      ROUT
         Push   "r0-r4, lr"
         SWI     XOS_ReadEscapeState
         BLCS    AckEscape
-
+        BVS     %FT99
         SWI     XOS_WriteI+CR
         MOVVC   r4,r3
         BL      WriteS_Translated_UseR4
         =       "HelpFound:==> Help on keyword %0",0
         ALIGN
         SWIVC   XOS_NewLine
-        STRVS   R0, [stack]
+99      STRVS   R0, [stack]
         MOV     R7, #1
         Pull   "r0-r4, PC"
       |
