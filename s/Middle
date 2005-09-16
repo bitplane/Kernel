@@ -1848,6 +1848,7 @@ osri6_table
     DCD  DefaultIRQ1V+(DevicesEnd-DefaultIRQ1Vcode)   ;20 - relocated end of IRQ device head nodes
     DCD  IRQSTK                                       ;21 - top of the IRQ stack
     DCD  SoundWorkSpace                               ;22 - workspace (8K) and buffers (2*4K)
+    DCD  IRQsema                                      ;23 - the address of the IRQ semaphore (may move if zero page is protected)
 osri6_maxvalue * (.-4-osri6_table) :SHR: 2
 
 
