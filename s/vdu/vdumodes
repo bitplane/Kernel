@@ -69,6 +69,7 @@ ControlList_RClockFrequency     #       1
 ControlList_DPMSState           #       1
 ControlList_Interlaced          #       1
 ControlList_OutputFormat        #       1
+ControlList_ExtraBytes          #       1
 ControlList_InvalidReason       #       0
 
 ; bits/flags in VIDCList3_SyncPol word:
