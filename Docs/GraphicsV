@@ -106,6 +106,23 @@ Render
   R1 = operation
   R2 -> parameter block
   
+IIC_Op
+   R4 = 14
+   R0 = card<<28 + channel<<24 + I2Ccmnd << 16 + address
+                                 I2Ccmnd = 1 for read, 0 write
+   R1 ->dma address
+   R2 = byte count
+ Out:
+   R0 = 0 or error block
+   R1 updated
+   R2 updated   
+  
+SelectHead
+   R4 = 15
+   R0 = head to select (0,1, etc)
+ Out:
+   R0 = 0 or error block
+  
   
   
   
