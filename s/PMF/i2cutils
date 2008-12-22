@@ -1469,9 +1469,9 @@ InitCMOSCache	Entry "r1-r6, sb,r12"
  [ HAL
         AddressHAL
     	CallHAL	HAL_NVMemoryType
+    	MOV 	R5, R0
     	ANDS 	R0, R0, #NVMemoryFlag_Provision
         BEQ     InitCMOSCache_NoCMOS
-    	MOV 	R5, R0
 
     	; If it's only a maybe, then we probe
     	TEQ 	R5, #NVMemoryFlag_MaybeIIC

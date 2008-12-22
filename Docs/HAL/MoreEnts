@@ -183,8 +183,8 @@ unsigned int HAL_NVMemoryType(void)
   If bits 0-7 are 0 or 1 no other NVMemory calls need be available,
   and bits 8-31 should be zero.
 
-  If bits 0-7 are 2, Size, ProtectedSize, Protection and IICAddress calls must
-  be available.
+  If bits 0-7 are 2, Size, PageSize, ProtectedSize, Protection and IICAddress
+  calls must be available.
 
   If bits 0-7 are 3, all calls except IICAddress must be available.
 
@@ -198,6 +198,13 @@ unsigned int HAL_NVMemorySize(void)
   NVMemory access calls.
 
   This is to suit the current RISC OS Kernel, which does not use bytes 0-15.
+
+unsigned int HAL_NVMemoryPageSize(void)
+
+  Returns the number of bytes in a page of NVMemory. The HAL can be assured
+  that block writes to NVMemory will not straddle multiple pages (whether by
+  IIC operation or HAL_NVMemoryWrite call).
+  Returns 0 if page splitting is not required.
 
 unsigned int HAL_NVMemoryProtectedSize(void)
 

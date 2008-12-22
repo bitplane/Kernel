@@ -906,6 +906,10 @@ See OS_ReadSysInfo reason code 2
 
 See OS_ReadSysInfo reason code 3
 
+--  void HAL_PlatformInfo(unsigned int unused, unsigned int *flags, unsigned int *defined_flags)
+
+See OS_ReadSysInfo reason code 8
+
 RISC OS entry points from HAL init
 ----------------------------------
 
