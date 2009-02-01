@@ -205,7 +205,7 @@ DefaultIRQ1Vcode_end
 Devices * DefaultIRQ1Vcode_end + 12
 
 NoInterrupt     * -1
-MaxInterrupts   * 64
+MaxInterrupts   * 96
 
 DevicesEnd * Devices + MaxInterrupts * 12
 

@@ -19,6 +19,7 @@ ARMv4T  *       2
 ARMv5   *       3
 ARMv5T  *       4
 ARMv5TE *       5
+ARMvF   *       &F ; 'Fancy' ARM that describes its features in the feature registers
 
                 ^       0
 ARM600          #       1
@@ -37,6 +38,7 @@ ARM920T         #       1
 ARM922T         #       1
 X80200          #       1
 X80321          #       1
+Cortex_A8       #       1
 ARMunk          *       255
 
 ; These flags are stored in ProcessorFlags and returned by OS_PlatformFeatures 0 (Read code features)

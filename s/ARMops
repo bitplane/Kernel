@@ -64,7 +64,11 @@ Init_ARMarch
 ARM_Analyse
         Push    "v1,v2,v5,v6,v7,lr"
         ARM_read_ID v1
-        ARM_read_cachetype v2
+        ; New ARMs have a cache type register that doesn't match the format we expect
+        BL      Init_ARMarch
+        CMP     a1, #ARMvF
+        MOVEQ   v2, v1 ; New ARM; set v2=v1 to enable table lookup
+        ARM_read_cachetype v2,NE ; Old ARM; read directly
         MOV     v6, #ZeroPage
 
         ADRL    v7, KnownCPUTable
@@ -612,6 +616,7 @@ KnownCPUTable
         CPUDesc ARM922T,       &029220, &0FFFF0, ARMv4T,  WB_CR7_LDa, 1,  8K, 64, 8,  8K, 64, 8
         CPUDesc X80200,        &052000, &0FFFF0, ARMv5TE, WB_Cal_LD,  1, 32K, 32, 8, 32K, 32, 8
         CPUDesc X80321,    &69052400, &FFFFF700, ARMv5TE, WB_Cal_LD,  1, 32K, 32, 8, 32K, 32, 8
+        CPUDesc Cortex_A8,     &00C080, &00FFF0, ARMv5TE, WB_CR7_LDa, 1, 16K, 32, 16, 16K, 32, 16
         DCD     -1
 
 
@@ -634,6 +639,7 @@ KnownCPUFlags
         DCD     0,                            0    ; ARM 922T
         DCD     CPUFlag_ExtendedPages+CPUFlag_XScale,  0    ; X80200
         DCD     CPUFlag_XScale,               0    ; X80321
+        DCD     0,                            0    ; Cortex_A8
 
 ; --------------------------------------------------------------------------
 ; ----- ARMops -------------------------------------------------------------
@@ -1618,6 +1624,7 @@ PNameTable
         DCW     PName_ARM922T   - PNameTable
         DCW     PName_X80200    - PNameTable
         DCW     PName_X80321    - PNameTable
+        DCW     PName_Cortex_A8 - PNameTable
 
 PName_ARM600
         =       "600:ARM 600 Processor",0
@@ -1649,6 +1656,8 @@ PName_X80200
         =       "X80200:80200 Processor",0
 PName_X80321
         =       "X80321:80321 Processor",0
+PName_Cortex_A8
+        =       "CortexA8:Cortex-A8 Processor",0
         ALIGN
 
 

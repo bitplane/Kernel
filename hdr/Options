@@ -90,7 +90,7 @@ ParallelFlashUpgrade SETL {FALSE}
 
 ;whether we support running on the (Risc PC) emulator
                 GBLL    EmulatorSupport
-EmulatorSupport SETL    {TRUE}
+EmulatorSupport SETL    {FALSE} ; Disabled; QEMU doesn't like it
 
   [ :LNOT: RO371Timings
 
@@ -302,19 +302,19 @@ RMTidyDoesNowt  SETL    {TRUE}                  ; should really be "machine has 
 RogerEXEY       SETL    {FALSE}                 ; Marketing don't like it!
 
                 GBLL    DebugROMInit
-DebugROMInit    SETL    {FALSE}
+DebugROMInit    SETL    {TRUE}
 
                 GBLL    DebugROMPostInit ; Displays when the PostInit service call is sent to each ROM module (currently works on vanilla service call handling only)
 DebugROMPostInit SETL    (:LNOT: ChocolateService) :LAND: {FALSE}
 
                 GBLL    DebugROMErrors
-DebugROMErrors  SETL    {FALSE}
+DebugROMErrors  SETL    {TRUE}
 
                 GBLL    DebugTerminal           ; default WRCH and RDCH through HAL
-DebugTerminal   SETL    {FALSE}
+DebugTerminal   SETL    {TRUE}
 
                 GBLL    DebugHALTX
-DebugHALTX      SETL    {FALSE}
+DebugHALTX      SETL    {TRUE}
 
                 GBLL    DebugHeaps              ; initialise claimed and freed blocks
 DebugHeaps      SETL    {FALSE}                 ; (may slow things down unacceptably)
