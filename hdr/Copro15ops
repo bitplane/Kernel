@@ -22,6 +22,9 @@
 ; 07-10-96 MJS Updated for proper ARM 810 support (not needed for RO 3.70)
 ; 10-03-97 MJS A few additions for chocolate flavour screen handling (possible
 ;              Domain and FSR register use) in Phoebe OS
+; 05-02-09 JL  Disable ARM_flush_* when compiling OS for HAL. OS now supports
+;              too many ARM versions for cache/TLB flushing to be implemented in
+;              simple macros.
 
 ARM_config_cp        CP 15  ;coprocessor number for configuration control
 
@@ -51,7 +54,7 @@ ARM8_CTC_reg         CN 15  ;Clock and test configuration
 
 ARMA_TCI_reg         CN 15  ;Test,Clock and Idle control
 
-;so that AASM will accept the general value for MCR CRm field
+;so that bleedin' AASM will accept the general value for MCR CRm field
 C0  CN  0
 C1  CN  1
 C2  CN  2
@@ -161,6 +164,7 @@ C15 CN 15
         TEQ$cond $tmp,#1
         MEND
 
+ [ :LNOT: HAL
 ;flush whole TLB (both data and instruction for StrongARM)
 ;trashes $temp
         MACRO
@@ -200,6 +204,7 @@ C15 CN 15
         MCREQ    ARM_config_cp,0,R0,ARM8A_cache_reg,C7,0
         MCREQ    ARM_config_cp,0,R0,ARM8A_TLB_reg,C7,0
         MEND
+ ]
 
 ;
 ; -------------- ARM 6,7 only --------------------------------------------

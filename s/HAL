@@ -35,39 +35,43 @@ RISCOS_InitARM
         MOV     a4, lr
         ; Check if we're architecture 3. If so, don't read the control register.
         BL      Init_ARMarch
-        MOVEQ   a1, #0
-        ARM_read_control a1, NE
+        MOVEQ   a3, #0
+        ARM_read_control a3, NE
         ; Late abort (ARM6 only), 32-bit Data and Program space. No Write buffer (ARM920T
         ; spec says W bit should be set, but I reckon they're bluffing).
         ;
         ; The F bit's tricky. (1 => CPCLK=FCLK, 0=>CPCLK=FCLK/2). The only chip using it was the
         ; ARM700, it never really reached the customer, and it's always been programmed with
         ; CPCLK=FCLK. Therefore we'll keep it that way, and ignore the layering violation.
-        ORR     a1, a1, #MMUC_F+MMUC_L+MMUC_D+MMUC_P
+        ORR     a3, a3, #MMUC_F+MMUC_L+MMUC_D+MMUC_P
         ; All of these bits should be off already, but just in case...
-        BIC     a1, a1, #MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M
-        BIC     a1, a1, #MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S
+        BIC     a3, a3, #MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M
+        BIC     a3, a3, #MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S
 
         ; Off we go.
-        ARM_write_control a1
+        ARM_write_control a3
 
         ; In case it wasn't a hard reset
         MOV     a2, #0
-        MCR     ARM_config_cp,0,a2,ARMv4_cache_reg,C7           ; invalidate I+D caches
+        CMP     a1, #ARMvF
+        ; Assume that all ARMvF ARMs have multi-level caches and thus no single MCR op for invalidating all the caches
+        MCRNE   ARM_config_cp,0,a2,ARMv4_cache_reg,C7           ; invalidate I+D caches
+        BLEQ    HAL_InvalidateCache_ARMvF
+        CMP     a1, #ARMv3
         MCREQ   ARM_config_cp,0,a2,ARMv3_TLBflush_reg,C0        ; flush TLBs
         MCRNE   ARM_config_cp,0,a2,ARMv4_TLB_reg,C7             ; flush TLBs
 
         ; We assume that ARMs with an I cache can have it enabled while the MMU is off.
         [ :LNOT:CacheOff
-        ORRNE   a1, a1, #MMUC_I
-        ARM_write_control a1, NE                                ; whoosh
+        ORRNE   a3, a3, #MMUC_I
+        ARM_write_control a3, NE                                ; whoosh
         ]
 
         ; Check if we are in a 26-bit mode.
         MRS     a2, CPSR
         ; Keep a soft copy of the CR in a banked register (R13_und)
         MSR     CPSR_c, #F32_bit+I32_bit+UND32_mode
-        MOV     sp, a1
+        MOV     sp, a3
         ; Switch into SVC32 mode (we may have been in SVC26 before).
         MSR     CPSR_c, #F32_bit+I32_bit+SVC32_mode
 
@@ -623,6 +627,7 @@ MMU_activation_zone
 
         MOV     a4, a1
         BL      Init_ARMarch                    ; corrupts a1 and ip
+        MOV     ip, a1 ; Remember architecture for later
 
         MOV     a1, a4
         MSREQ   CPSR_c, #F32_bit+I32_bit+UND32_mode ; Recover the soft copy of the CR
@@ -637,20 +642,23 @@ MMU_activation_zone
   ]
         ARM_MMU_transbase v3                    ; Always useful to tell it where L1PT is...
 
-        MOV     ip, #0
-        MCREQ   p15, 0, ip, c5, c0              ; MMU may already be on (but flat mapped)
-        MCRNE   p15, 0, ip, c8, c7              ; if HAL needed it (eg XScale with ECC)
+        MOV     lr, #0
+        MCREQ   p15, 0, lr, c5, c0              ; MMU may already be on (but flat mapped)
+        MCRNE   p15, 0, lr, c8, c7              ; if HAL needed it (eg XScale with ECC)
                                                 ; so flush TLBs now
 MMUon_instr
         ARM_write_control v5
         MOVEQ   sp, v5
         MSREQ   CPSR_c, #F32_bit+I32_bit+SVC32_mode
 
-        MOV     ip, #0                                          ; junk MMU-off contents of I-cache
-        MCR     ARM_config_cp,0,ip,ARMv4_cache_reg,C7           ; (works on ARMv3)
+        CMP     ip, #ARMvF
+        MOV     lr, #0                                          ; junk MMU-off contents of I-cache
+        MCRNE   ARM_config_cp,0,lr,ARMv4_cache_reg,C7           ; (works on ARMv3)
+        BLEQ    HAL_InvalidateCache_ARMvF
 
-        MOV     ip, #4_0000000000000001                         ; domain 0 client only
-        ARM_MMU_domain ip
+;       HACK HACK HACK - all domains remain in manager mode
+;        MOV     ip, #4_0000000000000001                         ; domain 0 client only
+;        ARM_MMU_domain ip
 
 ; MMU now on. Need to jump to logical copy of ourselves. Complication arises if our
 ; physical address overlaps our logical address - in that case we need to map
@@ -773,6 +781,12 @@ MMUon_nol1ptoverlap
         LDR     a2, =HALWorkspaceNCNB
         AddressHAL
         CallHAL HAL_Init
+
+ [ DebugHALTX
+        BL      DebugHALPrint
+        = "HAL initialised",0
+        ALIGN
+ ]
 
         MOV     a1, #ZeroPage
         LDR     v1, [a1, #InitUsedBlock]
@@ -962,6 +976,53 @@ MMUon_nol1ptoverlap
         B       Continue_after_HALInit
 
         LTORG
+
+HAL_InvalidateCache_ARMvF
+        ; Cache invalidation for ARMs with multiple cache levels, used before ARMop initialisation
+        ; This function gets called before we have a stack set up, so we've got to preserve as many registers as possible
+        ; The only register we can safely change is ip, but we can switch into FIQ mode with interrupts disabled and use the banked registers there
+        MRS     ip, CPSR
+        MSR     CPSR_c, #F32_bit+I32_bit+FIQ32_mode
+        MRC     p15, 1, r8, c0, c0, 1 ; Cache level ID register
+        BIC     r8, r8, #&FF000000 ; Discard unification/coherency bits
+        MOV     r9, #0 ; Current cache level
+20
+        TST     r8, #7 ; Get flags
+        BEQ     %FT10 ; Cache clean complete
+        MCR     p15, 2, r9, c0, c0, 0 ; Program cache size selection register
+        MRC     p15, 1, r10, c0, c0, 0 ; Get size info
+        AND     r11, r10, #&7 ; log2(Line size)-2
+        BIC     r10, r10, #&F0000007 ; Clear flags & line size
+        MOV     r12, r10, LSL #19 ; Number of ways-1 in upper 10 bits
+        MOV     r10, r10, LSR #13 ; Number of sets-1 in upper 15 bits
+        ; Way number needs to be packed right up at the high end of the data word; shift it up
+        CLZ     r14, r12
+        MOV     r12, r12, LSL r14
+        ; Set number needs to start at log2(Line size)
+        MOV     r10, r10, LSR #15 ; Start at bit 2
+        MOV     r10, r10, LSL r11 ; Start at log2(Line size)
+        ; Now calculate the offset numbers we will use to increment sets & ways
+        BIC     r12, r12, r12, LSL #1 ; Way increment
+        BIC     r11, r10, r10, LSL #1 ; Set increment
+        ; Now we can finally clean this cache!
+        ORR     r14, r9, r10 ; Current way (0), set (max), and level
+30
+        MCR     p15, 0, r14, c7, c6, 2 ; Invalidate
+        ADDS    r14, r14, r12 ; Increment way
+        BCC     %BT30 ; Overflow will occur once ways are enumerated
+        TST     r14, r10 ; Are set bits all zero?
+        SUBNE   r14, r14, r11 ; No, so decrement set and loop around again
+        BNE     %BT30
+        ; This cache is now clean. Move on to the next level.
+        ADD     r9, r9, #2
+        MOVS    r8, r8, LSR #3
+        BNE     %BT20
+10
+        ; All caches clean; switch back to SVC, then recover the stored PSR from ip (although we can be fairly certain we started in SVC anyway)
+        MSR     CPSR_c, #F32_bit+I32_bit+SVC32_mode
+        MSR     CPSR_cxsf, ip
+        MOV     pc, lr
+
 
 CountPageTablePages ROUT
         MOV     a1, #ZeroPage
@@ -1504,7 +1565,9 @@ Init_PageTablesChanged
         MOV     ip, #0
         MCREQ   ARM_config_cp,0,ip,ARMv3_TLBflush_reg,C0
         MCRNE   ARM_config_cp,0,ip,ARMv4_TLB_reg,C7
-        MCR     ARM_config_cp,0,ip,ARMv4_cache_reg,C7           ; works on ARMv3
+        CMP     a1, #ARMvF
+        MCRNE   ARM_config_cp,0,ip,ARMv4_cache_reg,C7           ; works on ARMv3
+        BLEQ    HAL_InvalidateCache_ARMvF
         MOV     pc, a3
 
 

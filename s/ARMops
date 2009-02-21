@@ -62,13 +62,14 @@ Init_ARMarch
 
 
 ARM_Analyse
+        MOV     a2, lr
+        BL      Init_ARMarch
+        MOV     lr, a2
+        CMP     a1, #ARMvF
+        BEQ     ARM_Analyse_Fancy ; New ARM; use the feature regs to perform all the setup
         Push    "v1,v2,v5,v6,v7,lr"
         ARM_read_ID v1
-        ; New ARMs have a cache type register that doesn't match the format we expect
-        BL      Init_ARMarch
-        CMP     a1, #ARMvF
-        MOVEQ   v2, v1 ; New ARM; set v2=v1 to enable table lookup
-        ARM_read_cachetype v2,NE ; Old ARM; read directly
+        ARM_read_cachetype v2
         MOV     v6, #ZeroPage
 
         ADRL    v7, KnownCPUTable
@@ -516,6 +517,95 @@ Analyse_WB_Cal_LD
 
         B       %FT90
 
+Analyse_WB_CR7_Lx
+        TST     v5, #CPUFlag_SplitCache
+        BEQ     WeirdARMPanic             ; currently, only support harvard caches here
+
+        ; Read the cache info into Cache_Lx_*
+        MRC     p15, 1, a1, c0, c0, 1 ; Cache level ID register
+        MOV     a2, v6 ; Work around DTable/ITable alignment issues
+        STR     a1, [v2, #Cache_Lx_Info]!
+        ADD     a1, v2, #Cache_Lx_DTable-Cache_Lx_Info
+        ADD     a2, v2, #Cache_Lx_ITable-Cache_Lx_Info
+        MOV     a3, #0
+        MOV     a4, #256 ; Smallest instruction cache line length
+        MOV     v2, #256 ; Smallest data/unified cache line length (although atm we only need this to be the smallest data cache line length)
+10
+        MCR     p15, 2, a3, c0, c0, 0 ; Program cache size selection register
+        MRC     p15, 1, v1, c0, c0, 0 ; Get size info (data/unified)
+        STR     v1, [a1,#4]
+        CMP     v1, #0 ; Does the cache exist?
+        AND     v1, v1, #7 ; Get line size
+        CMPNE   v1, v2
+        MOVLT   v2, v1 ; Earlier CMP will not set LE flags if v1=0
+        ADD     a3, a3, #1
+        MCR     p15, 2, a3, c0, c0, 0 ; Program cache size selection register
+        MRC     p15, 1, v1, c0, c0, 0 ; Get size info (instruction)
+        STR     v1, [a2,#4]
+        CMP     v1, #0 ; Does the cache exist?
+        AND     v1, v1, #7 ; Get line size
+        CMPNE   v1, a4
+        MOVLT   a4, v1 ; Earlier CMP will not set LE flags if v1=0
+        ADD     a3, a3, #1
+        CMP     a3, #16
+        BLT     %BT10
+        STRB    a4, [v6, #ICache_LineLen] ; Store log2(line size)-2
+        STRB    v2, [v6, #DCache_LineLen] ; log2(line size)-2
+
+        ; Calculate DCache_RangeThreshold
+        MOV     a1, #128*1024 ; Arbitrary-ish
+        STR     a1, [v6, #DCache_RangeThreshold]
+
+        ADRL    a1, Cache_CleanInvalidateAll_WB_CR7_Lx
+        STR     a1, [v6, #Proc_Cache_CleanInvalidateAll]
+
+        ADRL    a1, Cache_CleanAll_WB_CR7_Lx
+        STR     a1, [v6, #Proc_Cache_CleanAll]
+
+        ADRL    a1, Cache_InvalidateAll_WB_CR7_Lx
+        STR     a1, [v6, #Proc_Cache_InvalidateAll]
+
+        ADRL    a1, Cache_RangeThreshold_WB_CR7_Lx
+        STR     a1, [v6, #Proc_Cache_RangeThreshold]
+
+        ADRL    a1, TLB_InvalidateAll_WB_CR7_Lx
+        STR     a1, [v6, #Proc_TLB_InvalidateAll]
+
+        ADRL    a1, TLB_InvalidateEntry_WB_CR7_Lx
+        STR     a1, [v6, #Proc_TLB_InvalidateEntry]
+
+        ADRL    a1, WriteBuffer_Drain_WB_CR7_Lx
+        STR     a1, [v6, #Proc_WriteBuffer_Drain]
+
+        ADRL    a1, IMB_Full_WB_CR7_Lx
+        STR     a1, [v6, #Proc_IMB_Full]
+
+        ADRL    a1, IMB_Range_WB_CR7_Lx
+        STR     a1, [v6, #Proc_IMB_Range]
+
+        ADRL    a1, MMU_Changing_WB_CR7_Lx
+        STR     a1, [v6, #Proc_MMU_Changing]
+
+        ADRL    a1, MMU_ChangingEntry_WB_CR7_Lx
+        STR     a1, [v6, #Proc_MMU_ChangingEntry]
+
+        ADRL    a1, MMU_ChangingUncached_WB_CR7_Lx
+        STR     a1, [v6, #Proc_MMU_ChangingUncached]
+
+        ADRL    a1, MMU_ChangingUncachedEntry_WB_CR7_Lx
+        STR     a1, [v6, #Proc_MMU_ChangingUncachedEntry]
+
+        ADRL    a1, MMU_ChangingEntries_WB_CR7_Lx
+        STR     a1, [v6, #Proc_MMU_ChangingEntries]
+
+        ADRL    a1, MMU_ChangingUncachedEntries_WB_CR7_Lx
+        STR     a1, [v6, #Proc_MMU_ChangingUncachedEntries]
+
+        ADRL    a1, XCBTableWBR                      ; assume read-allocate WB/WT cache
+        STR     a1, [v6, #MMU_PCBTrans]
+
+        B       %FT90
+
 90
         Pull    "v1,v2,v5,v6,v7,pc"
 
@@ -616,9 +706,13 @@ KnownCPUTable
         CPUDesc ARM922T,       &029220, &0FFFF0, ARMv4T,  WB_CR7_LDa, 1,  8K, 64, 8,  8K, 64, 8
         CPUDesc X80200,        &052000, &0FFFF0, ARMv5TE, WB_Cal_LD,  1, 32K, 32, 8, 32K, 32, 8
         CPUDesc X80321,    &69052400, &FFFFF700, ARMv5TE, WB_Cal_LD,  1, 32K, 32, 8, 32K, 32, 8
-        CPUDesc Cortex_A8,     &00C080, &00FFF0, ARMv5TE, WB_CR7_LDa, 1, 16K, 32, 16, 16K, 32, 16
         DCD     -1
 
+; Simplified CPUDesc table for Fancy ARMs
+; The cache size data is ignored
+KnownCPUTable_Fancy
+        CPUDesc Cortex_A8,     &00C080, &00FFF0, ARMv5TE, WB_CR7_Lx, 1, 16K, 32, 16, 16K, 32, 16
+        DCD     -1
 
 ; Peculiar characteristics of individual ARMs not deducable otherwise. First field is
 ; flags to set, second flags to clear.
@@ -640,6 +734,136 @@ KnownCPUFlags
         DCD     CPUFlag_ExtendedPages+CPUFlag_XScale,  0    ; X80200
         DCD     CPUFlag_XScale,               0    ; X80321
         DCD     0,                            0    ; Cortex_A8
+
+; --------------------------------------------------------------------------
+; ----- ARM_Analyse_Fancy --------------------------------------------------
+; --------------------------------------------------------------------------
+;
+; Although I don't have a copy of the ARMv7 ARM to check, I suspect that all
+; ARMs with an architecture of &F implement the feature registers described
+; in the Cortex-A8 TRM. Thus, for these new ARMs, we shall use the feature
+; registers to discover what the CPU is like.
+
+; Things we need to set up:
+; ProcessorType     (as listed in hdr.ARMops)
+; Cache_Type        (CT_ctype_* from hdr:MEMM.ARM600)
+; ProcessorArch     (as reported by Init_ARMarch)
+; ProcessorFlags    (CPUFlag_* from hdr.ARMops)
+; Proc_*            (Cache/TLB/IMB/MMU function pointers)
+; MMU_PCBTrans      (Points to lookup table for translating page table cache options)
+; ICache_*, DCache_* (ICache, DCache properties - optional, since not used externally?)
+
+ARM_Analyse_Fancy
+        Push    "v1,v2,v5,v6,v7,lr"
+        ARM_read_ID v1
+        MOV     v6, #ZeroPage
+        ADRL    v7, KnownCPUTable_Fancy
+10
+        LDMIA   v7!, {a1, a2}
+        CMP     a1, #-1
+        BEQ     %FT20
+        AND     a2, v1, a2
+        TEQ     a1, a2
+        ADDNE   v7, v7, #8
+        BNE     %BT10
+20
+        LDR     v2, [v7]
+        CMP     a1, #-1
+        LDRNEB  a2, [v7, #4]
+        MOVEQ   a2, #ARMunk
+        STRB    a2, [v6, #ProcessorType]
+
+        AND     a1, v2, #CT_ctype_mask
+        MOV     a1, a1, LSR #CT_ctype_pos
+        STRB    a1, [v6, #Cache_Type]
+
+        MOV     v5, #CPUFlag_32bitOS+CPUFlag_No26bitMode ; 26bit has been obsolete for a long time
+
+        ; Do we have a split cache?
+        MRC     p15, 1, a1, c0, c0, 1
+        AND     a2, a1, #7
+        TEQ     a2, #3
+        ORREQ   v5, v5, #CPUFlag_SynchroniseCodeAreas+CPUFlag_SplitCache
+
+        [ CacheOff
+        ORR     v5, v5, #CPUFlag_SynchroniseCodeAreas
+        |
+        ARM_read_control a1                     ; if Z bit set then we have branch prediction,
+        TST     a1, #MMUC_Z                     ; so we need OS_SynchroniseCodeAreas even if not
+        ORRNE   v5, v5, #CPUFlag_SynchroniseCodeAreas   ; split caches
+        ]
+
+        ; Test abort timing (base restored or base updated)
+        MOV     a1, #&8000
+        LDR     a2, [a1], #4                    ; Will abort - DAb handler will continue execution
+        TEQ     a1, #&8000
+        ORREQ   v5, v5, #CPUFlag_BaseRestored
+
+        ; Check store of PC
+30      STR     pc, [sp, #-4]!
+        ADR     a2, %BT30 + 8
+        LDR     a1, [sp], #4
+        TEQ     a1, a2
+        ORREQ   v5, v5, #CPUFlag_StorePCplus8
+
+        BL      Init_ARMarch
+        STRB    a1, [v6, #ProcessorArch]
+
+        MRC     p15, 0, a1, c0, c2, 2
+        TST     a1, #&F000
+        ORRNE   v5, v5, #CPUFlag_LongMul
+
+        MRC     p15, 0, a1, c0, c1, 0
+        TST     a1, #&F000
+        ORRNE   v5, v5, #CPUFlag_Thumb
+
+        MSR     CPSR_f, #Q32_bit
+        MRS     lr, CPSR
+        TST     lr, #Q32_bit
+        ORRNE   v5, v5, #CPUFlag_DSP ; Should we check instruction set attr register 3 for this?
+
+        ; Other flags not checked for above:
+        ; CPUFlag_InterruptDelay
+        ; CPUFlag_VectorReadException
+        ; CPUFlag_ExtendedPages
+        ; CPUFlag_NoWBDrain
+        ; CPUFlag_AbortRestartBroken
+        ; CPUFlag_XScale
+        ; CPUFlag_XScaleJTAGconnected
+
+        LDRB    v4, [v6, #ProcessorType]
+
+        TEQ     v4, #ARMunk                     ; Modify deduced flags
+        ADRNEL  lr, KnownCPUFlags
+        ADDNE   lr, lr, v4, LSL #3
+        LDMNEIA lr, {a2, a3}
+        ORRNE   v5, v5, a2
+        BICNE   v5, v5, a3
+
+        STR     v5, [v6, #ProcessorFlags]
+
+        ; Cache analysis
+
+        LDRB    a2, [v6, #Cache_Type]
+        TEQ     a2, #CT_ctype_WT
+        TSTEQ   v5, #CPUFlag_SplitCache
+        BEQ     Analyse_WriteThroughUnified     ; eg. ARM7TDMI derivative
+
+        TEQ     a2, #CT_ctype_WB_CR7_LDa
+        BEQ     Analyse_WB_CR7_LDa              ; eg. ARM9
+
+        TEQ     a2, #CT_ctype_WB_Crd
+        BEQ     Analyse_WB_Crd                  ; eg. StrongARM
+
+        TEQ     a2, #CT_ctype_WB_Cal_LD
+        BEQ     Analyse_WB_Cal_LD               ; assume XScale
+
+        TEQ     a2, #CT_ctype_WB_CR7_Lx
+        BEQ     Analyse_WB_CR7_Lx
+
+        ; others ...
+
+        B       WeirdARMPanic                   ; stiff :)
 
 ; --------------------------------------------------------------------------
 ; ----- ARMops -------------------------------------------------------------
@@ -741,6 +965,8 @@ Cache_RangeThreshold_ARMv3
         ! 0, "arbitrary Cache_RangeThreshold_ARMv3"
         MOV     a1, #16*PageSize
         MOV     pc, lr
+
+        LTORG
 
 ; --------------------------------------------------------------------------
 ; ----- generic ARMops for simple ARMs, ARMv4 onwards ----------------------
@@ -1584,6 +1810,343 @@ MMU_ChangingUncachedEntries_WB_Cal_LD ROUT
 20
         MCR     p15, 0, a1, c8, c7, 0              ; invalidate ITLB and DTLB
         CPWAIT
+        MOV     pc, lr
+
+
+; --------------------------------------------------------------------------
+; ----- ARMops for Cortex-A8 and the like ----------------------------------
+; --------------------------------------------------------------------------
+
+; WB_CR7_Lx refers to ARMs with writeback data cache, cleaned with
+; register 7, and (potentially) multiple cache levels
+;
+; DCache_LineLen = log2(line len)-2 for smallest data/unified cache line length
+; ICache_LineLen = log2(line len)-2 for smallest instruction cache line length
+; DCache_RangeThreshold = clean threshold for data cache
+; Cache_Lx_Info = Cache level ID register
+; Cache_Lx_DTable = Cache size identification register for all 8 data/unified caches
+; Cache_Lx_ITable = Cache size identification register for all 8 instruction caches
+
+Cache_CleanAll_WB_CR7_Lx ROUT
+;
+; Currently disables interrupts to allow safe programming and reading of cache size selection register
+;
+; Clean cache by traversing all sets and ways for all data caches
+        Push    "a2,a3,a4,v1,v2,v3,v4,v5,lr"
+        MOV     lr, #ZeroPage
+        LDR     a1, [lr, #Cache_Lx_Info]!
+        ADD     lr, lr, #Cache_Lx_DTable-Cache_Lx_Info
+        BIC     a1, a1, #&FF000000 ; Discard unification/coherency bits
+        MOV     a2, #0 ; Current cache level
+20
+        TST     a1, #7 ; Get flags
+        BEQ     %FT10 ; Cache clean complete
+        LDR     a3, [lr], #4 ; Get size info
+        AND     v1, a3, #&7 ; log2(Line size)-2
+        BIC     a3, a3, #&F0000007 ; Clear flags & line size
+        MOV     v2, a3, LSL #19 ; Number of ways-1 in upper 10 bits
+        MOV     v3, a3, LSR #13 ; Number of sets-1 in upper 15 bits
+        ; Way number needs to be packed right up at the high end of the data word; shift it up
+        CLZ     a4, v2
+        MOV     v2, v2, LSL a4
+        ; Set number needs to start at log2(Line size)
+        MOV     v3, v3, LSR #15 ; Start at bit 2
+        MOV     v3, v3, LSL v1 ; Start at log2(Line size)
+        ; Now calculate the offset numbers we will use to increment sets & ways
+        BIC     v4, v2, v2, LSL #1 ; Way increment
+        BIC     v5, v3, v3, LSL #1 ; Set increment
+        ; Now we can finally clean this cache!
+        ORR     a3, a2, v3 ; Current way (0), set (max), and level
+30
+        MCR     p15, 0, a3, c7, c10, 2 ; Clean
+        ADDS    a3, a3, v4 ; Increment way
+        BCC     %BT30 ; Overflow will occur once ways are enumerated
+        TST     a3, v3 ; Are set bits all zero?
+        SUBNE   a3, a3, v5 ; No, so decrement set and loop around again
+        BNE     %BT30
+        ; This cache is now clean. Move on to the next level.
+        ADD     a2, a2, #2
+        MOVS    a1, a1, LSR #3
+        BNE     %BT20
+10
+        MOV     a1, #0
+        MCR     p15, 0, a1, c7, c10, 4           ; drain WBuffer
+        Pull    "a2,a3,a4,v1,v2,v3,v4,v5,pc"
+
+
+Cache_CleanInvalidateAll_WB_CR7_Lx ROUT
+;
+; similar to Cache_CleanAll, but does clean&invalidate of Dcache, and invalidates ICache
+;
+        Push    "a2,a3,a4,v1,v2,v3,v4,v5,lr"
+        MOV     lr, #ZeroPage
+        LDR     a1, [lr, #Cache_Lx_Info]!
+        ADD     lr, lr, #Cache_Lx_DTable-Cache_Lx_Info
+        BIC     a1, a1, #&FF000000 ; Discard unification/coherency bits
+        MOV     a2, #0 ; Current cache level
+20
+        TST     a1, #7 ; Get flags
+        BEQ     %FT10 ; Cache clean complete
+        LDR     a3, [lr], #4 ; Get size info
+        AND     v1, a3, #&7 ; log2(Line size)-2
+        BIC     a3, a3, #&F0000007 ; Clear flags & line size
+        MOV     v2, a3, LSL #19 ; Number of ways-1 in upper 10 bits
+        MOV     v3, a3, LSR #13 ; Number of sets-1 in upper 15 bits
+        ; Way number needs to be packed right up at the high end of the data word; shift it up
+        CLZ     a4, v2
+        MOV     v2, v2, LSL a4
+        ; Set number needs to start at log2(Line size)
+        MOV     v3, v3, LSR #15 ; Start at bit 2
+        MOV     v3, v3, LSL v1 ; Start at log2(Line size)
+        ; Now calculate the offset numbers we will use to increment sets & ways
+        BIC     v4, v2, v2, LSL #1 ; Way increment
+        BIC     v5, v3, v3, LSL #1 ; Set increment
+        ; Now we can finally clean this cache!
+        ORR     a3, a2, v3 ; Current way (0), set (max), and level
+30
+        MCR     p15, 0, a3, c7, c14, 2 ; Clean & invalidate
+        ADDS    a3, a3, v4 ; Increment way
+        BCC     %BT30 ; Overflow will occur once ways are enumerated
+        TST     a3, v3 ; Are set bits all zero?
+        SUBNE   a3, a3, v5 ; No, so decrement set and loop around again
+        BNE     %BT30
+        ; This cache is now clean. Move on to the next level.
+        ADD     a2, a2, #2
+        MOVS    a1, a1, LSR #3
+        BNE     %BT20
+10
+        MOV     a1, #0
+        MCR     p15, 0, a1, c7, c10, 4           ; drain WBuffer
+        MCR     p15, 0, a1, c7, c5, 0            ; invalidate ICache
+        Pull    "a2,a3,a4,v1,v2,v3,v4,v5,pc"
+
+
+Cache_InvalidateAll_WB_CR7_Lx ROUT
+;
+; no clean, assume caller knows what's happening
+;
+        Push    "a2,a3,a4,v1,v2,v3,v4,v5,lr"
+        MOV     lr, #ZeroPage
+        LDR     a1, [lr, #Cache_Lx_Info]!
+        ADD     lr, lr, #Cache_Lx_DTable-Cache_Lx_Info
+        BIC     a1, a1, #&FF000000 ; Discard unification/coherency bits
+        MOV     a2, #0 ; Current cache level
+20
+        TST     a1, #7 ; Get flags
+        BEQ     %FT10 ; Cache clean complete
+        LDR     a3, [lr], #4 ; Get size info
+        AND     v1, a3, #&7 ; log2(Line size)-2
+        BIC     a3, a3, #&F0000007 ; Clear flags & line size
+        MOV     v2, a3, LSL #19 ; Number of ways-1 in upper 10 bits
+        MOV     v3, a3, LSR #13 ; Number of sets-1 in upper 15 bits
+        ; Way number needs to be packed right up at the high end of the data word; shift it up
+        CLZ     a4, v2
+        MOV     v2, v2, LSL a4
+        ; Set number needs to start at log2(Line size)
+        MOV     v3, v3, LSR #15 ; Start at bit 2
+        MOV     v3, v3, LSL v1 ; Start at log2(Line size)
+        ; Now calculate the offset numbers we will use to increment sets & ways
+        BIC     v4, v2, v2, LSL #1 ; Way increment
+        BIC     v5, v3, v3, LSL #1 ; Set increment
+        ; Now we can finally clean this cache!
+        ORR     a3, a2, v3 ; Current way (0), set (max), and level
+30
+        MCR     p15, 0, a3, c7, c6, 2 ; Invalidate
+        ADDS    a3, a3, v4 ; Increment way
+        BCC     %BT30 ; Overflow will occur once ways are enumerated
+        TST     a3, v3 ; Are set bits all zero?
+        SUBNE   a3, a3, v5 ; No, so decrement set and loop around again
+        BNE     %BT30
+        ; This cache is now clean. Move on to the next level.
+        ADD     a2, a2, #2
+        MOVS    a1, a1, LSR #3
+        BNE     %BT20
+10
+        MOV     a1, #0
+        MCR     p15, 0, a1, c7, c5, 0            ; invalidate ICache
+        Pull    "a2,a3,a4,v1,v2,v3,v4,v5,pc"
+
+
+Cache_RangeThreshold_WB_CR7_Lx ROUT
+        MOV     a1, #0
+        LDR     a1, [a1, #DCache_RangeThreshold]
+        MOV     pc, lr
+
+
+TLB_InvalidateAll_WB_CR7_Lx ROUT
+MMU_ChangingUncached_WB_CR7_Lx
+        MOV     a1, #0
+        MCR     p15, 0, a1, c8, c7, 0           ; invalidate ITLB and DTLB
+        MOV     pc, lr
+
+
+; a1 = page affected (page aligned address)
+;
+TLB_InvalidateEntry_WB_CR7_Lx ROUT
+MMU_ChangingUncachedEntry_WB_CR7_Lx
+        MCR     p15, 0, a1, c8, c7, 1           ; invalidate ITLB & DTLB entry
+        MOV     pc, lr
+
+
+WriteBuffer_Drain_WB_CR7_Lx ROUT
+        MOV     a1, #0
+        MCR     p15, 0, a1, c7, c10, 4          ; drain WBuffer
+        MOV     pc, lr
+
+
+IMB_Full_WB_CR7_Lx ROUT
+;
+; do: clean DCache; drain WBuffer, invalidate ICache
+; Luckily, we only need to clean as far as the level of unification
+;
+        Push    "a2,a3,a4,v1,v2,v3,v4,v5,lr"
+        MOV     lr, #ZeroPage
+        LDR     a1, [lr, #Cache_Lx_Info]!
+        ADD     lr, lr, #Cache_Lx_DTable-Cache_Lx_Info
+        MOV     a1, a1, LSR #27
+        AND     a1, a1, #&7 ; Get level of unification
+        MOV     a2, #0 ; Current cache level
+        SUBS    a1, a1, #1
+        BLT     %FT10 ; Cache clean complete
+20
+        LDR     a3, [lr], #4 ; Get size info
+        AND     v1, a3, #&7 ; log2(Line size)-2
+        BIC     a3, a3, #&F0000007 ; Clear flags & line size
+        MOV     v2, a3, LSL #19 ; Number of ways-1 in upper 10 bits
+        MOV     v3, a3, LSR #13 ; Number of sets-1 in upper 15 bits
+        ; Way number needs to be packed right up at the high end of the data word; shift it up
+        CLZ     a4, v2
+        MOV     v2, v2, LSL a4
+        ; Set number needs to start at log2(Line size)
+        MOV     v3, v3, LSR #15 ; Start at bit 2
+        MOV     v3, v3, LSL v1 ; Start at log2(Line size)
+        ; Now calculate the offset numbers we will use to increment sets & ways
+        BIC     v4, v2, v2, LSL #1 ; Way increment
+        BIC     v5, v3, v3, LSL #1 ; Set increment
+        ; Now we can finally clean this cache!
+        ORR     a3, a2, v3 ; Current way (0), set (max), and level
+30
+        MCR     p15, 0, a3, c7, c10, 2 ; Clean
+        ADDS    a3, a3, v4 ; Increment way
+        BCC     %BT30 ; Overflow will occur once ways are enumerated
+        TST     a3, v3 ; Are set bits all zero?
+        SUBNE   a3, a3, v5 ; No, so decrement set and loop around again
+        BNE     %BT30
+        ; This cache is now clean. Move on to the next level.
+        ADD     a2, a2, #2
+        SUBS    a1, a1, #1
+        BGE     %BT20
+10
+        MOV     a1, #0
+        MCR     p15, 0, a1, c7, c10, 4           ; drain WBuffer (is this required?)
+        MCR     p15, 0, a1, c7, c5, 0           ; invalidate ICache
+        Pull    "a2,a3,a4,v1,v2,v3,v4,v5,pc"
+
+;  a1 = start address (inclusive, cache line aligned)
+;  a2 = end address (exclusive, cache line aligned)
+;
+IMB_Range_WB_CR7_Lx ROUT
+        SUB     a2, a2, a1
+        CMP     a2, #32*1024 ; Maximum L1 cache size on Cortex-A8 is 32K, use that to guess what approach to take
+        BGE     IMB_Full_WB_CR7_Lx
+        Push    "a3,lr"
+        MOV     lr, #0
+        LDRB    lr, [lr, #DCache_LineLen] ; log2(line len)-2
+        MOV     a3, #4
+        MOV     lr, a3, LSL lr
+10
+        MCR     p15, 0, a1, c7, c11, 1           ; clean DCache entry by VA to PoU
+        MCR     p15, 0, a1, c7, c5, 1            ; invalidate ICache entry (to PoC - is this bad?)
+        ADD     a1, a1, lr
+        CMP     a1, a2
+        BLO     %BT10
+        MOV     a1, #0
+        MCR     p15, 0, a1, c7, c10, 4           ; drain WBuffer (required?)
+        Pull    "a3,pc"
+
+MMU_Changing_WB_CR7_Lx ROUT
+        Push    "lr"
+        BL      Cache_CleanInvalidateAll_WB_CR7_Lx
+        MOV     a1, #0
+        MCR     p15, 0, a1, c8, c7, 0           ; invalidate ITLB and DTLB
+        Pull    "pc"
+
+; a1 = page affected (page aligned address)
+;
+MMU_ChangingEntry_WB_CR7_Lx ROUT
+        Push    "a2, lr"
+        MOV     lr, #0
+        LDRB    lr, [lr, #DCache_LineLen] ; log2(line len)-2
+        MOV     a2, #4
+        MOV     lr, a2, LSL lr
+        ADD     a2, a1, #PageSize
+10
+        MCR     p15, 0, a1, c7, c14, 1          ; clean&invalidate DCache entry to PoC
+        MCR     p15, 0, a1, c7, c5, 1           ; invalidate ICache entry to PoC
+        ADD     a1, a1, lr
+        CMP     a1, a2
+        BLO     %BT10
+        MOV     lr, #0
+        MCR     p15, 0, lr, c7, c10, 4          ; drain WBuffer
+        SUB     a1, a1, #PageSize
+        MCR     p15, 0, a1, c8, c7, 1           ; invalidate DTLB and ITLB
+        Pull    "a2, pc"
+
+; a1 = first page affected (page aligned address)
+; a2 = number of pages
+;
+MMU_ChangingEntries_WB_CR7_Lx ROUT
+        Push    "a2, a3, lr"
+        MOV     a2, a2, LSL #Log2PageSize
+        MOV     a3, #0
+        LDR     a3, [a3, #DCache_RangeThreshold]   ;check whether cheaper to do global clean
+        CMP     a2, a3
+        BHS     %FT30
+        ADD     a2, a2, a1                         ;clean end address (exclusive)
+        MOV     a3, #0
+        LDRB    a3, [a3, #DCache_LineLen] ; log2(line len)-2
+        MOV     lr, #4
+        MOV     a3, lr, LSL a3
+        MOV     lr, a1
+10
+        MCR     p15, 0, a1, c7, c14, 1             ; clean&invalidate DCache entry to PoC
+        MCR     p15, 0, a1, c7, c5, 1              ; invalidate ICache entry to PoC
+        ADD     a1, a1, a3
+        CMP     a1, a2
+        BLO     %BT10
+        MOV     a1, #0
+        MCR     p15, 0, a1, c7, c10, 4             ; drain WBuffer
+        MOV     a1, lr                             ; restore start address
+20
+        MCR     p15, 0, a1, c8, c7, 1              ; invalidate DTLB & ITLB entry
+        ADD     a1, a1, #PageSize
+        CMP     a1, a2
+        BLO     %BT20
+        Pull    "a2, a3, pc"
+;
+30
+        BL      Cache_CleanInvalidateAll_WB_CR7_Lx
+        MOV     a1, #0
+        MCR     p15, 0, a1, c8, c7, 0              ; invalidate ITLB and DTLB
+        Pull    "a2, a3, pc"
+
+; a1 = first page affected (page aligned address)
+; a2 = number of pages
+;
+MMU_ChangingUncachedEntries_WB_CR7_Lx ROUT
+        CMP     a2, #32                            ; arbitrary-ish threshold
+        BHS     %FT20
+        Push    "a2"
+10
+        MCR     p15, 0, a1, c8, c7, 1              ; invalidate DTLB & ITLB entry
+        ADD     a1, a1, #PageSize
+        SUBS    a2, a2, #1
+        BNE     %BT10
+        Pull    "a2"
+        MOV     pc, lr
+;
+20
+        MCR     p15, 0, a1, c8, c7, 0              ; invalidate ITLB and DTLB
         MOV     pc, lr
 
 ; --------------------------------------------------------------------------

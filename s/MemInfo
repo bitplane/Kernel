@@ -872,7 +872,14 @@ MemoryFreePoolLock ROUT
         BNE     %FT10
 ;flush TLB(s) for resume - needed for Wimp resume, precaution for other - no cache flush
 ;since Free Pool is uncached
+ [ HAL
+        Push    "r0"
+        MOV     r0,#ZeroPage
+        ARMop   TLB_InvalidateAll,,,r0
+        Pull    "r0"
+ |
         ARM_flush_TLB r2
+ ]
 10
         TST     r0,#&100                    ;is it Wimp?
         MOVEQ   r2,#VRRc_suspend

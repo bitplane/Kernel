@@ -13,13 +13,15 @@
 ; limitations under the License.
 ;
 
-ARMv3   *       0
-ARMv4   *       1
-ARMv4T  *       2
-ARMv5   *       3
-ARMv5T  *       4
-ARMv5TE *       5
-ARMvF   *       &F ; 'Fancy' ARM that describes its features in the feature registers
+ARMv3    *       0
+ARMv4    *       1
+ARMv4T   *       2
+ARMv5    *       3
+ARMv5T   *       4
+ARMv5TE  *       5
+ARMv5TEJ *       6
+ARMv6    *       7
+ARMvF    *       &F ; 'Fancy' ARM that describes its features in the feature registers (Cortex/ARMv7 and above?)
 
                 ^       0
 ARM600          #       1
