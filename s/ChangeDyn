@@ -2444,10 +2444,14 @@ AllocateBackingLevel2 Entry "r0-r8,r11"
 
         LDR     r6, [r1, #-4]                           ; r6 = physical address for L2 page + other L2 bits
         MOV     r6, r6, LSR #12                         ; r6 = phys.addr >> 12
- [ ECC
-        LDR     lr, =L1_Page + L1_U + L1_P              ; form other bits to put in L1
+ [ MEMM_Type = "VMSAv6"
+        LDR     lr, =L1_Page
  |
+  [ ECC
+        LDR     lr, =L1_Page + L1_U + L1_P              ; form other bits to put in L1
+  |
         LDR     lr, =L1_Page + L1_U                     ; form other bits to put in L1
+  ]
  ]
         ORR     lr, lr, r6, LSL #12                     ; complete L1 entry
         STR     lr, [r8, #0]                            ; store entry for 1st MB

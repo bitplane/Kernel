@@ -682,12 +682,15 @@ kbdwait
         SUBS    r6, r6, #1              ; else wait a maximum of 5 seconds.
         BNE     kbdwait
 kbddone
+        DebugTX "Keyboard scan complete"
         MSR     CPSR_c, #I32_bit+SVC32_mode
+        DebugTX "FIQ enabled"
         CallHAL HAL_KbdScanFinish
         MOV     r1, #InitIRQWs
         MOV     r0, #0
         STRB    r0, [r1, #KbdScanActive]
         MSR     CPSR_c, #SVC32_mode
+        DebugTX "IRQ enabled"
  |
     [ KeyWait <> 0
 ; Check for keyboard there every 1/5 sec. but give up after 2 secs.
@@ -1832,13 +1835,20 @@ ResetPart1Done                          ; R0 is reset type
         SWI     XOS_ChangeEnvironment
 
         VDWS    WsPtr                   ; main MOS initialisation
+        DebugTX "VduInit"
         BL      VduInit
+        DebugTX "ExecuteInit"
         BL      ExecuteInit
+        DebugTX "KeyInit"
         BL      KeyInit
+        DebugTX "MouseInit"
         BL      MouseInit
+        DebugTX "OscliInit"
         BL      OscliInit               ; before initialising modules
 
+        DebugTX "Enabling IRQs"
         WritePSRc SVC_mode, R14         ; enable IRQs
+        DebugTX "IRQs on"
 
  [ DebugTerminal
         MOV     R0, #RdchV
@@ -1849,6 +1859,7 @@ ResetPart1Done                          ; R0 is reset type
         MOV     R0, #WrchV
         ADRL    R1, DebugTerminal_Wrch
         SWI     XOS_Claim
+        DebugTX "Debug terminal on"
  ]
 
         [ DoInitialiseMode :LOR: :LNOT: Embedded_UI
@@ -1865,6 +1876,7 @@ ResetPart1Done                          ; R0 is reset type
 
 ; HardResetPart2
  [ HAL
+        DebugTX "HAL_InitDevices"
         AddressHAL
         MOV     R0, #0
         STR     R0, [R0, #DeviceCount]
@@ -1873,8 +1885,11 @@ ResetPart1Done                          ; R0 is reset type
  |
         BL      L1L2PTenhancements      ; little tricks on cacheability etc for performance
  ]
+        DebugTX "InitVariables"
         BL      InitVariables
+        DebugTX "AMBControl_Init"
         BL      AMBControl_Init         ; initialise AMBControl section
+        DebugTX "ModuleInit"
         BL      ModuleInit              ; initialise modules
                                         ; scan podules, copy modules.
 
@@ -2132,7 +2147,7 @@ MessageFileName DCB     "Resources:$.Resources.Kernel.Messages",0
         ALIGN
       ]
 
- [ StrongARM
+ [ StrongARM :LAND: :LNOT: HAL
 Processor_Type
         MOV     r0,#IOMD_Base
         LDRB    r1,[r0,#IOMD_ID0]

@@ -3550,6 +3550,12 @@ SyncCodeAreasRange
         MOV     r0, r1
         ADD     r1, r2, #4                 ;exclusive end address
         MOV     r2, #0
+        LDRB    lr, [r2, #Cache_Type]
+        CMP     lr, #CT_ctype_WB_CR7_Lx ; DCache_LineLen lin or log?
+        LDRB    lr, [r2, #DCache_LineLen]
+        MOVEQ   r2, #4
+        MOVEQ   lr, r2, LSL lr
+        MOVEQ   r2, #0
         LDRB    lr, [r2, #DCache_LineLen]
         SUB     lr, lr, #1
         ADD     r1, r1, lr                 ;rounding up end address

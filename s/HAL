@@ -28,6 +28,20 @@ DRAMOffset_LastFixed    #       0
 ;        IMPORT  ARM_Analyse
 
 
+ [ MEMM_Type = "VMSAv6"
+mmuc_table ; Table of MMUC init values. First word is value to ORR, second is value to BIC
+ DCD MMUC_F+MMUC_L+MMUC_D+MMUC_P, MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M+MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S ; ARMv3
+ DCD MMUC_F+MMUC_L+MMUC_D+MMUC_P, MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M+MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S ; ARMv4
+ DCD MMUC_F+MMUC_L+MMUC_D+MMUC_P, MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M+MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S ; ARMv4T
+ DCD MMUC_F+MMUC_L+MMUC_D+MMUC_P, MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M+MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S ; ARMv5
+ DCD MMUC_F+MMUC_L+MMUC_D+MMUC_P, MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M+MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S ; ARMv5T
+ DCD MMUC_F+MMUC_L+MMUC_D+MMUC_P, MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M+MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S ; ARMv5TE
+ DCD MMUC_F+MMUC_L+MMUC_D+MMUC_P, MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M+MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S ; ARMv5TEJ
+ DCD MMUC_F+MMUC_L+MMUC_D+MMUC_P, MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M+MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S+MMUC_VE+MMUC_EE+MMUC_L2 ; ARMv6
+ ; Skip undefined architecture numbers
+mmuc_table_armvf
+ DCD 0, MMUC_C+MMUC_A+MMUC_M+MMUC_V+MMUC_I+MMUC_Z+MMUC_RR+MMUC_TRE+MMUC_AFE+MMUC_TE ; ARMvF (Cortex)
+ ]
 
 ; void RISCOS_InitARM(unsigned int flags)
 ;
@@ -37,6 +51,17 @@ RISCOS_InitARM
         BL      Init_ARMarch
         MOVEQ   a3, #0
         ARM_read_control a3, NE
+ [ MEMM_Type = "VMSAv6"
+        ; Use a lookup table to get the correct control register set/clear mask
+        CMP     a1, #ARMvF
+        ADREQ   a2, mmuc_table_armvf
+        ADRLT   a2, mmuc_table
+        ADDLT   a2, a2, a1, LSL #3
+        LDMIA   a2, {a2, a4}
+        ORR     a3, a3, a2
+        BIC     a3, a3, a4
+        CMP     a1,#0
+ |
         ; Late abort (ARM6 only), 32-bit Data and Program space. No Write buffer (ARM920T
         ; spec says W bit should be set, but I reckon they're bluffing).
         ;
@@ -47,6 +72,7 @@ RISCOS_InitARM
         ; All of these bits should be off already, but just in case...
         BIC     a3, a3, #MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M
         BIC     a3, a3, #MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S
+ ]
 
         ; Off we go.
         ARM_write_control a3
@@ -515,6 +541,7 @@ RISCOS_Start
         MOV     a4, #1024*1024
         BL      Init_MapIn
 
+
         ; Examine HAL and RISC OS locations
         LDMFD   sp, {v4,v5,v6}                  ; v4 = flags, v5 = RO desc, v6 = HAL desc
         LDR     lr, [v6, #HALDesc_Size]
@@ -538,7 +565,6 @@ RISCOS_Start
         ADD     a3, a3, ip
         ADD     a4, a4, ip
         STMIB   sp, {a3, a4}
-
         MOV     a3, #(AP_ROM * L2X_APMult) + L2_C + L2_B
         SUB     a4, v7, v6
         BL      Init_MapIn
@@ -599,7 +625,6 @@ RISCOS_Start
         BLO     %BT76
 
 MMU_activation_zone
-
 ; The time has come to activate the MMU. Steady now... Due to unpredictability of MMU
 ; activation, need to ensure that mapped and unmapped addresses are equivalent. To
 ; do this, we temporarily make the section containing virtual address MMUon_instr map
@@ -616,11 +641,15 @@ MMU_activation_zone
         MOV     a1, a1, LSR #20                 ; a1 = megabyte number (stays there till end)
         ADD     lr, v3, a1, LSL #2              ; lr -> L1PT entry
         LDMIA   lr, {a2, a3}                    ; remember old mappings
+ [ MEMM_Type = "VMSAv6"
+        LDR     ip, =(AP_ROM * L1_APMult) + L1_Section
+ |
   [ ARM6support
         LDR     ip, =(AP_None * L1_APMult) + L1_U + L1_Section
   |
         LDR     ip, =(AP_ROM * L1_APMult) + L1_U + L1_Section
   ]
+ ]
         ORR     a4, ip, a1, LSL #20             ; not cacheable, as we don't want
         ADD     v4, a4, #1024*1024              ; to fill the cache with rubbish
         STMIA   lr, {a4, v4}
@@ -646,6 +675,15 @@ MMU_activation_zone
         MCREQ   p15, 0, lr, c5, c0              ; MMU may already be on (but flat mapped)
         MCRNE   p15, 0, lr, c8, c7              ; if HAL needed it (eg XScale with ECC)
                                                 ; so flush TLBs now
+  [ MEMM_Type = "VMSAv6"
+        CMP     ip, #ARMv6
+        MCRGE   p15, 0, lr, c2, c0, 2           ; Ensure only TTBR0 is used (v6)
+        MCRGT   p15, 0, lr, c12, c0, 0          ; Ensure exception vector base is 0 (Cortex)
+        ORRGE   v5, v5, #MMUC_XP ; Extended pages enabled (v6)
+        BICGT   v5, v5, #MMUC_TRE+MMUC_AFE ; TEX remap, Access Flag disabled (Cortex)
+        BICGE   v5, v5, #MMUC_EE+MMUC_TE+MMUC_VE ; Exceptions = nonvectored LE ARM
+        CMP     ip, #0
+  ]
 MMUon_instr
         ARM_write_control v5
         MOVEQ   sp, v5
@@ -654,11 +692,12 @@ MMUon_instr
         CMP     ip, #ARMvF
         MOV     lr, #0                                          ; junk MMU-off contents of I-cache
         MCRNE   ARM_config_cp,0,lr,ARMv4_cache_reg,C7           ; (works on ARMv3)
-        BLEQ    HAL_InvalidateCache_ARMvF
+        MCREQ   p15, 0, lr, c7, c5, 0           ; invalidate instruction cache
+        MCREQ   p15, 0, lr, c8, c7, 0           ; invalidate TLBs
+        BLEQ    HAL_InvalidateCache_ARMvF       ; invalidate data cache (and instruction+TLBs again!)
 
-;       HACK HACK HACK - all domains remain in manager mode
-;        MOV     ip, #4_0000000000000001                         ; domain 0 client only
-;        ARM_MMU_domain ip
+        MOV     ip, #4_0000000000000001                         ; domain 0 client only
+        ARM_MMU_domain ip
 
 ; MMU now on. Need to jump to logical copy of ourselves. Complication arises if our
 ; physical address overlaps our logical address - in that case we need to map
@@ -683,11 +722,15 @@ MMUon_instr
 ; Oh dear. We know the ROM lives high up, so we'll mangle 00100000-002FFFFF.
 ; But as we're overlapping the ROM, we know we're not overlapping the page tables.
         LDR     lr, =L1PT                       ; accessing the L1PT virtually now
+ [ MEMM_Type = "VMSAv6"
+        LDR     ip, =(AP_ROM * L1_APMult) + L1_Section
+ |
   [ ARM6support
         LDR     ip, =(AP_None * L1_APMult) + L1_U + L1_Section
   |
         LDR     ip, =(AP_ROM * L1_APMult) + L1_U + L1_Section
   ]
+ ]
         ORR     v6, a4, ip
         ADD     ip, v6, #1024*1024
         LDMIB   lr, {v7, v8}                    ; sections 1 and 2
@@ -983,6 +1026,9 @@ HAL_InvalidateCache_ARMvF
         ; The only register we can safely change is ip, but we can switch into FIQ mode with interrupts disabled and use the banked registers there
         MRS     ip, CPSR
         MSR     CPSR_c, #F32_bit+I32_bit+FIQ32_mode
+        MOV     r8, #0
+        MCR     p15, 0, r8, c7, c5, 0           ; invalidate instruction cache
+        MCR     p15, 0, r8, c8, c7, 0           ; invalidate TLBs
         MRC     p15, 1, r8, c0, c0, 1 ; Cache level ID register
         BIC     r8, r8, #&FF000000 ; Discard unification/coherency bits
         MOV     r9, #0 ; Current cache level
@@ -1103,6 +1149,7 @@ ConstructCAMfromPageTables
         ANDS    v6, v5, #2_11                   ; move to next page if fault
         BEQ     %FT80
 
+ [ MEMM_Type <> "VMSAv6"
         TEQ     v6, #L2_SmallPage               ; convert small pages to extended pages
         BNE     %FT50
         MOV     lr, #0                          ; if we now know that CPU supports them
@@ -1125,6 +1172,7 @@ ConstructCAMfromPageTables
         MOV     a2, #ZeroPage
         ARMop   MMU_ChangingEntry,,,a2
         STR     v5, [v4, v2, LSR #10]           ; update page table
+ ]
 
 50      MOV     a1, v5, LSR #12
         MOV     a1, a1, LSL #12                 ; a1 = address (flags stripped out),,,
@@ -1139,6 +1187,37 @@ ConstructCAMfromPageTables
 
         ADD     a2, v1, a1, LSL #3              ; a2 -> CAM entry
 
+ [ MEMM_Type = "VMSAv6"
+        AND     a1, v5, #L2_AP                  ; a1 = access permission
+        MOV     a1, a1, LSR #L2_APShift
+        ; Map AP_ROM to 0
+        CMP     a1, #AP_ROM
+        MOVEQ   a1, #0
+        ; Now ARM access goes 0 => all R/O, 1 => user none, 2 => user R/O, 3  => user R/W
+        ; PPL access goes 0 => user R/W, 1 => user R/O, 2 => user none, (and let's say 3 all R/O)
+        RSB     v6, a1, #3                      ; v6 = PPL access
+        AND     a1, v5, #2_11                   ; a1 = page type
+        CMP     a1, #L2_ExtPage
+        ANDHS   a1, v5, #L2_TEX+L2_C+L2_B       ; Extended TEX and CB bits
+        ANDLO   a1, v5, #L2_C+L2_B              ; Large CB bits only
+        ANDLO   lr, v5, #L2L_TEX                ; Large TEX bits
+        ORRLO   a1, a1, lr, LSR #L2L_TEXShift-L2_TEXShift ; Move Large TEX back to Extended TEX position
+        MOV     lr, #3                          ; lr = PCB value (funny loop to do NCNB first)
+60      LDRB    a3, [ip, lr]                    ; look in XCBTrans table
+        TEQ     a3, a1                          ; found a match for our XCB?
+        BEQ     %FT70
+        TST     lr, #2_11
+        SUBNE   lr, lr, #1                      ; loop goes 3,2,1,0,7,6,5,4,...,31,30,29,28
+        ADDEQ   lr, lr, #7
+        TEQ     lr, #35
+        BNE     %BT60
+70      AND     a1, lr, #2_00011
+        ORR     v6, v6, a1, LSL #4              ; extract NCNB bits
+        AND     a1, lr, #2_11100
+        ORR     v6, v6, a1, LSL #10             ; extract P bits
+        ORR     v6, v6, #PageFlags_Unavailable               ; ???? pages from scratch to cam only?
+        STMIA   a2, {v2, v6}                    ; store logical address, PPL
+ |
         AND     a1, v5, #&30                    ; a1 = access permission
         MOV     a1, a1, LSR #4
         ; ARM access goes 0 => all R/O, 1 => user none, 2 => user R/O, 3  => user R/W
@@ -1165,6 +1244,7 @@ ConstructCAMfromPageTables
         ORR     v6, v6, a1, LSL #10             ; extract P bits
         ORR     v6, v6, #PageFlags_Unavailable               ; ???? pages from scratch to cam only?
         STMIA   a2, {v2, v6}                    ; store logical address, PPL
+ ]
 
 80      ADD     v2, v2, #&00001000
         TST     v2, #&000FF000
@@ -1251,7 +1331,7 @@ Init_MapInRAM ROUT
 ; On entry:
 ;    a1 = physical address
 ;    a2 = logical address
-;    a3 = access permissions + C + B bits (bits 11-2 of an extended descriptor)
+;    a3 = access permissions+C+B bits (bits 11-2 of an L2 extended small page)
 ;           (also set bit 31 to indicate that P bit in L1PT should
 ;            be set)
 ;    a4 = area size
@@ -1270,6 +1350,12 @@ Init_MapIn ROUT
         ORRNE   a3, a3, #L2_ExtPage             ; then extended small pages (4K)
         BNE     %FT10
 
+ [ MEMM_Type = "VMSAv6"
+        ORR     a3, a3, #L2_LargePage           ; else large pages (64K)
+        AND     lr, a3, #L2_TEX                 ; extract TEX from ext page flags
+        BIC     a3, a3, #L2_TEX                 ; small page TEX bits SBZ for large pages
+        ORR     a3, a3, lr, LSL #L2L_TEXShift-L2_TEXShift ; replace TEX in large page position
+ |
         ORR     a3, a3, #L2_LargePage           ; else large pages (64K)
         AND     lr, a3, #L2_TEX                 ; extract TEX from ext page flags
         AND     ip, a3, #L2X_AP                 ; extract AP from ext page flags
@@ -1278,6 +1364,7 @@ Init_MapIn ROUT
         ORR     ip, ip, ip, LSL #4
         ORR     a3, a3, lr, LSL #6              ; replace TEX in large page position
         ORR     a3, a3, ip                      ; replace quadrupled AP
+ ]
 10
         Push    "v4-v7"
         MOV     v4, a1                          ; v4 = physaddr
@@ -1295,6 +1382,22 @@ Init_MapIn ROUT
         BNE     %BT20
         Pull    "v4-v7,pc"
 
+ [ MEMM_Type = "VMSAv6"
+Init_MapIn_Sections
+        MOVS    ip, v3                          ; is MMU on?
+        LDREQ   ip, =L1PT                       ; then use virtual address
+        AND     lr, a3, #L2_TEX + L2_AP         ; extract TEX, AP, APX bits (input is extended small page)
+        BIC     a3, a3, #L2_TEX + L2_AP         ; and clear them
+        ORR     a3, a3, lr, LSL #6              ; put TEX and AP bits back in new position
+        ORR     a3, a3, #L1_Section             ; Mark as section
+        ORR     a1, a1, a3                      ; Merge with physical address
+        ADD     a2, ip, a2, LSR #18             ; a2 -> L1PT entry
+70      STR     a1, [a2], #4                    ; And store in L1PT
+        ADD     a1, a1, #1024*1024              ; Advance one megabyte
+        SUBS    a4, a4, #1024*1024              ; and loop
+        BNE     %BT70
+        Pull    "pc"
+ |
 Init_MapIn_Sections
         MOVS    ip, v3                          ; is MMU on?
         LDREQ   ip, =L1PT                       ; then use virtual address
@@ -1320,7 +1423,7 @@ Init_MapIn_Sections
         SUBS    a4, a4, #1024*1024              ; and loop
         BNE     %BT70
         Pull    "pc"
-
+ ]
 
 ; Map a logical page to a physical page, allocating L2PT as necessary.
 ;
@@ -1360,6 +1463,7 @@ Init_MapInPage
 40      AND     lr, v6, #3
         TEQ     lr, #L2_LargePage               ; strip out surplus address bits from
         BICEQ   v6, v6, #&0000F000              ; large page descriptors
+ [ MEMM_Type <> "VMSAv6"
         TEQ     lr, #L2_ExtPage
         BNE     %FT50
         TEQ     v3, #0                          ; if we've been given an extended page
@@ -1374,6 +1478,7 @@ Init_MapInPage
         ORR     lr, lr, lr, LSL #2              ; (losing the TEX bits in the
         ORR     v6, v6, lr                      ; process, but they should have been 0)
         ORR     v6, v6, lr, LSL #4
+ ]
 50      ORR     lr, v4, v6                      ; lr = value for L2PT entry
   [ ARM6support
         ASSERT  AP_ROM = 0
@@ -1462,6 +1567,9 @@ AllocateL2PT
 20      BL      Init_ClaimPhysicalPage          ; Claim a page to put L2PT in
         MOV     v4, a1
 
+ [ MEMM_Type = "VMSAv6"
+        ORR     a3, a1, #L1_Page
+ |
   [ ARM6support
         ASSERT  AP_ROM = 0
         ARM_6   lr                              ; if ARM 6
@@ -1475,6 +1583,7 @@ AllocateL2PT
   [ ECC
         ORR     a3, a3, #L1_P
   ]
+ ]
         AND     lr, v8, #3
         ORR     a3, a3, lr, LSL #10
         STR     a3, [v6, v8, LSL #2]            ; fill in the L1PT
@@ -1523,7 +1632,11 @@ RISCOS_AccessPhysicalAddress
         Pull    "a1-a3,lr"
  ]
         LDR     ip, =L1PT + (PhysicalAccess:SHR:18)     ; ip -> L1PT entry
+ [ MEMM_Type = "VMSAv6"
+        LDR     a4, =(AP_None * L1_APMult) + L1_Section
+ |
         LDR     a4, =(AP_None * L1_APMult) + L1_U + L1_Section
+ ]
         AND     a1, a1, #L1_B                           ; user can ask for bufferable
  [ ECC
         ORRNE   a1, a1, #L1_P
@@ -1777,9 +1890,37 @@ InitProcVecs
 InitProcVec_FIQ
         DCD     0
 InitProcVecsEnd
+; Debug InitProcVecs - on an exception they output the PC to a UART
+;        GET ADFS::4.$.work.riscos.omap3dev.riscos.sources.hal.omap3.hdr.UART
+;InitProcVecs
+;        NOP ; Reset
+;        NOP ; Undefined instruction
+;        NOP ; SWI
+;        NOP ; Prefetch abort
+;        NOP ; data abort
+;        NOP ; address exception
+;        NOP ; IRQ
+;        NOP ; FIQ
+;        ADR     a3,hextab
+;        LDR     a2,[a3],#4
+;        MOV     a4, #8
+;10
+;        LDRB    v1, [a2, #UART_LSR]
+;        TST     v1, #THRE
+;        BEQ     %BT10
+;        LDRB    v1, [a3, lr, LSR #28]
+;        STRB    v1, [a2, #UART_THR]
+;        MOV     lr, lr, LSL #4
+;        SUBS    a4, a4, #1
+;        BNE     %BT10
+;20
+;        B %BT20
+;hextab  DCD &49020000 ; UART address
+;        DCB "0123456789abcdef"
+;InitProcVecsEnd
 
 ;
-; In:  a1 = flags  (L1_B,L1_C,L1_AP)
+; In:  a1 = flags  (L1_B,L1_C,L1_AP,L1_APX)
 ;      a2 = physical address
 ;      a3 = size
 ; Out: a1 = assigned logical address, or 0 if failed (no room)
@@ -1790,7 +1931,11 @@ InitProcVecsEnd
 
         ASSERT  L1_B = 1:SHL:2
         ASSERT  L1_C = 1:SHL:3
+ [ MEMM_Type = "VMSAv6"
+        ASSERT  L1_AP = 2_100011 :SHL: 10
+ |
         ASSERT  L1_AP = 3:SHL:10
+ ]
 MapInFlag_DoublyMapped * 1:SHL:20
 MapInFlag_APSpecified * 1:SHL:21
 
@@ -1811,6 +1956,7 @@ RISCOS_MapInIO ROUT
 
         TST     v5, #MapInFlag_APSpecified
         BICEQ   a1, a1, #L1_AP
+        ; For VMSAv6, assume HAL knows what it's doing and requests correct settings for AP_ROM
         ORREQ   a1, a1, #L1_APMult * AP_None
 
         ANDS    v5, v5, #MapInFlag_DoublyMapped

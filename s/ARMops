@@ -523,7 +523,7 @@ Analyse_WB_CR7_Lx
 
         ; Read the cache info into Cache_Lx_*
         MRC     p15, 1, a1, c0, c0, 1 ; Cache level ID register
-        MOV     a2, v6 ; Work around DTable/ITable alignment issues
+        MOV     v2, v6 ; Work around DTable/ITable alignment issues
         STR     a1, [v2, #Cache_Lx_Info]!
         ADD     a1, v2, #Cache_Lx_DTable-Cache_Lx_Info
         ADD     a2, v2, #Cache_Lx_ITable-Cache_Lx_Info
@@ -533,7 +533,7 @@ Analyse_WB_CR7_Lx
 10
         MCR     p15, 2, a3, c0, c0, 0 ; Program cache size selection register
         MRC     p15, 1, v1, c0, c0, 0 ; Get size info (data/unified)
-        STR     v1, [a1,#4]
+        STR     v1, [a1],#4
         CMP     v1, #0 ; Does the cache exist?
         AND     v1, v1, #7 ; Get line size
         CMPNE   v1, v2
@@ -541,7 +541,7 @@ Analyse_WB_CR7_Lx
         ADD     a3, a3, #1
         MCR     p15, 2, a3, c0, c0, 0 ; Program cache size selection register
         MRC     p15, 1, v1, c0, c0, 0 ; Get size info (instruction)
-        STR     v1, [a2,#4]
+        STR     v1, [a2],#4
         CMP     v1, #0 ; Does the cache exist?
         AND     v1, v1, #7 ; Get line size
         CMPNE   v1, a4
@@ -603,6 +603,13 @@ Analyse_WB_CR7_Lx
 
         ADRL    a1, XCBTableWBR                      ; assume read-allocate WB/WT cache
         STR     a1, [v6, #MMU_PCBTrans]
+
+        ; Enable L2 cache. This could probably be moved earlier on in the boot sequence (e.g. when the MMU is turned on), but for now it will go here to reduce the chances of stuff breaking
+        BL      Cache_CleanInvalidateAll_WB_CR7_Lx ; Ensure L2 cache is clean
+
+        MRC     p15, 0, a1, c1, c0, 1
+        ORR     a1, a1, #2 ; L2EN
+        MCR     p15, 0, a1, c1, c0, 1
 
         B       %FT90
 
@@ -711,7 +718,7 @@ KnownCPUTable
 ; Simplified CPUDesc table for Fancy ARMs
 ; The cache size data is ignored
 KnownCPUTable_Fancy
-        CPUDesc Cortex_A8,     &00C080, &00FFF0, ARMv5TE, WB_CR7_Lx, 1, 16K, 32, 16, 16K, 32, 16
+        CPUDesc Cortex_A8,     &00C080, &00FFF0, ARMvF, WB_CR7_Lx, 1, 16K, 32, 16, 16K, 32, 16
         DCD     -1
 
 ; Peculiar characteristics of individual ARMs not deducable otherwise. First field is
@@ -733,7 +740,7 @@ KnownCPUFlags
         DCD     0,                            0    ; ARM 922T
         DCD     CPUFlag_ExtendedPages+CPUFlag_XScale,  0    ; X80200
         DCD     CPUFlag_XScale,               0    ; X80321
-        DCD     0,                            0    ; Cortex_A8
+        DCD     CPUFlag_ExtendedPages,        0    ; Cortex_A8
 
 ; --------------------------------------------------------------------------
 ; ----- ARM_Analyse_Fancy --------------------------------------------------
