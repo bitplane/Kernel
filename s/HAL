@@ -1040,13 +1040,13 @@ HAL_InvalidateCache_ARMvF
         AND     r11, r10, #&7 ; log2(Line size)-2
         BIC     r10, r10, #&F0000007 ; Clear flags & line size
         MOV     r12, r10, LSL #19 ; Number of ways-1 in upper 10 bits
-        MOV     r10, r10, LSR #13 ; Number of sets-1 in upper 15 bits
+        MOV     r10, r10, LSR #13 ; Number of sets-1 in lower 15 bits
         ; Way number needs to be packed right up at the high end of the data word; shift it up
         CLZ     r14, r12
         MOV     r12, r12, LSL r14
-        ; Set number needs to start at log2(Line size)
-        MOV     r10, r10, LSR #15 ; Start at bit 2
-        MOV     r10, r10, LSL r11 ; Start at log2(Line size)
+        ; Set number needs to start at log2(Line size)+2
+        MOV     r10, r10, LSL #4 ; Start at bit 4
+        MOV     r10, r10, LSL r11 ; Start at log2(Line size)+2
         ; Now calculate the offset numbers we will use to increment sets & ways
         BIC     r12, r12, r12, LSL #1 ; Way increment
         BIC     r11, r10, r10, LSL #1 ; Set increment

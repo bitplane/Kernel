@@ -1852,13 +1852,13 @@ Cache_CleanAll_WB_CR7_Lx ROUT
         AND     v1, a3, #&7 ; log2(Line size)-2
         BIC     a3, a3, #&F0000007 ; Clear flags & line size
         MOV     v2, a3, LSL #19 ; Number of ways-1 in upper 10 bits
-        MOV     v3, a3, LSR #13 ; Number of sets-1 in upper 15 bits
+        MOV     v3, a3, LSR #13 ; Number of sets-1 in lower 15 bits
         ; Way number needs to be packed right up at the high end of the data word; shift it up
         CLZ     a4, v2
         MOV     v2, v2, LSL a4
-        ; Set number needs to start at log2(Line size)
-        MOV     v3, v3, LSR #15 ; Start at bit 2
-        MOV     v3, v3, LSL v1 ; Start at log2(Line size)
+        ; Set number needs to start at log2(Line size)+2
+        MOV     v3, v3, LSL #4 ; Start at bit 4
+        MOV     v3, v3, LSL v1 ; Start at log2(Line size)+2
         ; Now calculate the offset numbers we will use to increment sets & ways
         BIC     v4, v2, v2, LSL #1 ; Way increment
         BIC     v5, v3, v3, LSL #1 ; Set increment
@@ -1898,13 +1898,13 @@ Cache_CleanInvalidateAll_WB_CR7_Lx ROUT
         AND     v1, a3, #&7 ; log2(Line size)-2
         BIC     a3, a3, #&F0000007 ; Clear flags & line size
         MOV     v2, a3, LSL #19 ; Number of ways-1 in upper 10 bits
-        MOV     v3, a3, LSR #13 ; Number of sets-1 in upper 15 bits
+        MOV     v3, a3, LSR #13 ; Number of sets-1 in lower 15 bits
         ; Way number needs to be packed right up at the high end of the data word; shift it up
         CLZ     a4, v2
         MOV     v2, v2, LSL a4
-        ; Set number needs to start at log2(Line size)
-        MOV     v3, v3, LSR #15 ; Start at bit 2
-        MOV     v3, v3, LSL v1 ; Start at log2(Line size)
+        ; Set number needs to start at log2(Line size)+2
+        MOV     v3, v3, LSL #4 ; Start at bit 4
+        MOV     v3, v3, LSL v1 ; Start at log2(Line size)+2
         ; Now calculate the offset numbers we will use to increment sets & ways
         BIC     v4, v2, v2, LSL #1 ; Way increment
         BIC     v5, v3, v3, LSL #1 ; Set increment
@@ -1945,13 +1945,13 @@ Cache_InvalidateAll_WB_CR7_Lx ROUT
         AND     v1, a3, #&7 ; log2(Line size)-2
         BIC     a3, a3, #&F0000007 ; Clear flags & line size
         MOV     v2, a3, LSL #19 ; Number of ways-1 in upper 10 bits
-        MOV     v3, a3, LSR #13 ; Number of sets-1 in upper 15 bits
+        MOV     v3, a3, LSR #13 ; Number of sets-1 in lower 15 bits
         ; Way number needs to be packed right up at the high end of the data word; shift it up
         CLZ     a4, v2
         MOV     v2, v2, LSL a4
-        ; Set number needs to start at log2(Line size)
-        MOV     v3, v3, LSR #15 ; Start at bit 2
-        MOV     v3, v3, LSL v1 ; Start at log2(Line size)
+        ; Set number needs to start at log2(Line size)+2
+        MOV     v3, v3, LSL #4 ; Start at bit 4
+        MOV     v3, v3, LSL v1 ; Start at log2(Line size)+2
         ; Now calculate the offset numbers we will use to increment sets & ways
         BIC     v4, v2, v2, LSL #1 ; Way increment
         BIC     v5, v3, v3, LSL #1 ; Set increment
@@ -2020,13 +2020,13 @@ IMB_Full_WB_CR7_Lx ROUT
         AND     v1, a3, #&7 ; log2(Line size)-2
         BIC     a3, a3, #&F0000007 ; Clear flags & line size
         MOV     v2, a3, LSL #19 ; Number of ways-1 in upper 10 bits
-        MOV     v3, a3, LSR #13 ; Number of sets-1 in upper 15 bits
+        MOV     v3, a3, LSR #13 ; Number of sets-1 in lower 15 bits
         ; Way number needs to be packed right up at the high end of the data word; shift it up
         CLZ     a4, v2
         MOV     v2, v2, LSL a4
-        ; Set number needs to start at log2(Line size)
-        MOV     v3, v3, LSR #15 ; Start at bit 2
-        MOV     v3, v3, LSL v1 ; Start at log2(Line size)
+        ; Set number needs to start at log2(Line size)+2
+        MOV     v3, v3, LSL #4 ; Start at bit 4
+        MOV     v3, v3, LSL v1 ; Start at log2(Line size)+2
         ; Now calculate the offset numbers we will use to increment sets & ways
         BIC     v4, v2, v2, LSL #1 ; Way increment
         BIC     v5, v3, v3, LSL #1 ; Set increment
