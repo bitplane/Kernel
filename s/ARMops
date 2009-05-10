@@ -2055,7 +2055,8 @@ IMB_Full_WB_CR7_Lx ROUT
 IMB_Range_WB_CR7_Lx ROUT
         SUB     a2, a2, a1
         CMP     a2, #32*1024 ; Maximum L1 cache size on Cortex-A8 is 32K, use that to guess what approach to take
-        BGE     IMB_Full_WB_CR7_Lx
+        ADD     a2, a2, a1
+        BHS     IMB_Full_WB_CR7_Lx
         Push    "a3,lr"
         MOV     lr, #0
         LDRB    lr, [lr, #DCache_LineLen] ; log2(line len)-2
