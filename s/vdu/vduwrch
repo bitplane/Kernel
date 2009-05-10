@@ -2992,6 +2992,8 @@ Page35
 ; CTRL not down, test for page mode
 
 Page40
+; If we're using the debug terminal, never use paged mode, because serial input doesn't work too well when you need to detect shift being pressed!
+ [ :LNOT: DebugTerminal
         EOR     R0, R6, #PageMode
         TST     R0, #(PageMode :OR: CursorsSplit)
         Pull    PC, NE                  ; cursors split or not in page mode
@@ -3011,6 +3013,7 @@ Page40
 IncLinesExit
         ADD     R3, R3, #1
         STROSB  R3, PageModeLineCount, R0
+ ]
         Pull    PC
 
 Page50                                  ; NB C=0 on entry from above
