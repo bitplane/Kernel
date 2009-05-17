@@ -224,7 +224,7 @@ Pal_Blocksize           #       0
 
         MACRO
         LoadCoordPair   $x, $y, $basereg, $offset
-      [ NoARMv6
+      [ NoARMv6 :LOR: NoUnaligned
         ASSERT  $x < $y
         [ ($offset) :AND: 3 = 2
           ADD   $x, $basereg, #($offset)-2

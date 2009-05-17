@@ -1587,7 +1587,7 @@ DoOsWord13 ROUT
         RSB     R0, R4, R0, LSL R2      ; R0 = (X << XEigFactor)-OrgX
         RSB     R1, R5, R1, LSL R3      ; R1 = (Y << YEigFactor)-OrgY
 
-      [ NoARMv6
+      [ NoARMv6 :LOR: NoUnaligned
         STRB    R0, [R6], #1
         MOV     R0, R0, LSR #8
         STRB    R0, [R6], #1
@@ -1603,7 +1603,7 @@ DoOsWord13 ROUT
         ADD     R0, WsPtr, #GCsX
         LDMIA   R0, {R0, R1}            ; get current cursor
 
-      [ NoARMv6
+      [ NoARMv6 :LOR: NoUnaligned
         STRB    R0, [R6], #1
         MOV     R0, R0, LSR #8
         STRB    R0, [R6], #1

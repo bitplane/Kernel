@@ -553,6 +553,11 @@ DAbPreVeneer    ROUT
         SUB     r11, r2, #8*4                   ; r11 -> register bank
         STR     r4, [sp, #7*4]                  ; store aborter's PC in user register bank
 
+      [ {TRUE}
+        ; For now, don't attempt any fixup on ARMv6+, since we'll get it wrong
+        B       %FT90
+      ]
+
         TST     r0, #T32_bit                    ; were they in Thumb mode? if so, give up now
         BNE     %FT90
 

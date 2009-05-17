@@ -1236,7 +1236,7 @@ DoReadPOSVPOSO
 DoSetScreenStart ROUT
         Push    R14
         LDRB    R3, [R1, #0]                    ; R3 = bitmask
-      [ NoARMv6
+      [ NoARMv6 :LOR: NoUnaligned
         LDRB    R0, [R1, #1]
         LDRB    R2, [R1, #2]
         ORR     R0, R0, R2, LSL #8

@@ -116,7 +116,7 @@ SetPal  EntryS
         B       %FT20
 
 10
-      [ NoARMv6
+      [ NoARMv6 :LOR: NoUnaligned
         LDRB    r3, [lr, #2]            ; r3 = red
         ORR     r2, r2, r3, LSL #8      ; r2 = &0000RRSS
         LDRB    r3, [lr, #3]            ; r3 = green
@@ -194,7 +194,7 @@ DoReadPalette Entry
         LDROSB  r0, FlashState
         CMP     r0, #1                  ; CS => 1st state, CC => 2nd state
         MOVCC   r2, r3                  ; r2 = current state
-      [ NoARMv6
+      [ NoARMv6 :LOR: NoUnaligned
         MOV     r1, #4
 10
         STRB    r2, [r4, #1]!           ; store 4 bytes of data in block, starting R1+1

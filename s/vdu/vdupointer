@@ -240,7 +240,7 @@ SetMouseRectangle ROUT
 DoMouseBox ROUT
         Push    "R1-R6, R14"
 
-      [ NoARMv6
+      [ NoARMv6 :LOR: NoUnaligned
         LDRB    R2, [R1, #1]            ; R2 = left
         LDRB    R0, [R1, #2]
         ORR     R2, R2, R0, LSL #8
@@ -440,7 +440,7 @@ SetMouseMult ROUT
 ;
 
 GetCoordPair ROUT
-      [ NoARMv6
+      [ NoARMv6 :LOR: NoUnaligned
         LDRB    R0, [R1, #1]            ; get X coordinate
         LDRB    R2, [R1, #2]
         ORR     R0, R0, R2, LSL #8
@@ -514,7 +514,7 @@ StoreCoordPair ROUT
         LDR     R0, [WsPtr, #OrgX]      ; subtract off origin
         SUB     R2, R2, R0
 
-      [ NoARMv6
+      [ NoARMv6 :LOR: NoUnaligned
         STRB    R2, [R1, #1]            ; store lo-byte of X
         MOV     R2, R2, LSR #8
         STRB    R2, [R1, #2]            ; store hi-byte of X
@@ -526,7 +526,7 @@ StoreCoordPair ROUT
         LDR     R0, [WsPtr, #OrgY]      ; subtract off origin
         SUB     R3, R3, R0
 
-      [ NoARMv6
+      [ NoARMv6 :LOR: NoUnaligned
         STRB    R3, [R1, #3]            ; store lo-byte of Y
         MOV     R3, R3, LSR #8
         STRB    R3, [R1, #4]            ; store hi-byte of Y

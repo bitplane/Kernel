@@ -3178,7 +3178,7 @@ DoReadFont
         ADDCC   R0, R0, #(Ecf1-2*8)
         LDMIA   R0, {R2,R3}
 
-      [ NoARMv6
+      [ NoARMv6 :LOR: NoUnaligned
         STRB    R2, [R1, #1]
         MOV     R2, R2, LSR #8
         STRB    R2, [R1, #2]

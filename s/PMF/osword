@@ -102,7 +102,7 @@ DespatchWord
 ; Osword Zero : Input a line
 
 OsWord00 ROUT
-      [ NoARMv6
+      [ NoARMv6 :LOR: NoUnaligned
         LDRB    R0, [R1, #0]            ; lo-byte of address
         LDRB    R2, [R1, #1]            ; hi-byte of address
         ORR     R0, R0, R2, LSL #8      ; R0 := address
@@ -138,7 +138,7 @@ OsWord02 ROUT
         ADREQ   R2, TimerAlpha
         ADRNE   R2, TimerBeta
         Swap    R1, R2, CS              ; if writing then R2 is destination
-      [ NoARMv6
+      [ NoARMv6 :LOR: NoUnaligned
         MOV     R3, #5
 10
         LDRB    R4, [R2], #1
@@ -169,7 +169,7 @@ OsWord04 ROUT
         MOVCS   R2, R1                  ; if writing then R1 is source
         ADRCS   R1, IntervalTimer
         ADRCC   R2, IntervalTimer       ; else R2 is source
-      [ NoARMv6
+      [ NoARMv6 :LOR: NoUnaligned
         MOV     R0, #5
 10
         LDRB    R3, [R2], #1
@@ -196,7 +196,7 @@ OsWord07 ROUT
         MyOsWord
 05
 
-      [ NoARMv6
+      [ NoARMv6 :LOR: NoUnaligned
 ; Block not word aligned, so push it on the stack
 
         SUB     R13, R13, #8            ; create stack frame of 8 bytes
@@ -223,7 +223,7 @@ OsWord07 ROUT
 OsWord09 ROUT
         Push    R1                      ; save pointer
 
-      [ NoARMv6
+      [ NoARMv6 :LOR: NoUnaligned
         LDRB    R2, [R1, #0]            ; X lo-byte
         LDRB    R0, [R1, #1]            ; X hi-byte
         ORR     R0, R2, R0, LSL #8
@@ -501,7 +501,7 @@ OsWord0EGamma ROUT
 
 OsWord0EDelta ROUT
         LDR     R1, RealTime +0
-      [ NoARMv6
+      [ NoARMv6 :LOR: NoUnaligned
         STRB    R1, [R4, #0]
         MOV     R1, R1, LSR #8
         STRB    R1, [R4, #1]
