@@ -40,7 +40,7 @@ RM      = remove
 WIPE    = -wipe
 CCFLAGS = -c -depend !Depend -IC:
 ASFLAGS = -depend !Depend ${THROWBACK} -Stamp -quit -To $@ -From
-ARMASMFLAGS = -depend !Depend -g ${THROWBACK} -cpu 5TE
+ARMASMFLAGS = -depend !Depend -g ${THROWBACK}
 CPFLAGS = ~cfr~v
 WFLAGS  = ~cfr~v
 

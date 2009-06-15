@@ -1494,7 +1494,7 @@ InsertPages_ExternalFramestore
 
 InsertRemovePagesCommon ROUT
         VDWS    WsPtr
-        LDR     R1, [WsPtr, #ExternalFramestore]
+        LDRB    R1, [WsPtr, #ExternalFramestore]
         TEQ     R1, #0
         MOVNE   PC, R14
 

@@ -448,7 +448,7 @@ WriteSubBlock ROUT
         SUB     R2, R2, R5
 
 16      SUBS    R5, R5, #1              ; update checksum
-        LDRCS   R14, [R1], #1
+        LDRCSB  R14, [R1], #1
         ADDCS   R6, R6, R14
         BCS     %BT16
         MOV     R4, R6
@@ -550,7 +550,7 @@ Read
   [     E2ROMSupport
         BHS     %FT13
         MOV     R14, #0
-        LDR     R14, [R14, #RTCFitted]
+        LDRB    R14, [R14, #RTCFitted]
         TEQ     R14, #0
         BNE     %FT15
   |
