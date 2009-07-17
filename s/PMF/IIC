@@ -858,6 +858,14 @@ IICIRQ
         CallHAL HAL_IICMonitorTransfer
         MOV     R12, #0
         STR     R0, [R12, #IICStatus]
+        ; this is a bit ugly - we really need a way to pass the device number to IRQ handlers
+        SUB     sp, sp, #12
+        MOV     a1, sp
+        MOV     a2, #0
+        CallHAL HAL_IICDevice
+        LDR     a1, [sp]
+        CallHAL HAL_IRQClear
+        ADD     sp, sp, #12
         Pull    "R9,PC"
 
 IICAbort
