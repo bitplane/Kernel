@@ -729,7 +729,53 @@ OsWord0F_5byte
 CheckYear ROUT
         Push    "R0,R1,R2,R14"
         MOV     R0, #0
-        LDRB    R0, [R0, #RTCFitted]
+        LDR     R0, [R0, #RTCFitted]
+ [ HAL
+	CMP	R0, #2048
+  [ RTCSupport
+	BLO	%FT8
+  |
+	BLO	%FT15
+  ]
+	; Ask the RTC what it thinks the year is
+	Push	"R3,R10,R12"
+	MOV	R10, R0
+	SUB	R13, R13, #RTCTimeStruct_BCD_Size
+	MOV	R1, R13
+	ADRL	R2, HALRTC_IICOp
+	MOV	LR, PC
+	LDR	PC, [R0, #HALDevice_RTCReadTime]
+	; Did we succeed?
+	CMP	R0, #RTCRetCode_OK
+	LDRB	R0, [R13, #RTCTimeStruct_BCD_YearLO]
+	LDRB	R1, [R13, #RTCTimeStruct_BCD_YearHI]
+	ADD	R13, R13, #RTCTimeStruct_BCD_Size
+	LDRB	R2, [R10, #HALDevice_RTCFormatFlags]
+	Pull	"R3,R10,R12"
+	BNE	%FT15
+	TST	R2, #RTCFormatFlags_BCD_NeedsYearHelp
+	BNE	%FT9
+	; Year is reliable; convert R0 & R1 to ints and update CMOS if necessary.
+	BL	BCDToHex
+	MOV	R2, R1
+	MOV	R1, R0 ; YearLO
+	MOV	R0, #YearCMOS
+	BL	Read
+	CMP	R0, R1
+	MOVNE	R0, #YearCMOS
+	BLNE	Write
+	MOV	R0, R2
+	BL	BCDToHex
+	MOV	R1, R0 ; YearHI
+	MOV	R0, #YearCMOS+1
+	BL	Read
+	CMP	R0, R1
+	MOVNE	R0, #YearCMOS+1
+	BLNE	Write
+	B	%FT15
+8
+ ] ; HAL
+ [ RTCSupport :LOR: :LNOT: HAL
         TEQ     R0, #RTCAddressPHI
         MOVEQ   R1, #5
         MOVNE   R1, #6                  ; year address (dependant on RTC)
@@ -747,7 +793,9 @@ CheckYear ROUT
 
         TEQ     R1, #RTCAddressPHI+1
         MOVEQ   R1, R0, LSR #6
-        ANDNE   R1, R0, #3              ; R1= year MOD 4
+ ] ; RTCSupport :LOR: :LNOT: HAL
+9
+        ANDNE   R1, R0, #3              ; R1= year MOD 4. Note sharing of NE condition with HAL code.
         MOV     R0, #YearCMOS
         BL      Read
         AND     R2, R0, #3
@@ -770,7 +818,7 @@ CheckYear ROUT
         MOV     R1, R2
         MOV     R0, #YearCMOS
         BL      Write
-
+15
         BL      RTCToRealTime
         Pull    "R0,R1,R2,PC"
 

@@ -1882,6 +1882,7 @@ ResetPart1Done                          ; R0 is reset type
         STR     R0, [R0, #DeviceCount]
         STR     R0, [R0, #DeviceTable]
         CallHAL HAL_InitDevices         ; get HAL to register any devices it has
+        BL      LookForHALRTC ; Check if an RTC was just added. This is currently the only place where HAL RTCs are checked for; if we wanted to check anywhere else (e.g. after ROM module initialisation) then we'd have to listen for Service_Hardware so we can cope with device removal
  |
         BL      L1L2PTenhancements      ; little tricks on cacheability etc for performance
  ]
@@ -2348,5 +2349,41 @@ HexTable = "0123456789ABCDEF"
     ]
 
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+ [ HAL
+LookForHALRTC
+	Push "R0-R2,R8,R14"
+	MOV	R0, #0
+	LDR	R0, [R0, #RTCFitted]
+	CMP	R0, #0
+	Pull "R0-R2,R8,PC",NE ; We already have an RTC
+	LDR	R0, =(0:SHL:16)+HALDeviceType_SysPeri+HALDeviceSysPeri_RTC
+	MOV	R1, #0
+	MOV	R8, #4
+01
+	SWI	XOS_Hardware
+	Pull "R0-R2,R8,PC",VS
+	CMP	R1, #-1
+	Pull "R0-R2,R8,PC",EQ
+	LDR	R14, [R2, #HALDevice_Location]
+	; Currently, we only support devices located on IIC bus 0
+	CMP	R14, #HALDeviceBus_Ser+HALDeviceSerBus_IIC
+	BNE	%BT01
+	; Try activating
+	Push "R0-R3,R12"
+	MOV	R0, R2
+	MOV	LR, PC
+	LDR	PC, [R2, #HALDevice_Activate]
+	CMP	R0, #1
+	Pull "R0-R3,R12"
+	BNE	%BT01
+	DebugTX "HAL RTC detected!"
+	MOV	R0, #0
+	STR	R2, [R0, #RTCFitted]
+	; Read the time from the RTC into RealTime, and fixup YearCMOS if needed
+	BL	CheckYear
+	DebugTX "Leaving LookForHALRTC"
+	Pull "R0-R2,R8,PC"
+ ]
 
         END

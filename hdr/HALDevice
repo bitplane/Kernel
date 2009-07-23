@@ -56,6 +56,7 @@ HALDeviceSysPeri_IntC   #       1       ; Interrupt controller
 HALDeviceSysPeri_DMAC   #       1       ; DMA controller
 HALDeviceSysPeri_DMAB   #       1       ; DMA channel - buffer type
 HALDeviceSysPeri_DMAL   #       1       ; DMA channel - list type
+HALDeviceSysPeri_RTC    #       1       ; RTCDevice
 
 HALDeviceType_Comms     *       4 :SHL: 8
                         ^       1
@@ -86,7 +87,7 @@ HALDeviceExpBus_PCI     *       2 :SHL: 24
 HALDeviceBus_Ser        *       4 :SHL: 28
 
 HALDeviceSerBus_ACLink  *       0 :SHL: 24
-
+HALDeviceSerBus_IIC     *       1 :SHL: 24
 
                                 ^       0
 HALDeviceID_AudC_M5451          #       1
@@ -103,6 +104,9 @@ HALDeviceID_DMAB_M1535          #       1
 
                                 ^       0
 HALDeviceID_DMAL_M5229          #       1
+
+                                ^       0
+HALDeviceID_RTC_TPS65950        #       1
 
  ]
 

@@ -1267,6 +1267,8 @@ ProcVec_End             #       0
 ProcVecPreVeneersSize   *       4*4     ; Space for preveneers for loading handler addresses from 0 page.
 ProcVecPreVeneers       #       ProcVecPreVeneersSize
 
+RTCFitted          #    4               ; =0 no RTC, <2048 = address of I2C RTC, >=2048 = HALDevice_RTC ptr
+
  [ :DEF: ShowWS
         ! 0, "Free space before DebuggerSpace = ":CC::STR:(&300-@)
  ]
@@ -1278,7 +1280,6 @@ Export_DebuggerSpace    #       16*8    ; Debugger module needs some zero page
 ; NVRAM support
 
 NVRamSize          #    1               ; Size of NVRam (E2ROM & CMOS) fitted in 256byte units
-RTCFitted          #    1               ; flag non zero if RTC is fitted
 NVRamBase          #    1               ; Base of NVRam
 NVRamSpeed         #    1               ; Clock hold time in 0.5µs units
 NVRamPageSize      #    1               ; Page size for writing (log2)

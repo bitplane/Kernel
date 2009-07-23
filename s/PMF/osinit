@@ -176,7 +176,7 @@ BuffPtrInitLoop
 secs0070 *      (86400*(365*70+18))     ; from time() in risc_oslib.c.armsys
 
         MOV     R1, #0
-        LDRB    R0, [R1, #RTCFitted]
+        LDR     R0, [R1, #RTCFitted]
         TEQ     R0, #0                  ; when zero,no RTC
         BNE     %FT28
         LDR     R7, =(secs0070 * 100)   ; centiseconds LSW
