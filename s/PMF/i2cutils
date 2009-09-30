@@ -1374,7 +1374,7 @@ SetTime ROUT
 ;	R6 = year (hi)
 ;	R7 = seconds
 ;	R8 = centiseconds
-;	Note: Returns garbage if no RTC, or an error occurs!
+;	Note: For HAL RTCs, R0 will be negative on error. Other RTCs do not report errors and may just return garbage.
 
 ReadTime ROUT
 	Push	"R4, R14"
@@ -1392,8 +1392,12 @@ ReadTime ROUT
 	ADRL	R2, HALRTC_IICOp
 	MOV	LR, PC
 	LDR	PC, [R0, #HALDevice_RTCReadTime]
-	; Not really much point checking the error code since we have no way of returning an error to the caller
-	; So just read the junk data and be done with it
+	; If there was an error, exit with a negative value in R0
+	CMP	R0, #RTCRetCode_OK
+	MVNNE	R0, #0
+	ADDNE	R13, R13, #RTCTimeStruct_BCD_Size
+	Pull	"R12",NE
+	Pull	"R4,PC",NE
 	LDRB	R0, [R13, #RTCTimeStruct_BCD_Centiseconds]
 	BL	BCDToHex
 	MOV	R8, R0			; centiseconds
