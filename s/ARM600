@@ -3556,7 +3556,6 @@ SyncCodeAreasRange
         MOVEQ   r2, #4
         MOVEQ   lr, r2, LSL lr
         MOVEQ   r2, #0
-        LDRB    lr, [r2, #DCache_LineLen]
         SUB     lr, lr, #1
         ADD     r1, r1, lr                 ;rounding up end address
         MVN     lr, lr

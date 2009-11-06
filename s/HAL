@@ -684,6 +684,9 @@ MMU_activation_zone
         BICGE   v5, v5, #MMUC_EE+MMUC_TE+MMUC_VE ; Exceptions = nonvectored LE ARM
         CMP     ip, #0
   ]
+  [ NoUnaligned
+        ORR     v5, v5, #MMUC_A ; Alignment exceptions on
+  ]
 MMUon_instr
         ARM_write_control v5
         MOVEQ   sp, v5
