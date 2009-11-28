@@ -65,6 +65,7 @@ EXPORTS   = ${EXP_HDR}.EnvNumbers \
             ${EXP_HDR}.HALEntries \
             ${EXP_HDR}.HALDevice \
             ${EXP_HDR}.RTCDevice \
+            ${EXP_HDR}.VideoDevice \
             ${EXP_HDR}.OSEntries \
             ${C_EXP_HDR}.RISCOS \
             ${C_EXP_HDR}.HALEntries \
