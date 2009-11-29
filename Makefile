@@ -171,6 +171,9 @@ ${EXP_HDR}.RTCDevice: hdr.RTCDevice
 ${EXP_HDR}.OSEntries: hdr.OSEntries
 	${CP} hdr.OSEntries $@ ${CPFLAGS}
 	
+${EXP_HDR}.VideoDevice: hdr.VideoDevice
+	${CP} hdr.VideoDevice $@ ${CPFLAGS}
+	
 ${C_EXP_HDR}.RISCOS: hdr.RISCOS
 	${MKDIR} ${C_EXP_HDR}
 	perl Build:Hdr2H hdr.RISCOS $@
