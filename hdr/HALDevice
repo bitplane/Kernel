@@ -91,9 +91,11 @@ HALDeviceSerBus_IIC     *       1 :SHL: 24
 
                                 ^       0
 HALDeviceID_AudC_M5451          #       1
+HALDeviceID_AudC_TPS65950       #       1
 
                                 ^       0
 HALDeviceID_Mixer_STAC9750      #       1
+HALDeviceID_Mixer_TPS65950      #       1
 
                                 ^       0
 HALDeviceID_DMAC_M1535          #       1
