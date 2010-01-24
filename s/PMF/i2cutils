@@ -1252,8 +1252,11 @@ SetTime ROUT
         MOV	R0, R3
         SUBEQ	R0, R0, #1
         BL	HTBS9
-        MOV	R0, R5
-        BL	HTBS9
+        TST	R1, #RTCFormatFlags_BCD_YearLOIsGood
+        ANDEQ	R0, R5, #3 ; 2 bit YearLO
+        STREQB	R0, [R9], #1
+        MOVNE	R0, R5 ; BCD YearLO
+        BLNE	HTBS9
         MOV	R0, R6
         BL	HTBS9
 12
