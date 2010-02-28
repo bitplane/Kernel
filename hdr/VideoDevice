@@ -26,12 +26,10 @@ Included_Hdr_VideoDevice SETL {TRUE}
 
 ; Device for VDU video devices
 
-                                ^       0
-                                #       HALDeviceSize
-HALDevice_VDUAddress2           #       4
-HALDevice_VDUDevice2            #       4
-HALDevice_VDUDeviceSpecificField #      4
-HALDevice_VDU_Size              *       :INDEX: @
+                                 ^       0
+                                 #       HALDeviceSize
+HALDevice_VDUDeviceSpecificField #       4
+HALDevice_VDU_Size               *       :INDEX: @
 
  ]
 

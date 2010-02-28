@@ -803,6 +803,8 @@ mchsub_3
 
 ; try to extend the amount of screen memory
 
+        ! 0, "Need to fix ModeChangeSub to not leave CursorAddr, etc. pointing to unmapped pages during DA resize. Causes bad stuff should an abort occur/screen output be attempted!" ; Note that even enlarging the DA can leave the pointers in a bad state, due to the way the screen DA handler shuffles down/unmaps the lower mapping of VRAM before the higher copy is enlarged
+
         MOV     R0, #2                  ; expand screen memory
         SWI     XOS_ChangeDynamicArea
         BVC     %FT08

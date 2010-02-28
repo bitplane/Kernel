@@ -552,14 +552,29 @@ DAbPreVeneer    ROUT
 
         SUB     r11, r2, #8*4                   ; r11 -> register bank
         STR     r4, [sp, #7*4]                  ; store aborter's PC in user register bank
-
-      [ {TRUE}
-        ; For now, don't attempt any fixup on ARMv6+, since we'll get it wrong
-        B       %FT90
-      ]
+; B %FT90
 
         TST     r0, #T32_bit                    ; were they in Thumb mode? if so, give up now
         BNE     %FT90
+
+ [ {TRUE}
+        ; For now, the only fixup we do is for MVA-based cache/TLB ops, which can abort on ARMv7 if the specified MVA doesn't have a mapping.
+        ; MVA cache ops have the form coproc=p15, CRn=c7, opc1=0, opc2=1
+        ; MVA TLB ops have the form coproc=p15, CRn=c8, opc=0, opc2=1
+        ; Note that some non-MVA ops also follow the above rules - at the moment we make no attempt to filter those false-positives out
+        ; This code is also written from the perspective of running on an ARMv7 CPU - behaviour under ARMv6 hasn't been checked!
+        LDR     r10, [r4, #-8]                  ; Get aborting instruction
+        CMP     r10, #&F0000000
+        BHS     %FT90                           ; Ignore cc=NV, which is MCR2 encoding
+        LDR     r9, =&0FFF0FF0                  ; Mask of interesting bits
+        AND     r10,r10,r9
+        LDR     r9, =&0E000F30                  ; Desired value, minus CRn
+        EOR     r10,r10,r9
+        CMP     r10, #&70000                    ; CRn=c7?
+        CMPNE   r10, #&80000                    ; CRn=c8?
+        BEQ     %FT70                           ; It's an MVA-based op. Ignore the abort and resume execution
+        B       %FT90                           ; Else skip the old & broken LDR/STR fixup code and go straight to the exception handler,
+ ]
 
 ;ARM 810 or StrongARM allow signed byte load or half-word load/stores - not supported at present
 ;***KJB - need to think about LDRH family
