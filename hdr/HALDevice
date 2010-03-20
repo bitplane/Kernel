@@ -37,7 +37,8 @@ HALDevice_Reset         #       4
 HALDevice_Sleep         #       4
 HALDevice_Device        #       4
 HALDevice_TestIRQ       #       4
-HALDevice_Reserved2     #       8
+HALDevice_ClearIRQ      #       4
+HALDevice_Reserved2     #       4
 HALDeviceSize           *       :INDEX: @
 
 
@@ -61,6 +62,7 @@ HALDeviceSysPeri_RTC    #       1       ; RTCDevice
 HALDeviceType_Comms     *       4 :SHL: 8
                         ^       1
 HALDeviceComms_UART     #       1       ; UART
+HALDeviceComms_EtherNIC #       1       ; Ethernet NIC
 
 
 HALDeviceBus_Pro        *       0 :SHL: 28
@@ -77,6 +79,7 @@ HALDeviceSysBus_PXBus   *       2 :SHL: 24
 HALDeviceBus_Peri       *       2 :SHL: 28
 
 HALDevicePeriBus_APB    *       0 :SHL: 24
+HALDevicePeriBus_GPMC   *       1 :SHL: 24
 
 HALDeviceBus_Exp        *       3 :SHL: 28
 
@@ -88,6 +91,11 @@ HALDeviceBus_Ser        *       4 :SHL: 28
 
 HALDeviceSerBus_ACLink  *       0 :SHL: 24
 HALDeviceSerBus_IIC     *       1 :SHL: 24
+
+HALDeviceBus_Interconnect    *  5 :SHL: 28 ; Not really a bus type, but the OMAP stuff had to go somewhere!
+
+HALDeviceInterconnectBus_L3  *  0 :SHL: 24
+HALDeviceInterconnectBus_L4  *  1 :SHL: 24
 
                                 ^       0
 HALDeviceID_AudC_M5451          #       1
@@ -114,6 +122,10 @@ HALDeviceID_RTC_TPS65950        #       1
 
                                 ^       0
 HALDeviceID_VDU_OMAP3           #       1
+
+                                ^       0
+HALDeviceID_EtherNIC_SMSC9221   #       1
+HALDeviceID_EtherNIC_DM9000     #       1
 
  ]
 
