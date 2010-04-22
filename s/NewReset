@@ -1061,7 +1061,11 @@ DefaultCMOSTable ; list of non-zero options wanted :
 ; byte pairs of offset, value
 ; terminated by offset &FF
         =       KeyDelCMOS,     32
-        =       FileLangCMOS,   8
+   [ M_CortexA8
+        =       FileLangCMOS,   26      ; SCSIFS for OMAP3, etc.
+   |
+        =       FileLangCMOS,   8       ; ADFS
+   ]
         =       FontCMOS,       64      ; KJB 13-Dec-02: Changed to 256K from 64K
         =       PigCMOS,        10
         =       KeyRepCMOS,     8
