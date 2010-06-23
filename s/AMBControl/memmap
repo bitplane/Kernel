@@ -158,6 +158,9 @@ AMB_LazyFixUp ROUT
         MOV     lr,r4                                    ;restore return address
         ARM_write_FAR r5                                 ;restore FAR
         ARM_write_FSR r6                                 ;restore FSR
+      [ MEMM_Type = "VMSAv6"
+        myISB ; Not sure if this is necessary or not; do it just in case
+      ]
 ;
 90
         MOVS    r0,#0

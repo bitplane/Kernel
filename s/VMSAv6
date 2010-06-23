@@ -435,6 +435,7 @@ MMUControl_ModifyControl ROUT
         Pull    "r0"
 15
         ARM_write_control r2
+        myISB ; Must be running on >=ARMv6, so perform ISB to ensure CP15 write is complete
         BIC     lr, r1, r2              ; lr = bits going from 1->0
         TST     lr, #MMUC_C             ; if cache turning off then flush cache afterwards
         TSTNE   lr, #MMUC_I

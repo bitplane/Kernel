@@ -1835,9 +1835,6 @@ MMU_ChangingUncachedEntries_WB_Cal_LD ROUT
 ; Cache_Lx_ITable = Cache size identification register for all 8 instruction caches
 
 Cache_CleanAll_WB_CR7_Lx ROUT
-;
-; Currently disables interrupts to allow safe programming and reading of cache size selection register
-;
 ; Clean cache by traversing all sets and ways for all data caches
         Push    "a2,a3,a4,v1,v2,v3,v4,v5,lr"
         MOV     lr, #ZeroPage
@@ -1877,7 +1874,7 @@ Cache_CleanAll_WB_CR7_Lx ROUT
         BNE     %BT20
 10
         MOV     a1, #0
-        MCR     p15, 0, a1, c7, c10, 4           ; drain WBuffer
+        myDSB ; Wait for cache cleaning to complete
         Pull    "a2,a3,a4,v1,v2,v3,v4,v5,pc"
 
 
@@ -1923,8 +1920,11 @@ Cache_CleanInvalidateAll_WB_CR7_Lx ROUT
         BNE     %BT20
 10
         MOV     a1, #0
-        MCR     p15, 0, a1, c7, c10, 4           ; drain WBuffer
-        MCR     p15, 0, a1, c7, c5, 0            ; invalidate ICache
+        myDSB                         ; Wait for cache clean to complete
+        MCR     p15, 0, a1, c7, c5, 0 ; invalidate ICache
+        MCR     p15, 0, a1, c7, c5, 6 ; invalidate branch predictors
+        myDSB                         ; Wait for cache/branch invalidation to complete
+        myISB                         ; Ensure that the effects of the completed cache/branch invalidation are visible
         Pull    "a2,a3,a4,v1,v2,v3,v4,v5,pc"
 
 
@@ -1970,7 +1970,11 @@ Cache_InvalidateAll_WB_CR7_Lx ROUT
         BNE     %BT20
 10
         MOV     a1, #0
-        MCR     p15, 0, a1, c7, c5, 0            ; invalidate ICache
+        myDSB                         ; Wait for invalidation to complete
+        MCR     p15, 0, a1, c7, c5, 0 ; invalidate ICache
+        MCR     p15, 0, a1, c7, c5, 6 ; invalidate branch predictors
+        myDSB                         ; Wait for cache/branch invalidation to complete
+        myISB                         ; Ensure that the effects of the completed cache/branch invalidation are visible
         Pull    "a2,a3,a4,v1,v2,v3,v4,v5,pc"
 
 
@@ -1980,30 +1984,40 @@ Cache_RangeThreshold_WB_CR7_Lx ROUT
         MOV     pc, lr
 
 
-TLB_InvalidateAll_WB_CR7_Lx ROUT
 MMU_ChangingUncached_WB_CR7_Lx
+        myDSB ; Ensure the page table write has actually completed
+        myISB ; Also required
+TLB_InvalidateAll_WB_CR7_Lx ROUT
         MOV     a1, #0
-        MCR     p15, 0, a1, c8, c7, 0           ; invalidate ITLB and DTLB
+        MCR     p15, 0, a1, c8, c7, 0 ; invalidate ITLB and DTLB
+        MCR     p15, 0, a1, c7, c5, 6 ; invalidate branch predictors
+        myDSB                         ; Wait for cache/branch invalidation to complete
+        myISB                         ; Ensure that the effects of the completed cache/branch invalidation are visible
         MOV     pc, lr
 
 
 ; a1 = page affected (page aligned address)
 ;
-TLB_InvalidateEntry_WB_CR7_Lx ROUT
 MMU_ChangingUncachedEntry_WB_CR7_Lx
-        MCR     p15, 0, a1, c8, c7, 1           ; invalidate ITLB & DTLB entry
+        myDSB ; Ensure the page table write has actually completed
+        myISB ; Also required
+TLB_InvalidateEntry_WB_CR7_Lx ROUT
+        MCR     p15, 0, a1, c8, c7, 1 ; invalidate ITLB & DTLB entry
+        MCR     p15, 0, a1, c7, c5, 7 ; invalidate branch predictor entry
+        myDSB                         ; Wait for cache/branch invalidation to complete
+        myISB                         ; Ensure that the effects of the completed cache/branch invalidation are visible
         MOV     pc, lr
 
 
 WriteBuffer_Drain_WB_CR7_Lx ROUT
-        MOV     a1, #0
-        MCR     p15, 0, a1, c7, c10, 4          ; drain WBuffer
+        myDSB ; DSB is the new name for write buffer draining
+        myISB ; Also do ISB for extra paranoia
         MOV     pc, lr
 
 
 IMB_Full_WB_CR7_Lx ROUT
 ;
-; do: clean DCache; drain WBuffer, invalidate ICache
+; do: clean DCache; drain WBuffer, invalidate ICache/branch predictor
 ; Luckily, we only need to clean as far as the level of unification
 ;
         Push    "a2,a3,a4,v1,v2,v3,v4,v5,lr"
@@ -2045,8 +2059,11 @@ IMB_Full_WB_CR7_Lx ROUT
         BGE     %BT20
 10
         MOV     a1, #0
-        MCR     p15, 0, a1, c7, c10, 4           ; drain WBuffer (is this required?)
-        MCR     p15, 0, a1, c7, c5, 0           ; invalidate ICache
+        myDSB                         ; Wait for clean to complete
+        MCR     p15, 0, a1, c7, c5, 0 ; invalidate ICache
+        MCR     p15, 0, a1, c7, c5, 6 ; invalidate branch predictors
+        myDSB                         ; Wait for cache/branch invalidation to complete
+        myISB                         ; Ensure that the effects of the completed cache/branch invalidation are visible
         Pull    "a2,a3,a4,v1,v2,v3,v4,v5,pc"
 
 ;  a1 = start address (inclusive, cache line aligned)
@@ -2056,33 +2073,50 @@ IMB_Range_WB_CR7_Lx ROUT
         SUB     a2, a2, a1
         CMP     a2, #32*1024 ; Maximum L1 cache size on Cortex-A8 is 32K, use that to guess what approach to take
         ADD     a2, a2, a1
+        CMPLO   a1, a2 ; The routine below will fail if the end address wraps around, so just IMB_Full instead
         BHS     IMB_Full_WB_CR7_Lx
-        Push    "a3,lr"
+        Push    "a1,a3,lr"
         MOV     lr, #0
         LDRB    lr, [lr, #DCache_LineLen] ; log2(line len)-2
         MOV     a3, #4
         MOV     lr, a3, LSL lr
 10
         MCR     p15, 0, a1, c7, c11, 1           ; clean DCache entry by VA to PoU
-        MCR     p15, 0, a1, c7, c5, 1            ; invalidate ICache entry (to PoC - is this bad?)
         ADD     a1, a1, lr
         CMP     a1, a2
         BLO     %BT10
-        MOV     a1, #0
-        MCR     p15, 0, a1, c7, c10, 4           ; drain WBuffer (required?)
+        myDSB ; Wait for clean to complete
+        Pull    "a1" ; Get start address back
+        MOV     lr, #0
+        LDRB    lr, [lr, #ICache_LineLen] ; Use ICache line length, just in case D&I length differ
+        MOV     lr, a3, LSL lr
+10
+        MCR     p15, 0, a1, c7, c5, 1            ; invalidate ICache entry
+        ADD     a1, a1, lr
+        CMP     a1, a2
+        BLO     %BT10
+        MCR     p15, 0, a1, c7, c5, 6 ; invalidate branch predictors
+        myDSB                         ; Wait for cache/branch invalidation to complete
+        myISB                         ; Ensure that the effects of the completed cache/branch invalidation are visible
         Pull    "a3,pc"
 
 MMU_Changing_WB_CR7_Lx ROUT
         Push    "lr"
+        myDSB ; Ensure the page table write has actually completed
+        myISB ; Also required
         BL      Cache_CleanInvalidateAll_WB_CR7_Lx
         MOV     a1, #0
-        MCR     p15, 0, a1, c8, c7, 0           ; invalidate ITLB and DTLB
+        MCR     p15, 0, a1, c8, c7, 0 ; invalidate ITLB and DTLB
+        myDSB                         ; Wait TLB invalidation to complete
+        myISB                         ; Ensure that the effects are visible
         Pull    "pc"
 
 ; a1 = page affected (page aligned address)
 ;
 MMU_ChangingEntry_WB_CR7_Lx ROUT
         Push    "a2, lr"
+        myDSB ; Ensure the page table write has actually completed
+        myISB ; Also required
         MOV     lr, #0
         LDRB    lr, [lr, #DCache_LineLen] ; log2(line len)-2
         MOV     a2, #4
@@ -2090,14 +2124,25 @@ MMU_ChangingEntry_WB_CR7_Lx ROUT
         ADD     a2, a1, #PageSize
 10
         MCR     p15, 0, a1, c7, c14, 1          ; clean&invalidate DCache entry to PoC
+        ADD     a1, a1, lr
+        CMP     a1, a2
+        BNE     %BT10
+        myDSB ; Wait for clean to complete
+        MOV     lr, #0
+        LDRB    lr, [lr, #ICache_LineLen] ; Use ICache line length, just in case D&I length differ
+        MOV     a1, #4
+        MOV     lr, a1, LSL lr
+        SUB     a1, a2, #PageSize ; Get start address back
+10
         MCR     p15, 0, a1, c7, c5, 1           ; invalidate ICache entry to PoC
         ADD     a1, a1, lr
         CMP     a1, a2
-        BLO     %BT10
-        MOV     lr, #0
-        MCR     p15, 0, lr, c7, c10, 4          ; drain WBuffer
+        BNE     %BT10
         SUB     a1, a1, #PageSize
         MCR     p15, 0, a1, c8, c7, 1           ; invalidate DTLB and ITLB
+        MCR     p15, 0, a1, c7, c5, 6           ; invalidate branch predictors
+        myDSB
+        myISB
         Pull    "a2, pc"
 
 ; a1 = first page affected (page aligned address)
@@ -2105,6 +2150,8 @@ MMU_ChangingEntry_WB_CR7_Lx ROUT
 ;
 MMU_ChangingEntries_WB_CR7_Lx ROUT
         Push    "a2, a3, lr"
+        myDSB ; Ensure the page table write has actually completed
+        myISB ; Also required
         MOV     a2, a2, LSL #Log2PageSize
         MOV     a3, #0
         LDR     a3, [a3, #DCache_RangeThreshold]   ;check whether cheaper to do global clean
@@ -2117,32 +2164,47 @@ MMU_ChangingEntries_WB_CR7_Lx ROUT
         MOV     a3, lr, LSL a3
         MOV     lr, a1
 10
-        MCR     p15, 0, a1, c7, c14, 1             ; clean&invalidate DCache entry to PoC
-        MCR     p15, 0, a1, c7, c5, 1              ; invalidate ICache entry to PoC
+        MCR     p15, 0, a1, c7, c14, 1          ; clean&invalidate DCache entry to PoC
         ADD     a1, a1, a3
         CMP     a1, a2
-        BLO     %BT10
-        MOV     a1, #0
-        MCR     p15, 0, a1, c7, c10, 4             ; drain WBuffer
-        MOV     a1, lr                             ; restore start address
-20
-        MCR     p15, 0, a1, c8, c7, 1              ; invalidate DTLB & ITLB entry
-        ADD     a1, a1, #PageSize
+        BNE     %BT10
+        myDSB ; Wait for clean to complete
+        MOV     a3, #0
+        LDRB    a3, [a3, #ICache_LineLen] ; Use ICache line length, just in case D&I length differ
+        MOV     a1, #4
+        MOV     a3, a1, LSL a3
+        MOV     a1, lr ; Get start address back
+10
+        MCR     p15, 0, a1, c7, c5, 1           ; invalidate ICache entry to PoC
+        ADD     a1, a1, a3
         CMP     a1, a2
+        BNE     %BT10
+20
+        MCR     p15, 0, lr, c8, c7, 1              ; invalidate DTLB & ITLB entry
+        ADD     lr, lr, #PageSize
+        CMP     lr, a2
         BLO     %BT20
+        MCR     p15, 0, a1, c7, c5, 6           ; invalidate branch predictors
+        myDSB
+        myISB
         Pull    "a2, a3, pc"
 ;
 30
         BL      Cache_CleanInvalidateAll_WB_CR7_Lx
         MOV     a1, #0
         MCR     p15, 0, a1, c8, c7, 0              ; invalidate ITLB and DTLB
+        myDSB                         ; Wait TLB invalidation to complete
+        myISB                         ; Ensure that the effects are visible
         Pull    "a2, a3, pc"
 
 ; a1 = first page affected (page aligned address)
 ; a2 = number of pages
 ;
 MMU_ChangingUncachedEntries_WB_CR7_Lx ROUT
+        myDSB ; Ensure the page table write has actually completed
+        myISB ; Also required
         CMP     a2, #32                            ; arbitrary-ish threshold
+        MCRHS   p15, 0, a1, c8, c7, 0              ; invalidate ITLB and DTLB
         BHS     %FT20
         Push    "a2"
 10
@@ -2151,10 +2213,10 @@ MMU_ChangingUncachedEntries_WB_CR7_Lx ROUT
         SUBS    a2, a2, #1
         BNE     %BT10
         Pull    "a2"
-        MOV     pc, lr
-;
 20
-        MCR     p15, 0, a1, c8, c7, 0              ; invalidate ITLB and DTLB
+        MCR     p15, 0, a1, c7, c5, 6           ; invalidate branch predictors
+        myDSB
+        myISB
         MOV     pc, lr
 
 ; --------------------------------------------------------------------------

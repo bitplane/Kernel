@@ -1157,7 +1157,11 @@ DefaultCMOSTable ; list of non-zero options wanted :
         ]
         =       AlarmAndTimeCMOS,2_00010000 ; !Alarm autosave on
         =       FSLockCMOS+5,   &EA     ; Checksum for no password
+   [ M_CortexA8
+        =       CDROMFSCMOS,    &C0     ; drives = 0, buffer size = 256K
+   |
         =       CDROMFSCMOS,    &C1     ; drives = 1, buffer size = 256K
+   ]
   ]
         =       &FF
         ALIGN

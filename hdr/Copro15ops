@@ -550,5 +550,131 @@ C15 CN 15
         MCR$cond ARM_config_cp,0,R0,ARMA_TCI_reg,C2,2
         MEND
 
+;
+; -------------- Additional ARMv7 stuff -----------------------------------
+;
+
+; Provided here are ISB, DSB and DMB macros suitable for ARMv6+
+; Although ARMv4 & v5 do provide CP15 ops that are compatible with the ARMv6 ops, it's implementation defined whether each processor implements the ops or not (and the ops are unpredictable if unimplemented)
+; So to play it safe these macros will complain if used on pre-ARMv6
+
+; Instruction Synchronisation Barrier - required on ARMv6+ to ensure the effects of the following are visible to following instructions:
+; * Completed cache, TLB & branch predictor maintenance operations
+; * CP14/CP15 writes
+        MACRO
+        myISB $cond,$temp
+      [ NoARMv6
+        ! 1, "Don't know what to do on pre-ARMv6!"
+      |
+       [ NoARMv7
+        ; ARMv6, use legacy MCR op
+        MOV$cond $temp,#0
+        MCR$cond p15,0,$temp,c7,c5,4
+       |
+        ; ARMv7+, use ISB instruction (saves on temp register, but instruction is unconditional)
+        ; Shouldn't hurt too much if we just ignore the condition code
+        DCI &F57FF06F ; ISB SY
+       ]
+      ]
+        MEND
+
+; Data Synchronisation Barrier - aka drain write buffer/data write barrier. Stalls pipeline until all preceeding memory accesses (including cache/TLB/BTC ops complete.
+        MACRO
+        myDSB $cond,$temp,$option
+     [ NoARMv6
+        ! 1, "Don't know what to do on pre-ARMv6!"
+     |
+      [ NoARMv7
+        ; pre-ARMv7, use legacy MCR op
+        MOV$cond $temp,#0
+        MCR$cond p15,0,$temp,c7,c10,4
+      |
+        ; ARMv7+, use DSB instruction
+       [ "$option"="SY" :LOR: "$option"=""
+        DCI &F57FF04F ; DSB SY
+       |
+       [ "$option"="ST" :LOR: "$option"="SYST"
+        DCI &F57FF04E ; DSB ST
+       |
+       [ "$option"="ISH"
+        DCI &F57FF04D ; DSB ISH
+       |
+       [ "$option"="ISHST"
+        DCI &F57FF04C ; DSB ISHST
+       |
+       [ "$option"="NSH"
+        DCI &F57FF047 ; DSB NSH
+       |
+       [ "$option"="NSHST"
+        DCI &F57FF046 ; DSB NSHST
+       |
+       [ "$option"="OSH"
+        DCI &F57FF043 ; DSB OSH
+       |
+       [ "$option"="OSHST"
+        DCI &F57FF042 ; DSB OSHST
+       |
+        ! 1, "Unrecognised DSB option"
+       ]
+       ]
+       ]
+       ]
+       ]
+       ]
+       ]
+       ]
+      ]
+     ]
+        MEND
+
+; Data Memory Barrier - More lightweight DSB, ensures memory accesses behave correctly without stalling the pipeline to wait for preceeding accesses to complete. I.e. it's only good for synchronising load/store instructions.
+        MACRO
+        myDMB $cond,$temp,$option
+     [ NoARMv6
+        ! 1, "Don't know what to do on pre-ARMv6!"
+     |
+      [ NoARMv7
+        ; ARMv6, use legacy MCR op
+        MOV$cond $temp,#0
+        MCR$cond p15,0,$temp,c7,c10,5
+      |
+        ; ARMv7+, use DMB instruction
+       [ "$option"="SY" :LOR: "$option"=""
+        DCI &F57FF05F ; DMB SY
+       |
+       [ "$option"="ST" :LOR: "$option"="SYST"
+        DCI &F57FF05E ; DMB ST
+       |
+       [ "$option"="ISH"
+        DCI &F57FF05D ; DMB ISH
+       |
+       [ "$option"="ISHST"
+        DCI &F57FF05C ; DMB ISHST
+       |
+       [ "$option"="NSH"
+        DCI &F57FF057 ; DMB NSH
+       |
+       [ "$option"="NSHST"
+        DCI &F57FF056 ; DMB NSHST
+       |
+       [ "$option"="OSH"
+        DCI &F57FF053 ; DMB OSH
+       |
+       [ "$option"="OSHST"
+        DCI &F57FF052 ; DMB OSHST
+       |
+        ! 1, "Unrecognised DMB option"
+       ]
+       ]
+       ]
+       ]
+       ]
+       ]
+       ]
+       ]
+      ]
+     ]
+        MEND
+
 
     END
