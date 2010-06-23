@@ -2183,7 +2183,7 @@ MMU_ChangingEntries_WB_CR7_Lx ROUT
         MCR     p15, 0, lr, c8, c7, 1              ; invalidate DTLB & ITLB entry
         ADD     lr, lr, #PageSize
         CMP     lr, a2
-        BLO     %BT20
+        BNE     %BT20
         MCR     p15, 0, a1, c7, c5, 6           ; invalidate branch predictors
         myDSB
         myISB
