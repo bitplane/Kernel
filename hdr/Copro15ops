@@ -26,6 +26,8 @@
 ;              too many ARM versions for cache/TLB flushing to be implemented in
 ;              simple macros.
 
+        GET     Hdr:CPU.Arch
+
 ARM_config_cp        CP 15  ;coprocessor number for configuration control
 
 ARM_ID_reg           CN  0  ;processor ID
