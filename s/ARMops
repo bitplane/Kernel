@@ -2003,7 +2003,7 @@ MMU_ChangingUncachedEntry_WB_CR7_Lx
         myISB ; Also required
 TLB_InvalidateEntry_WB_CR7_Lx ROUT
         MCR     p15, 0, a1, c8, c7, 1 ; invalidate ITLB & DTLB entry
-        MCR     p15, 0, a1, c7, c5, 7 ; invalidate branch predictor entry
+        MCR     p15, 0, a1, c7, c5, 6 ; invalidate branch predictors
         myDSB                         ; Wait for cache/branch invalidation to complete
         myISB                         ; Ensure that the effects of the completed cache/branch invalidation are visible
         MOV     pc, lr

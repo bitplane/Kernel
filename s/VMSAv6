@@ -510,6 +510,29 @@ DAbPreVeneer    ROUT
         STMIA   r13_abort, {r0-r7}              ; save unbanked registers anyway
         STR     lr_abort, [r13_abort, #15*4]    ; save old PC, ie instruction address
 
+        ; Fixup code for MVA-based cache/TLB ops, which can abort on ARMv7 if the specified MVA doesn't have a mapping.
+        ; Must come before AMBControl, else things can go very wrong during OS_ChangeDynamicArea
+        ; MVA cache ops have the form coproc=p15, CRn=c7, opc1=0, opc2=1
+        ; MVA TLB ops have the form coproc=p15, CRn=c8, opc1=0, opc2=1
+        ; Note that some non-MVA ops also follow the above rules - at the moment we make no attempt to filter those false-positives out
+        ; This code is also written from the perspective of running on an ARMv7 CPU - behaviour under ARMv6 hasn't been checked!
+        MRS     r0, SPSR
+        TST     r0, #T32_bit
+        BNE     %FT10                           ; We don't cope with Thumb ATM. Should really check for Jazelle too!
+        LDR     r0, [lr, #-8]                   ; Get aborting instruction
+        CMP     r0, #&F0000000
+        BHS     %FT10                           ; Ignore cc=NV, which is MCR2 encoding
+        BIC     r0, r0, #&F000000F              ; Mask out the uninteresting bits
+        BIC     r0, r0, #&0000F000
+        EOR     r0, r0, #&0E000000              ; Desired value, minus CRn
+        EOR     r0, r0, #&00000F30
+        CMP     r0,     #&00070000              ; CRn=c7?
+        CMPNE   r0,     #&00080000              ; CRn=c8?
+        BNE     %FT10                           ; It's not an MVA-based op
+        LDR     r0, [r13_abort], #17*4
+        SUBS    pc, lr_abort, #4                ; Resume execution at the next instruction
+10
+
   [ ChocolateAMB
         ARM_read_FAR r0                         ; aborting address
         MOV     r2, #0
@@ -559,22 +582,7 @@ DAbPreVeneer    ROUT
         BNE     %FT90
 
  [ {TRUE}
-        ; For now, the only fixup we do is for MVA-based cache/TLB ops, which can abort on ARMv7 if the specified MVA doesn't have a mapping.
-        ; MVA cache ops have the form coproc=p15, CRn=c7, opc1=0, opc2=1
-        ; MVA TLB ops have the form coproc=p15, CRn=c8, opc=0, opc2=1
-        ; Note that some non-MVA ops also follow the above rules - at the moment we make no attempt to filter those false-positives out
-        ; This code is also written from the perspective of running on an ARMv7 CPU - behaviour under ARMv6 hasn't been checked!
-        LDR     r10, [r4, #-8]                  ; Get aborting instruction
-        CMP     r10, #&F0000000
-        BHS     %FT90                           ; Ignore cc=NV, which is MCR2 encoding
-        LDR     r9, =&0FFF0FF0                  ; Mask of interesting bits
-        AND     r10,r10,r9
-        LDR     r9, =&0E000F30                  ; Desired value, minus CRn
-        EOR     r10,r10,r9
-        CMP     r10, #&70000                    ; CRn=c7?
-        CMPNE   r10, #&80000                    ; CRn=c8?
-        BEQ     %FT70                           ; It's an MVA-based op. Ignore the abort and resume execution
-        B       %FT90                           ; Else skip the old & broken LDR/STR fixup code and go straight to the exception handler,
+        B       %FT90                           ; Skip the old & broken LDR/STR fixup code and go straight to the exception handler
  ]
 
 ;ARM 810 or StrongARM allow signed byte load or half-word load/stores - not supported at present

@@ -3892,9 +3892,11 @@ DoTheGrowPagesSpecified
         LDMIA   lr, {r2, r3}                    ; get page number, logical address
 
         Push    "r0, r4"
+        LDR     r4, =Nowhere                    ; There's no point in cleaning the nowhere page, and on some architectures it'll even trigger an abort handler due to the lack of mapping
         MOV     r0, r3
+        TEQ     r3, r4
         MOV     r4, #0
-        ARMop   MMU_ChangingEntry,,,r4
+        ARMop   MMU_ChangingEntry,NE,,r4
         Pull    "r0, r4"
 
         BL      Call_CAM_Mapping                ; move replacement page in
