@@ -516,10 +516,19 @@ DAbPreVeneer    ROUT
         ; MVA TLB ops have the form coproc=p15, CRn=c8, opc1=0, opc2=1
         ; Note that some non-MVA ops also follow the above rules - at the moment we make no attempt to filter those false-positives out
         ; This code is also written from the perspective of running on an ARMv7 CPU - behaviour under ARMv6 hasn't been checked!
-        MRS     r0, SPSR
-        TST     r0, #T32_bit
+        ; Also, as wrong as it seems, attempting to load the aborting instruction could trigger an abort (something wrong with the prefetch handler?)
+        ; So this code must protect DFAR, DFSR, spsr_abort, and lr_abort from being clobbered
+        MRS     r1, SPSR
+        TST     r1, #T32_bit
         BNE     %FT10                           ; We don't cope with Thumb ATM. Should really check for Jazelle too!
-        LDR     r0, [lr, #-8]                   ; Get aborting instruction
+        MOV     r2, lr                          ; LR is already saved on the stack, but we can't load from it because any recursive abort won't have a clue what address we're trying to access.
+        ; Protect DFAR, DFSR
+        ARM_read_FAR r3
+        ARM_read_FSR r4
+        LDR     r0, [r2, #-8]                   ; Get aborting instruction
+        MSR     SPSR_cxsf, r1                   ; un-clobber SPSR, FAR, FSR
+        ARM_write_FAR r3
+        ARM_write_FSR r4
         CMP     r0, #&F0000000
         BHS     %FT10                           ; Ignore cc=NV, which is MCR2 encoding
         BIC     r0, r0, #&F000000F              ; Mask out the uninteresting bits
@@ -529,7 +538,9 @@ DAbPreVeneer    ROUT
         CMP     r0,     #&00070000              ; CRn=c7?
         CMPNE   r0,     #&00080000              ; CRn=c8?
         BNE     %FT10                           ; It's not an MVA-based op
-        LDR     r0, [r13_abort], #17*4
+        MOV     lr_abort, r2                    ; un-clobber LR (doesn't need un-clobbering if it wasn't an MVA op)
+        LDMIA   r13_abort, {r0-r4}              ; Restore the regs we intentionally clobbered
+        ADD     r13_abort, r13_abort, #17*4
         SUBS    pc, lr_abort, #4                ; Resume execution at the next instruction
 10
 
