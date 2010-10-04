@@ -82,10 +82,12 @@ RISCOS_InitARM
 
         ; In case it wasn't a hard reset
         MOV     a2, #0
+ [ MEMM_Type = "VMSAv6"
         CMP     a1, #ARMvF
         ; Assume that all ARMvF ARMs have multi-level caches and thus no single MCR op for invalidating all the caches
         MCRNE   ARM_config_cp,0,a2,ARMv4_cache_reg,C7           ; invalidate I+D caches
         BLEQ    HAL_InvalidateCache_ARMvF
+ ]
         CMP     a1, #ARMv3
         MCREQ   ARM_config_cp,0,a2,ARMv3_TLBflush_reg,C0        ; flush TLBs
         MCRNE   ARM_config_cp,0,a2,ARMv4_TLB_reg,C7             ; flush TLBs
@@ -706,16 +708,19 @@ MMUon_instr
         MOVEQ   sp, v5
         MSREQ   CPSR_c, #F32_bit+I32_bit+SVC32_mode
 
+  [ MEMM_Type = "VMSAv6"
         CMP     ip, #ARMvF
         MOV     lr, #0                                          ; junk MMU-off contents of I-cache
         MCRNE   ARM_config_cp,0,lr,ARMv4_cache_reg,C7           ; (works on ARMv3)
         MCREQ   p15, 0, lr, c7, c5, 0           ; invalidate instruction cache
         MCREQ   p15, 0, lr, c8, c7, 0           ; invalidate TLBs
         MCREQ   p15, 0, lr, c7, c5, 6           ; invalidate branch predictor
-  [ MEMM_Type = "VMSAv6"
         myISB ; Ensure below branch works
-  ]
         BLEQ    HAL_InvalidateCache_ARMvF       ; invalidate data cache (and instruction+TLBs again!)
+  |
+        MOV     lr, #0                                          ; junk MMU-off contents of I-cache
+        MCR     ARM_config_cp,0,lr,ARMv4_cache_reg,C7           ; (works on ARMv3)
+  ]
 
         MOV     ip, #4_0000000000000001                         ; domain 0 client only
         ARM_MMU_domain ip
@@ -1041,6 +1046,7 @@ MMUon_nol1ptoverlap
 
         LTORG
 
+ [ MEMM_Type = "VMSAv6"
 HAL_InvalidateCache_ARMvF
         ; Cache invalidation for ARMs with multiple cache levels, used before ARMop initialisation
         ; This function gets called before we have a stack set up, so we've got to preserve as many registers as possible
@@ -1101,7 +1107,7 @@ HAL_InvalidateCache_ARMvF
         MSR     CPSR_c, #F32_bit+I32_bit+SVC32_mode
         MSR     CPSR_cxsf, ip
         MOV     pc, lr
-
+ ] ; MEMM_Type = "VMSAv6"
 
 CountPageTablePages ROUT
         MOV     a1, #ZeroPage
@@ -1711,9 +1717,13 @@ Init_PageTablesChanged
         MOV     ip, #0
         MCREQ   ARM_config_cp,0,ip,ARMv3_TLBflush_reg,C0
         MCRNE   ARM_config_cp,0,ip,ARMv4_TLB_reg,C7
+ [ MEMM_Type = "VMSAv6"
         CMP     a1, #ARMvF
         MCRNE   ARM_config_cp,0,ip,ARMv4_cache_reg,C7           ; works on ARMv3
         BLEQ    HAL_InvalidateCache_ARMvF
+ |
+        MCR     ARM_config_cp,0,ip,ARMv4_cache_reg,C7           ; works on ARMv3
+ ]
         MOV     pc, a3
 
 
@@ -1923,34 +1933,6 @@ InitProcVecs
 InitProcVec_FIQ
         DCD     0
 InitProcVecsEnd
-; Debug InitProcVecs - on an exception they output the PC to a UART
-;        GET ADFS::4.$.work.riscos.omap3dev.riscos.sources.hal.omap3.hdr.UART
-;InitProcVecs
-;        NOP ; Reset
-;        NOP ; Undefined instruction
-;        NOP ; SWI
-;        NOP ; Prefetch abort
-;        NOP ; data abort
-;        NOP ; address exception
-;        NOP ; IRQ
-;        NOP ; FIQ
-;        ADR     a3,hextab
-;        LDR     a2,[a3],#4
-;        MOV     a4, #8
-;10
-;        LDRB    v1, [a2, #UART_LSR]
-;        TST     v1, #THRE
-;        BEQ     %BT10
-;        LDRB    v1, [a3, lr, LSR #28]
-;        STRB    v1, [a2, #UART_THR]
-;        MOV     lr, lr, LSL #4
-;        SUBS    a4, a4, #1
-;        BNE     %BT10
-;20
-;        B %BT20
-;hextab  DCD &49020000 ; UART address
-;        DCB "0123456789abcdef"
-;InitProcVecsEnd
 
 ;
 ; In:  a1 = flags  (L1_B,L1_C,L1_AP,L1_APX)

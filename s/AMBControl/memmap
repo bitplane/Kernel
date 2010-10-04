@@ -109,10 +109,11 @@ AMB_LazyFixUp ROUT
         LDR     r2,AMBPhysBin
 
 ; Calculate the L2PT protection bits in a nice way that won't produce broken code if we change MMU model
+; This should match the AP_Full entry from the PPLTrans table that gets used by BangCam (plus C+B bits)
    [ MEMM_Type = "VMSAv6"
         MOV     r3,#(AP_Full*L2X_APMult)+L2_ExtPage+L2_C+L2_B
    |
-        ASSERT  (AP_Full*L2X_APMult)+L2_ExtPage+L2_C+L2_B = &FFE
+        ASSERT  (AP_Full*L2_APMult)+L2_SmallPage+L2_C+L2_B = &FFE
         MOV     r3,#&FF0
         ORR     r3,r3,#&E
    ]

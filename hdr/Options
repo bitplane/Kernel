@@ -219,7 +219,7 @@ SAcleanflushbroken SETL {TRUE}  :LAND: StrongARM
 SASTMhatbroken     SETL {TRUE}  :LAND: StrongARM
 StrongARM_POST     SETL {TRUE}  :LAND: StrongARM
 
-ARM6support        SETL {FALSE} ; Needs updating for VMSAv6 compatability
+ARM6support        SETL (MEMM_Type = "ARM600") ; Needs updating for VMSAv6 compatability
 
 XScaleMiniCache    SETL {FALSE}
 
@@ -406,7 +406,7 @@ GetFlashROM         SETS  ""
                     GBLS  GetPalette
                     GBLS  GetMemInfo
                     GBLS  GetHAL
-GetKernelMEMC       SETS  "GET s.VMSAv6"
+GetKernelMEMC       SETS  "GET s." :CC: MEMM_Type
 GetMemInfo          SETS  "GET s.MemInfo"
 
 GetPalette          SETS  "GET s.vdu.vdupalxx"

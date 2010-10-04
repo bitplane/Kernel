@@ -65,8 +65,10 @@ ARM_Analyse
         MOV     a2, lr
         BL      Init_ARMarch
         MOV     lr, a2
+ [ MEMM_Type = "VMSAv6"
         CMP     a1, #ARMvF
         BEQ     ARM_Analyse_Fancy ; New ARM; use the feature regs to perform all the setup
+ ]
         Push    "v1,v2,v5,v6,v7,lr"
         ARM_read_ID v1
         ARM_read_cachetype v2
@@ -517,6 +519,7 @@ Analyse_WB_Cal_LD
 
         B       %FT90
 
+ [ MEMM_Type = "VMSAv6"
 Analyse_WB_CR7_Lx
         TST     v5, #CPUFlag_SplitCache
         BEQ     WeirdARMPanic             ; currently, only support harvard caches here
@@ -612,6 +615,7 @@ Analyse_WB_CR7_Lx
         MCR     p15, 0, a1, c1, c0, 1
 
         B       %FT90
+ ] ; MEMM_Type = "VMSAv6"
 
 90
         Pull    "v1,v2,v5,v6,v7,pc"
@@ -742,14 +746,13 @@ KnownCPUFlags
         DCD     CPUFlag_XScale,               0    ; X80321
         DCD     CPUFlag_ExtendedPages,        0    ; Cortex_A8
 
+ [ MEMM_Type = "VMSAv6"
 ; --------------------------------------------------------------------------
 ; ----- ARM_Analyse_Fancy --------------------------------------------------
 ; --------------------------------------------------------------------------
 ;
-; Although I don't have a copy of the ARMv7 ARM to check, I suspect that all
-; ARMs with an architecture of &F implement the feature registers described
-; in the Cortex-A8 TRM. Thus, for these new ARMs, we shall use the feature
-; registers to discover what the CPU is like.
+; For ARMv7 ARMs (arch=&F), we can detect everything via the feature registers
+; TODO - There's some stuff in here that can be tidied up/removed
 
 ; Things we need to set up:
 ; ProcessorType     (as listed in hdr.ARMops)
@@ -871,6 +874,7 @@ ARM_Analyse_Fancy
         ; others ...
 
         B       WeirdARMPanic                   ; stiff :)
+ ] ; MEMM_Type = "VMSAv6"
 
 ; --------------------------------------------------------------------------
 ; ----- ARMops -------------------------------------------------------------
@@ -1819,6 +1823,7 @@ MMU_ChangingUncachedEntries_WB_Cal_LD ROUT
         CPWAIT
         MOV     pc, lr
 
+ [ MEMM_Type = "VMSAv6" ; Need appropriate myIMB, etc. implementations if this is to be removed
 
 ; --------------------------------------------------------------------------
 ; ----- ARMops for Cortex-A8 and the like ----------------------------------
@@ -2218,6 +2223,8 @@ MMU_ChangingUncachedEntries_WB_CR7_Lx ROUT
         myDSB
         myISB
         MOV     pc, lr
+
+ ] ; MEMM_Type = "VMSAv6"
 
 ; --------------------------------------------------------------------------
 
