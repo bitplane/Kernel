@@ -991,6 +991,14 @@ VDWSSize # 0
 
                 ASSERT  VDWSSize <= 12 * 1024
 
+; IIC bus info block
+
+               ^ 0
+IICBus_Type    # 4 ; Bus type (HAL_IICType)
+IICBus_Status  # 4 ; Bus status (HAL_IICMonitorTransfer)
+IICBus_Device  # 4 ; Bus device (HAL_IICDevice)
+IICBus_Size    # 0
+
 ; *****************************************************************************
 ;                 Space in the first 32K is allocated below
 ; *****************************************************************************
@@ -1287,8 +1295,8 @@ NVRamWriteSize     #    1               ; Size of writable region (256byte units
 
                    AlignSpace
 
-IICType            #    4
-IICStatus          #    4
+IICBus_Count       *    3 ; 3 busses is enough for all current machines
+IICBus_Base        #    IICBus_Size*IICBus_Count
 
 AppSpaceDANode     #    DANode_NodeSize ; Dummy area node for application space (not on list)
 FreePoolDANode     #    DANode_NodeSize ; Area node for free pool

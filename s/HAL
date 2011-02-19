@@ -2093,7 +2093,7 @@ RISCOS_LogToPhys
         MOVCS   a1, #-1
         Pull    "r4,r5,r8,r9,pc"
 
-; kernel_oserror *RISCOS_IICOpV(int ndesc, IICDesc *descs)
+; kernel_oserror *RISCOS_IICOpV(IICDesc *descs, uint32_t ndesc_and_bus)
 RISCOS_IICOpV
         Push    "lr"
         BL      IIC_OpV
@@ -2383,22 +2383,28 @@ DebugHALPrint
 
 Reset_IRQ_Handler
         SUB     lr, lr, #4
-        Push    "a1-a4,sb,ip,lr"
+        Push    "a1-a4,v1-v2,sb,ip,lr"
         MRS     lr, SPSR
         Push    "lr"
-        MOV     a1, #ZeroPage
-        AddressHAL a1
-        LDR     a2, [a1, #IICType]
+        MOV     v2, #0
+        AddressHAL v2
+        MOV     v1, #IICBus_Base
+10
+        LDR     a2, [v1, #IICBus_Type]
         TST     a2, #IICFlag_Background
-        MOVNE   ip, sb
+        MOVNE   ip, v2
         BLNE    IICIRQ
+        ADD     v2, v2, #1
+        ADD     v1, v1, #IICBus_Size
+        CMP     v2, #IICBus_Count
+        BNE     %BT10
         MOV     a1, #InitIRQWs
         LDRB    a1, [a1, #KbdScanActive]
         TEQ     a1, #0
         CallHAL HAL_KbdScanInterrupt,NE
         Pull    "lr"
         MSR     SPSR_cxsf, lr
-        Pull    "a1-a4,sb,ip,pc",,^
+        Pull    "a1-a4,v1-v2,sb,ip,pc",,^
 
         END
 

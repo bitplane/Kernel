@@ -2746,7 +2746,7 @@ InitDynamicAreas Entry "r0-r8,r11,r12"
         MOV     r0, #0                          ; initialise module list to empty
         STR     r0, [r0, #Module_List]
 
-        MOV     lr, #SysHeapDANode              ; initialise system heap node
+        LDR     lr, =SysHeapDANode              ; initialise system heap node
         ADR     r0, InitSysHeapTable
         LDMIA   r0, {r0-r8}
         STMIA   lr, {r0-r8}
@@ -2851,7 +2851,7 @@ DynArea_QHinit_loop2
         STR     R1, [r2, #DANode_SortLink]          ; ...and last
 
         ADR     r1, DynArea_SysQHandleArray
-        MOV     r2, #SysHeapDANode
+        LDR     r2, =SysHeapDANode
         STR     r2, [r1, #ChangeDyn_SysHeap:SHL:2]
         MOV     r2, #FreePoolDANode
         STR     r2, [r1, #ChangeDyn_FreePool:SHL:2]

@@ -560,10 +560,6 @@ Continue_after_HALInit
         MSR     CPSR_c, r0
  ]
 
-; Ensure any CMOS operation aborted
-
-        BL      IICAbort
-
         BL      IICInit
 
  [ CacheCMOSRAM
