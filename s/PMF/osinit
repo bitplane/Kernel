@@ -1194,6 +1194,43 @@ Configure37C665 Entry "r0,r1"
 ReadUniqueID
         Entry   "r0-r3,r9,r12"
         AddressHAL
+        ; Check for extended ID first
+        MOV     r0, #0
+        CallHAL HAL_ExtMachineID
+        CMP     r0, #0
+        BEQ     %FT10
+        MOV     r2, sp
+        SUB     r1, r2, r0
+        BIC     r1, r1, #3
+        MOV     sp, r1
+        Push    "r1,r2" ; Remember old SP, buffer pointer
+        CallHAL HAL_ExtMachineID
+        Pull    "r1"
+        MOV     r2, #0
+        MOV     r3, #0
+05
+        ; Construct the 7 byte machine ID using this simple algorithm:
+        ; EOR each extended ID byte with the low byte of the 7 byte ID,
+        ; then rotate left 7 bits
+        LDRB    r12, [r1], #1
+        EOR     r2, r2, r12
+        AND     r12, r3, #&fe0000
+        MOV     r3, r3, LSL #7
+        ORR     r3, r3, r2, LSR #25
+        MOV     r2, r2, LSL #7
+        ORR     r2, r2, r12, LSR #17
+        SUBS    r0, r0, #1
+        BNE     %BT05
+        LDR     sp, [sp] ; Restore SP
+        STR     r2, [r0, #RawMachineID+0]
+        STR     r3, [r0, #RawMachineID+4]
+        ; Abuse CheckCRC to calculate CRC byte
+        BL      CheckCRC
+        MOV     r0, #0
+        STRB    r2, [r0, #RawMachineID+7]
+        EXIT
+
+10
         CallHAL HAL_MachineID
         MOV     r3, #0
         STR     r0, [r3, #RawMachineID+0]
@@ -1389,6 +1426,7 @@ IDError
         EXIT
 
 CheckCRC ROUT
+        ; Note: artificial ID generator relies on the required CRC being returned in R2!
         LDR     r1, =RawMachineID               ; pointer to current byte
         MOV     r2, #0
         MOV     r3, #7                          ; number of bytes to do

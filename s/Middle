@@ -1270,7 +1270,7 @@ dhte
 ; Out   r0 = sysinfo for r0in
 
 ReadSysInfo_Code ROUT
-        CMP     r0,#10 ;R0 > 9, so illegal value
+        CMP     r0,#13 ;R0 > 12, so illegal value
         ADDLO   PC, PC, R0,LSL #2
         B       ReadSysInfo_InvalidReason
 
@@ -1284,6 +1284,9 @@ ReadSysInfo_Code ROUT
         B       %FT70
         B       %FT80
         B       %FT90
+        B       ReadSysInfo_InvalidReason ; ROL's "read OS version" call
+        B       %FT110
+        B       %FT120
 
 ReadSysInfo_InvalidReason
         ADR     r0, ErrorBlock_BadReadSysInfo
@@ -1961,6 +1964,72 @@ osri6_maxvalue * (.-4-osri6_table) :SHR: 2
         ADREQ   R0, RSI9_Builddate  ; The build date (dynamically generated)
         MOVNE   R0, #0              ; Other ones are unimplemented
 95
+        ExitSWIHandler
+
+; OS_ReadSysInfo 11 - Read debug information
+;
+; On entry:
+;    r0 = 11 (reason code 11)
+;
+; On exit:
+;    r0 = pointer to function for debug character output
+;    r1 = pointer to function for debug character input
+;
+
+110
+        ; Check if both HAL_DebugTX and HAL_DebugRX are available
+        Push    "r8-r9,r14"
+        MOV     R8, #1
+        MOV     R9, #EntryNo_HAL_DebugTX
+        SWI     XOS_Hardware
+        MOVVC   R8, #1
+        MOVVC   R9, #EntryNo_HAL_DebugRX
+        SWIVC   XOS_Hardware
+        Pull    "r8-r9,r14"
+        BVS     ReadSysInfo_InvalidReason
+        ADR     R0, RSI_DebugTX
+        ADR     R1, RSI_DebugRX
+        ExitSWIHandler
+
+RSI_DebugTX
+        ; In:
+        ; R0 = char
+        ; Privileged mode
+        ; Out:
+        ; R0-R3, PSR corrupt
+        Push    "r9,r12,r14"
+        AddressHAL
+        CallHAL HAL_DebugTX
+        Pull    "r9,r12,pc"
+
+RSI_DebugRX
+        ; In:
+        ; Privileged mode
+        ; Out:
+        ; R0=char read, or -1
+        ; R1-R3, PSR corrupt
+        Push    "r9,r12,r14"
+        AddressHAL
+        CallHAL HAL_DebugRX
+        Pull    "r9,r12,pc"
+
+; OS_ReadSysInfo 12 - Read extended machine ID
+;
+; On entry:
+;    r0 = 12 (reason code 12)
+;    r1 = Pointer to word-aligned buffer, or 0 to read size
+;
+; On exit:
+;    r0 = Size of extended machine ID, or 0 if none/corrupt
+;    Buffer in R1 filled, if applicable
+;
+
+120
+        Push    "r1-r3,r9,r14"
+        MOV     R0,#0 ; Set R0 to 0, in case HAL_ExtMachineID isn't implemented
+        AddressHAL R0
+        CallHAL HAL_ExtMachineID
+        Pull    "r1-r3,r9,r14"
         ExitSWIHandler
 
         GET    s.Time+Date
