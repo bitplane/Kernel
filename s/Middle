@@ -2026,8 +2026,8 @@ RSI_DebugRX
 
 120
         Push    "r1-r3,r9,r14"
-        MOV     R0,#0 ; Set R0 to 0, in case HAL_ExtMachineID isn't implemented
-        AddressHAL R0
+        AddressHAL
+        MOV     R0, R1 ; HAL takes the buffer pointer in R0
         CallHAL HAL_ExtMachineID
         Pull    "r1-r3,r9,r14"
         ExitSWIHandler

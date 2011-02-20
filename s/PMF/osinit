@@ -1200,10 +1200,10 @@ ReadUniqueID
         CMP     r0, #0
         BEQ     %FT10
         MOV     r2, sp
-        SUB     r1, r2, r0
-        BIC     r1, r1, #3
-        MOV     sp, r1
-        Push    "r1,r2" ; Remember old SP, buffer pointer
+        SUB     r0, r2, r0
+        BIC     r0, r0, #3
+        MOV     sp, r0
+        Push    "r0,r2" ; Remember old SP, buffer pointer
         CallHAL HAL_ExtMachineID
         Pull    "r1"
         MOV     r2, #0
