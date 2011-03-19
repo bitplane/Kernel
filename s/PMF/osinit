@@ -877,7 +877,7 @@ MonitorLeadList
   ]; STB
 
 
- [ StorkPowerSave
+ [ StorkPowerSave :LAND: :LNOT: HAL
 ;
 ; List of latch addresses and initial values.
 ;

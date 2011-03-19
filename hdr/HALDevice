@@ -58,6 +58,7 @@ HALDeviceSysPeri_DMAC   #       1       ; DMA controller
 HALDeviceSysPeri_DMAB   #       1       ; DMA channel - buffer type
 HALDeviceSysPeri_DMAL   #       1       ; DMA channel - list type
 HALDeviceSysPeri_RTC    #       1       ; RTCDevice
+HALDeviceSysPeri_CPUClk #       1       ; CPU clock generator
 
 HALDeviceType_Comms     *       4 :SHL: 8
                         ^       1
@@ -119,6 +120,9 @@ HALDeviceID_DMAL_M5229          #       1
 
                                 ^       0
 HALDeviceID_RTC_TPS65950        #       1
+
+                                ^       0
+HALDeviceID_CPUClk_OMAP3        #       1
 
                                 ^       0
 HALDeviceID_VDU_OMAP3           #       1
