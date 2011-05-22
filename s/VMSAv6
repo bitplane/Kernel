@@ -29,29 +29,6 @@ DebugAborts SETL {FALSE}
         ASSERT :LNOT: ECC
         ASSERT :LNOT: ARM6support
 
-; Fixed page allocation is as follows
-
-        ^       0
-; Undefined stack memory (size 8K) starts immediately after end of L2PT (which is variable size)
-; Soft CAM map (variable size) starts immediately after end of UndStack
-
-StaticPagesSize         *       @
-
-; Logical addresses are as follows
-
-FixedAreasL2Size        *       96*1024        ; amount of L2 to cover fixed areas, excluding free pool
-
-UndStackSoftCamChunk    *       &01E00000
-UndStackSize            *       8*1024
-CamEntriesForVicky      *       UndStackSoftCamChunk + UndStackSize
-
-
-; - address for virtual area for StrongARM data cache cleaning (32k, for two 16k areas)
-; - the two areas are used in strict rotation for each full clean, so that we can do a full
-;   clean (and not flush) with interrupts on
-; - the address must be aligned such that EOR with 16*1024 flipflops between the two addresses
-ARMA_Cleaners_address  * &01F10000
-
 OneMByte                EQU     (1024*1024)
 SixteenMByte            EQU     (1024*1024 * 16)
 

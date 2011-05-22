@@ -320,7 +320,7 @@ CBack_VectorReq * 4
         OPT     4
 
   [ HAL
-        ORG     ROM + 64*1024
+        ORG     ROM + OSROM_HALSize
   |
         ORG     ROM
   ]
@@ -337,7 +337,7 @@ KernelBase
 ; *****************************************************************************
 
   [ HAL
-;        ORG     ROM + 64*1024
+;        ORG     ROM + OSROM_HALSize
   |
 ;        ORG     ROM
   ]
@@ -354,7 +354,7 @@ DoTestThings      SETS ""
 RISCOS_Header
         =       "OSIm"
         DCD     0
-        DCD     OSROM_ImageSize*1024 - 64*1024
+        DCD     OSROM_ImageSize*1024 - OSROM_HALSize
         DCD     RISCOS_Entries - RISCOS_Header
         DCD     (RISCOS_Entries_End - RISCOS_Entries) / 4
 

@@ -19,6 +19,7 @@
         GET     Hdr:System
         GET     Hdr:CPU.Arch
         GET     Hdr:Machine.<Machine>
+        GET     Hdr:HALSize.<HALSize>
         GET     Hdr:ImageSize.<ImageSize>
         GET     Hdr:UserIF.<UserIF>
         $GetCPU
