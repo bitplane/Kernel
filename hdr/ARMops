@@ -41,6 +41,7 @@ ARM922T         #       1
 X80200          #       1
 X80321          #       1
 Cortex_A8       #       1
+ARM1176JZF_S    #       1
 ARMunk          *       255
 
 ; These flags are stored in ProcessorFlags and returned by OS_PlatformFeatures 0 (Read code features)

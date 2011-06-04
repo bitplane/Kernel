@@ -160,7 +160,7 @@ AMB_LazyFixUp ROUT
         ARM_write_FAR r5                                 ;restore FAR
         ARM_write_FSR r6                                 ;restore FSR
       [ MEMM_Type = "VMSAv6"
-        myISB ; Not sure if this is necessary or not; do it just in case
+        myISB   ,r0 ; Not sure if this is necessary or not; do it just in case
       ]
 ;
 90

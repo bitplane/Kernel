@@ -76,12 +76,12 @@ RISCOS_InitARM
 
         ; Off we go.
         ARM_write_control a3
+        MOV     a2, #0
  [ MEMM_Type = "VMSAv6"
-        myISB ; Ensure the update went through
+        myISB   ,a2,,y ; Ensure the update went through
  ]
 
         ; In case it wasn't a hard reset
-        MOV     a2, #0
  [ MEMM_Type = "VMSAv6"
         CMP     a1, #ARMvF
         ; Assume that all ARMvF ARMs have multi-level caches and thus no single MCR op for invalidating all the caches
@@ -92,8 +92,8 @@ RISCOS_InitARM
         MCREQ   ARM_config_cp,0,a2,ARMv3_TLBflush_reg,C0        ; flush TLBs
         MCRNE   ARM_config_cp,0,a2,ARMv4_TLB_reg,C7             ; flush TLBs
  [ MEMM_Type = "VMSAv6"
-        myDSB
-        myISB
+        myDSB   ,a2,,y
+        myISB   ,a2,,y
  ]
 
         ; We assume that ARMs with an I cache can have it enabled while the MMU is off.
@@ -101,7 +101,7 @@ RISCOS_InitARM
         ORRNE   a3, a3, #MMUC_I
         ARM_write_control a3, NE                                ; whoosh
  [ MEMM_Type = "VMSAv6"
-        myISB ; Ensure the update went through
+        myISB   ,a2,,y ; Ensure the update went through
  ]
         ]
 
@@ -691,7 +691,7 @@ MMU_activation_zone
         CMP     ip, #ARMv6
         MCRGE   p15, 0, lr, c2, c0, 2           ; Ensure only TTBR0 is used (v6)
         MCRGT   p15, 0, lr, c12, c0, 0          ; Ensure exception vector base is 0 (Cortex)
-        myISB
+        myISB   ,lr,,y
         ORRGE   v5, v5, #MMUC_XP ; Extended pages enabled (v6)
         BICGT   v5, v5, #MMUC_TRE+MMUC_AFE ; TEX remap, Access Flag disabled (Cortex)
         BICGE   v5, v5, #MMUC_EE+MMUC_TE+MMUC_VE ; Exceptions = nonvectored LE ARM
@@ -703,19 +703,19 @@ MMU_activation_zone
 MMUon_instr
         ARM_write_control v5
   [ MEMM_Type = "VMSAv6"
-        myISB ; Just in case
+        MOV     lr, #0
+        myISB   ,lr,,y ; Just in case
   ]
         MOVEQ   sp, v5
         MSREQ   CPSR_c, #F32_bit+I32_bit+SVC32_mode
 
   [ MEMM_Type = "VMSAv6"
         CMP     ip, #ARMvF
-        MOV     lr, #0                                          ; junk MMU-off contents of I-cache
-        MCRNE   ARM_config_cp,0,lr,ARMv4_cache_reg,C7           ; (works on ARMv3)
+        MCRNE   ARM_config_cp,0,lr,ARMv4_cache_reg,C7           ; junk MMU-off contents of I-cache (works on ARMv3)
         MCREQ   p15, 0, lr, c7, c5, 0           ; invalidate instruction cache
         MCREQ   p15, 0, lr, c8, c7, 0           ; invalidate TLBs
         MCREQ   p15, 0, lr, c7, c5, 6           ; invalidate branch predictor
-        myISB ; Ensure below branch works
+        myISB   ,lr,,y ; Ensure below branch works
         BLEQ    HAL_InvalidateCache_ARMvF       ; invalidate data cache (and instruction+TLBs again!)
   |
         MOV     lr, #0                                          ; junk MMU-off contents of I-cache
@@ -1057,8 +1057,8 @@ HAL_InvalidateCache_ARMvF
         MCR     p15, 0, r8, c7, c5, 0           ; invalidate instruction cache
         MCR     p15, 0, r8, c8, c7, 0           ; invalidate TLBs
         MCR     p15, 0, r8, c7, c5, 6           ; invalidate branch target predictor
-        myDSB                                   ; Wait for completion
-        myISB
+        myDSB   ,r8,,y                          ; Wait for completion
+        myISB   ,r8,,y
         MRC     p15, 1, r8, c0, c0, 1 ; Cache level ID register
         BIC     r8, r8, #&FF000000 ; Discard unification/coherency bits
         MOV     r9, #0 ; Current cache level
@@ -1066,7 +1066,7 @@ HAL_InvalidateCache_ARMvF
         TST     r8, #7 ; Get flags
         BEQ     %FT10 ; Cache clean complete
         MCR     p15, 2, r9, c0, c0, 0 ; Program cache size selection register
-        myISB
+        myISB   ,r8,,y
         MRC     p15, 1, r10, c0, c0, 0 ; Get size info
         AND     r11, r10, #&7 ; log2(Line size)-2
         BIC     r10, r10, #&F0000007 ; Clear flags & line size
@@ -1096,13 +1096,13 @@ HAL_InvalidateCache_ARMvF
         BNE     %BT20
 10
         ; Wait for clean to complete
-        myDSB
         MOV     r8, #0
+        myDSB   ,r8,,y
         MCR     p15, 0, r8, c7, c5, 0           ; invalidate instruction cache
         MCR     p15, 0, r8, c8, c7, 0           ; invalidate TLBs
         MCR     p15, 0, r8, c7, c5, 6           ; invalidate branch target predictor
-        myDSB                                   ; Wait for completion
-        myISB
+        myDSB   ,r8,,y                          ; Wait for completion
+        myISB   ,r8,,y
         ; All caches clean; switch back to SVC, then recover the stored PSR from ip (although we can be fairly certain we started in SVC anyway)
         MSR     CPSR_c, #F32_bit+I32_bit+SVC32_mode
         MSR     CPSR_cxsf, ip

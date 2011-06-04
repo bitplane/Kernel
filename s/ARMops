@@ -695,6 +695,7 @@ $var    SETA    $var+(CT_M_$sz:SHL:CT_M_pos)
         MEND
 
 
+; CPUDesc table for ARMv3-ARMv6
 KnownCPUTable
 ;                                                        /------Cache Type register fields-----\ 
 ;                              ID reg   Mask     Arch    Type         S  Dsz Das Dln Isz Ias Iln
@@ -717,9 +718,10 @@ KnownCPUTable
         CPUDesc ARM922T,       &029220, &0FFFF0, ARMv4T,  WB_CR7_LDa, 1,  8K, 64, 8,  8K, 64, 8
         CPUDesc X80200,        &052000, &0FFFF0, ARMv5TE, WB_Cal_LD,  1, 32K, 32, 8, 32K, 32, 8
         CPUDesc X80321,    &69052400, &FFFFF700, ARMv5TE, WB_Cal_LD,  1, 32K, 32, 8, 32K, 32, 8
+        CPUDesc ARM1176JZF_S,  &00B760, &00FFF0, ARMv6,   WB_CR7_LDa, 1, 16K, 32, 16,16K, 32, 16
         DCD     -1
 
-; Simplified CPUDesc table for Fancy ARMs
+; Simplified CPUDesc table for ARMv7 only
 ; The cache size data is ignored
 KnownCPUTable_Fancy
         CPUDesc Cortex_A8,     &00C080, &00FFF0, ARMvF, WB_CR7_Lx, 1, 16K, 32, 16, 16K, 32, 16
@@ -744,7 +746,8 @@ KnownCPUFlags
         DCD     0,                            0    ; ARM 922T
         DCD     CPUFlag_ExtendedPages+CPUFlag_XScale,  0    ; X80200
         DCD     CPUFlag_XScale,               0    ; X80321
-        DCD     CPUFlag_ExtendedPages,        0    ; Cortex_A8
+        DCD     0,                            0    ; Cortex_A8
+        DCD     0,                            0    ; ARM1176JZF_S
 
  [ MEMM_Type = "VMSAv6"
 ; --------------------------------------------------------------------------
@@ -1878,8 +1881,7 @@ Cache_CleanAll_WB_CR7_Lx ROUT
         MOVS    a1, a1, LSR #3
         BNE     %BT20
 10
-        MOV     a1, #0
-        myDSB ; Wait for cache cleaning to complete
+        myDSB   ,a1 ; Wait for cache cleaning to complete
         Pull    "a2,a3,a4,v1,v2,v3,v4,v5,pc"
 
 
@@ -1925,11 +1927,11 @@ Cache_CleanInvalidateAll_WB_CR7_Lx ROUT
         BNE     %BT20
 10
         MOV     a1, #0
-        myDSB                         ; Wait for cache clean to complete
+        myDSB   ,a1,,y                ; Wait for cache clean to complete
         MCR     p15, 0, a1, c7, c5, 0 ; invalidate ICache
         MCR     p15, 0, a1, c7, c5, 6 ; invalidate branch predictors
-        myDSB                         ; Wait for cache/branch invalidation to complete
-        myISB                         ; Ensure that the effects of the completed cache/branch invalidation are visible
+        myDSB   ,a1,,y                ; Wait for cache/branch invalidation to complete
+        myISB   ,a1,,y                ; Ensure that the effects of the completed cache/branch invalidation are visible
         Pull    "a2,a3,a4,v1,v2,v3,v4,v5,pc"
 
 
@@ -1975,11 +1977,11 @@ Cache_InvalidateAll_WB_CR7_Lx ROUT
         BNE     %BT20
 10
         MOV     a1, #0
-        myDSB                         ; Wait for invalidation to complete
+        myDSB   ,a1,,y                ; Wait for invalidation to complete
         MCR     p15, 0, a1, c7, c5, 0 ; invalidate ICache
         MCR     p15, 0, a1, c7, c5, 6 ; invalidate branch predictors
-        myDSB                         ; Wait for cache/branch invalidation to complete
-        myISB                         ; Ensure that the effects of the completed cache/branch invalidation are visible
+        myDSB   ,a1,,y                ; Wait for cache/branch invalidation to complete
+        myISB   ,a1,,y                ; Ensure that the effects of the completed cache/branch invalidation are visible
         Pull    "a2,a3,a4,v1,v2,v3,v4,v5,pc"
 
 
@@ -1990,33 +1992,40 @@ Cache_RangeThreshold_WB_CR7_Lx ROUT
 
 
 MMU_ChangingUncached_WB_CR7_Lx
-        myDSB ; Ensure the page table write has actually completed
-        myISB ; Also required
+        myDSB   ,a1    ; Ensure the page table write has actually completed
+        myISB   ,a1,,y ; Also required
 TLB_InvalidateAll_WB_CR7_Lx ROUT
         MOV     a1, #0
         MCR     p15, 0, a1, c8, c7, 0 ; invalidate ITLB and DTLB
         MCR     p15, 0, a1, c7, c5, 6 ; invalidate branch predictors
-        myDSB                         ; Wait for cache/branch invalidation to complete
-        myISB                         ; Ensure that the effects of the completed cache/branch invalidation are visible
+        myDSB   ,a1,,y                ; Wait for cache/branch invalidation to complete
+        myISB   ,a1,,y                ; Ensure that the effects of the completed cache/branch invalidation are visible
         MOV     pc, lr
 
 
 ; a1 = page affected (page aligned address)
 ;
 MMU_ChangingUncachedEntry_WB_CR7_Lx
-        myDSB ; Ensure the page table write has actually completed
-        myISB ; Also required
+      [ NoARMv7
+        Push    "a2"
+        myDSB   ,a2    ; Ensure the page table write has actually completed
+        myISB   ,a2,,y ; Also required
+        Pull    "a2"
+      |
+        myDSB
+        myISB
+      ]
 TLB_InvalidateEntry_WB_CR7_Lx ROUT
         MCR     p15, 0, a1, c8, c7, 1 ; invalidate ITLB & DTLB entry
         MCR     p15, 0, a1, c7, c5, 6 ; invalidate branch predictors
-        myDSB                         ; Wait for cache/branch invalidation to complete
-        myISB                         ; Ensure that the effects of the completed cache/branch invalidation are visible
+        myDSB   ,a1                   ; Wait for cache/branch invalidation to complete
+        myISB   ,a1,,y                ; Ensure that the effects of the completed cache/branch invalidation are visible
         MOV     pc, lr
 
 
 WriteBuffer_Drain_WB_CR7_Lx ROUT
-        myDSB ; DSB is the new name for write buffer draining
-        myISB ; Also do ISB for extra paranoia
+        myDSB   ,a1    ; DSB is the new name for write buffer draining
+        myISB   ,a1,,y ; Also do ISB for extra paranoia
         MOV     pc, lr
 
 
@@ -2064,11 +2073,11 @@ IMB_Full_WB_CR7_Lx ROUT
         BGE     %BT20
 10
         MOV     a1, #0
-        myDSB                         ; Wait for clean to complete
+        myDSB   ,a1,,y                ; Wait for clean to complete
         MCR     p15, 0, a1, c7, c5, 0 ; invalidate ICache
         MCR     p15, 0, a1, c7, c5, 6 ; invalidate branch predictors
-        myDSB                         ; Wait for cache/branch invalidation to complete
-        myISB                         ; Ensure that the effects of the completed cache/branch invalidation are visible
+        myDSB   ,a1,,y                ; Wait for cache/branch invalidation to complete
+        myISB   ,a1,,y                ; Ensure that the effects of the completed cache/branch invalidation are visible
         Pull    "a2,a3,a4,v1,v2,v3,v4,v5,pc"
 
 ;  a1 = start address (inclusive, cache line aligned)
@@ -2090,7 +2099,7 @@ IMB_Range_WB_CR7_Lx ROUT
         ADD     a1, a1, lr
         CMP     a1, a2
         BLO     %BT10
-        myDSB ; Wait for clean to complete
+        myDSB   ,a1  ; Wait for clean to complete
         Pull    "a1" ; Get start address back
         MOV     lr, #0
         LDRB    lr, [lr, #ICache_LineLen] ; Use ICache line length, just in case D&I length differ
@@ -2101,28 +2110,28 @@ IMB_Range_WB_CR7_Lx ROUT
         CMP     a1, a2
         BLO     %BT10
         MCR     p15, 0, a1, c7, c5, 6 ; invalidate branch predictors
-        myDSB                         ; Wait for cache/branch invalidation to complete
-        myISB                         ; Ensure that the effects of the completed cache/branch invalidation are visible
+        myDSB   ,a1                   ; Wait for cache/branch invalidation to complete
+        myISB   ,a1,,y                ; Ensure that the effects of the completed cache/branch invalidation are visible
         Pull    "a3,pc"
 
 MMU_Changing_WB_CR7_Lx ROUT
         Push    "lr"
-        myDSB ; Ensure the page table write has actually completed
-        myISB ; Also required
+        myDSB   ,a1    ; Ensure the page table write has actually completed
+        myISB   ,a1,,y ; Also required
         BL      Cache_CleanInvalidateAll_WB_CR7_Lx
         MOV     a1, #0
         MCR     p15, 0, a1, c8, c7, 0 ; invalidate ITLB and DTLB
-        myDSB                         ; Wait TLB invalidation to complete
-        myISB                         ; Ensure that the effects are visible
+        myDSB   ,a1,,y                ; Wait TLB invalidation to complete
+        myISB   ,a1,,y                ; Ensure that the effects are visible
         Pull    "pc"
 
 ; a1 = page affected (page aligned address)
 ;
 MMU_ChangingEntry_WB_CR7_Lx ROUT
         Push    "a2, lr"
-        myDSB ; Ensure the page table write has actually completed
-        myISB ; Also required
         MOV     lr, #0
+        myDSB   ,lr,,y ; Ensure the page table write has actually completed
+        myISB   ,lr,,y ; Also required
         LDRB    lr, [lr, #DCache_LineLen] ; log2(line len)-2
         MOV     a2, #4
         MOV     lr, a2, LSL lr
@@ -2132,8 +2141,8 @@ MMU_ChangingEntry_WB_CR7_Lx ROUT
         ADD     a1, a1, lr
         CMP     a1, a2
         BNE     %BT10
-        myDSB ; Wait for clean to complete
         MOV     lr, #0
+        myDSB   ,lr,,y ; Wait for clean to complete
         LDRB    lr, [lr, #ICache_LineLen] ; Use ICache line length, just in case D&I length differ
         MOV     a1, #4
         MOV     lr, a1, LSL lr
@@ -2146,8 +2155,8 @@ MMU_ChangingEntry_WB_CR7_Lx ROUT
         SUB     a1, a1, #PageSize
         MCR     p15, 0, a1, c8, c7, 1           ; invalidate DTLB and ITLB
         MCR     p15, 0, a1, c7, c5, 6           ; invalidate branch predictors
-        myDSB
-        myISB
+        myDSB   ,a1
+        myISB   ,a1,,y
         Pull    "a2, pc"
 
 ; a1 = first page affected (page aligned address)
@@ -2155,8 +2164,8 @@ MMU_ChangingEntry_WB_CR7_Lx ROUT
 ;
 MMU_ChangingEntries_WB_CR7_Lx ROUT
         Push    "a2, a3, lr"
-        myDSB ; Ensure the page table write has actually completed
-        myISB ; Also required
+        myDSB   ,lr    ; Ensure the page table write has actually completed
+        myISB   ,lr,,y ; Also required
         MOV     a2, a2, LSL #Log2PageSize
         MOV     a3, #0
         LDR     a3, [a3, #DCache_RangeThreshold]   ;check whether cheaper to do global clean
@@ -2173,8 +2182,8 @@ MMU_ChangingEntries_WB_CR7_Lx ROUT
         ADD     a1, a1, a3
         CMP     a1, a2
         BNE     %BT10
-        myDSB ; Wait for clean to complete
         MOV     a3, #0
+        myDSB   ,a3,,y ; Wait for clean to complete
         LDRB    a3, [a3, #ICache_LineLen] ; Use ICache line length, just in case D&I length differ
         MOV     a1, #4
         MOV     a3, a1, LSL a3
@@ -2190,39 +2199,38 @@ MMU_ChangingEntries_WB_CR7_Lx ROUT
         CMP     lr, a2
         BNE     %BT20
         MCR     p15, 0, a1, c7, c5, 6           ; invalidate branch predictors
-        myDSB
-        myISB
+        myDSB   ,a1
+        myISB   ,a1,,y
         Pull    "a2, a3, pc"
 ;
 30
         BL      Cache_CleanInvalidateAll_WB_CR7_Lx
         MOV     a1, #0
         MCR     p15, 0, a1, c8, c7, 0              ; invalidate ITLB and DTLB
-        myDSB                         ; Wait TLB invalidation to complete
-        myISB                         ; Ensure that the effects are visible
+        myDSB   ,a1,,y                ; Wait TLB invalidation to complete
+        myISB   ,a1,,y                ; Ensure that the effects are visible
         Pull    "a2, a3, pc"
 
 ; a1 = first page affected (page aligned address)
 ; a2 = number of pages
 ;
 MMU_ChangingUncachedEntries_WB_CR7_Lx ROUT
-        myDSB ; Ensure the page table write has actually completed
-        myISB ; Also required
+        Push    "a2,lr"
+        myDSB   ,lr    ; Ensure the page table write has actually completed
+        myISB   ,lr,,y ; Also required
         CMP     a2, #32                            ; arbitrary-ish threshold
         MCRHS   p15, 0, a1, c8, c7, 0              ; invalidate ITLB and DTLB
         BHS     %FT20
-        Push    "a2"
 10
         MCR     p15, 0, a1, c8, c7, 1              ; invalidate DTLB & ITLB entry
         ADD     a1, a1, #PageSize
         SUBS    a2, a2, #1
         BNE     %BT10
-        Pull    "a2"
 20
         MCR     p15, 0, a1, c7, c5, 6           ; invalidate branch predictors
-        myDSB
-        myISB
-        MOV     pc, lr
+        myDSB   ,lr,,y
+        myISB   ,lr,,y
+        Pull    "a2,pc"
 
  ] ; MEMM_Type = "VMSAv6"
 
@@ -2239,9 +2247,8 @@ ARM_PrintProcessorType
 
         Push    "lr"
         ADR     a2, PNameTable
-        LDR     a1, [a2, a1, LSL #1]
-        MOV     a1, a1, LSL #16
-        ADD     a1, a2, a1, LSR #16
+        LDHA    a1, a2, a1, a3
+        ADD     a1, a2, a1
         BL      Write0_Translated
         SWI     XOS_NewLine
         SWI     XOS_NewLine
@@ -2265,6 +2272,7 @@ PNameTable
         DCW     PName_X80200    - PNameTable
         DCW     PName_X80321    - PNameTable
         DCW     PName_Cortex_A8 - PNameTable
+        DCW     PName_ARM1176JZF_S - PNameTable
 
 PName_ARM600
         =       "600:ARM 600 Processor",0
@@ -2298,6 +2306,8 @@ PName_X80321
         =       "X80321:80321 Processor",0
 PName_Cortex_A8
         =       "CortexA8:Cortex-A8 Processor",0
+PName_ARM1176JZF_S
+        =       "ARM1176JZF_S:ARM1176JZF-S Processor",0
         ALIGN
 
 
