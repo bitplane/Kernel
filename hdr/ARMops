@@ -21,7 +21,7 @@ ARMv5T   *       4
 ARMv5TE  *       5
 ARMv5TEJ *       6
 ARMv6    *       7
-ARMvF    *       &F ; 'Fancy' ARM that describes its features in the feature registers (Cortex/ARMv7 and above?)
+ARMvF    *       &F ; 'Fancy' ARM that describes its features in the feature registers. Generally this implies ARMv7+, but there are also a few ARMv6 CPUs with this value (e.g. ARM1176JZF-S)
 
                 ^       0
 ARM600          #       1

@@ -718,13 +718,13 @@ KnownCPUTable
         CPUDesc ARM922T,       &029220, &0FFFF0, ARMv4T,  WB_CR7_LDa, 1,  8K, 64, 8,  8K, 64, 8
         CPUDesc X80200,        &052000, &0FFFF0, ARMv5TE, WB_Cal_LD,  1, 32K, 32, 8, 32K, 32, 8
         CPUDesc X80321,    &69052400, &FFFFF700, ARMv5TE, WB_Cal_LD,  1, 32K, 32, 8, 32K, 32, 8
-        CPUDesc ARM1176JZF_S,  &00B760, &00FFF0, ARMv6,   WB_CR7_LDa, 1, 16K, 32, 16,16K, 32, 16
         DCD     -1
 
-; Simplified CPUDesc table for ARMv7 only
-; The cache size data is ignored
+; Simplified CPUDesc table for ARMvF
+; The cache size data is ignored for ARMv7.
 KnownCPUTable_Fancy
         CPUDesc Cortex_A8,     &00C080, &00FFF0, ARMvF, WB_CR7_Lx, 1, 16K, 32, 16, 16K, 32, 16
+        CPUDesc ARM1176JZF_S,  &00B760, &00FFF0, ARMv6, WB_CR7_LDa, 1, 16K, 32, 16,16K, 32, 16
         DCD     -1
 
 ; Peculiar characteristics of individual ARMs not deducable otherwise. First field is
@@ -792,12 +792,33 @@ ARM_Analyse_Fancy
 
         MOV     v5, #CPUFlag_32bitOS+CPUFlag_No26bitMode ; 26bit has been obsolete for a long time
 
+        ; Work out whether the cache info is in ARMv6 or ARMv7 style
+        MRC     p15, 0, a1, c0, c0, 1
+        TST     a1, #&80000000
+        BNE     %FT25
+
+        ; ARMv6 format cache type register.
+        ; TODO - Use the cache type register to deduce the cache info.
+        ; For now, just fall back on the values in the CPU table.
+        ASSERT  CT_Isize_pos = 0
+        MOV     a1, v2
+        ADD     a2, v6, #ICache_Info
+        BL      EvaluateCache
+        MOV     a1, v2, LSR #CT_Dsize_pos
+        ADD     a2, v6, #DCache_Info
+        BL      EvaluateCache
+        B       %FT27
+
+25
+        ; ARMv7 format cache type register. This should(!) mean that we have the cache level ID register, and all the other ARMv7 cache registers.
+
         ; Do we have a split cache?
         MRC     p15, 1, a1, c0, c0, 1
         AND     a2, a1, #7
         TEQ     a2, #3
         ORREQ   v5, v5, #CPUFlag_SynchroniseCodeAreas+CPUFlag_SplitCache
 
+27
         [ CacheOff
         ORR     v5, v5, #CPUFlag_SynchroniseCodeAreas
         |

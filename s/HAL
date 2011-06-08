@@ -27,20 +27,32 @@ DRAMOffset_LastFixed    #       0
 ;        IMPORT  Init_ARMarch
 ;        IMPORT  ARM_Analyse
 
-
  [ MEMM_Type = "VMSAv6"
-mmuc_table ; Table of MMUC init values. First word is value to ORR, second is value to BIC
- DCD MMUC_F+MMUC_L+MMUC_D+MMUC_P, MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M+MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S ; ARMv3
- DCD MMUC_F+MMUC_L+MMUC_D+MMUC_P, MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M+MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S ; ARMv4
- DCD MMUC_F+MMUC_L+MMUC_D+MMUC_P, MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M+MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S ; ARMv4T
- DCD MMUC_F+MMUC_L+MMUC_D+MMUC_P, MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M+MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S ; ARMv5
- DCD MMUC_F+MMUC_L+MMUC_D+MMUC_P, MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M+MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S ; ARMv5T
- DCD MMUC_F+MMUC_L+MMUC_D+MMUC_P, MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M+MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S ; ARMv5TE
- DCD MMUC_F+MMUC_L+MMUC_D+MMUC_P, MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M+MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S ; ARMv5TEJ
- DCD MMUC_F+MMUC_L+MMUC_D+MMUC_P+MMUC_U, MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M+MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S+MMUC_VE+MMUC_EE+MMUC_L2 ; ARMv6
- ; Skip undefined architecture numbers
-mmuc_table_armvf
- DCD 0, MMUC_C+MMUC_A+MMUC_M+MMUC_V+MMUC_I+MMUC_Z+MMUC_RR+MMUC_TRE+MMUC_AFE+MMUC_TE ; ARMvF (Cortex)
+mmuc_init_new
+        ; MMUC initialisation flags for ARMv6/ARMv7
+        ; This tries to leave the reserved/unpredictable bits untouched, while initialising everything else to what we want
+                ; ARMv7MP (probably) wants SW. ARMv6 wants U+XP (which should both be fixed at 1 on ARMv7)
+        DCD     MMUC_SW+MMUC_U+MMUC_XP
+                ; M+C+W+Z+I+L2 clear to keep MMU/caches off.
+                ; A to keep alignment exceptions off (for now at least)
+                ; B+EE clear for little-endian
+                ; S+R+RR clear to match mmuc_init_old
+                ; V+VE clear to keep processor vectors at &0
+                ; FI clear to disable fast FIQs (interruptible LDM/STM)
+                ; TRE+AFE clear for our VMSAv6 implementation
+                ; TE clear for processor vectors to run in ARM mode
+        DCD     MMUC_M+MMUC_A+MMUC_C+MMUC_W+MMUC_B+MMUC_S+MMUC_R+MMUC_Z+MMUC_I+MMUC_V+MMUC_RR+MMUC_FI+MMUC_VE+MMUC_EE+MMUC_L2+MMUC_TRE+MMUC_AFE+MMUC_TE
+mmuc_init_old
+        ; MMUC initialisation flags for ARMv5 and below, as per ARM600 MMU code
+                ; Late abort (ARM6 only), 32-bit Data and Program space. No Write buffer (ARM920T
+                ; spec says W bit should be set, but I reckon they're bluffing).
+                ;
+                ; The F bit's tricky. (1 => CPCLK=FCLK, 0=>CPCLK=FCLK/2). The only chip using it was the
+                ; ARM700, it never really reached the customer, and it's always been programmed with
+                ; CPCLK=FCLK. Therefore we'll keep it that way, and ignore the layering violation.
+        DCD     MMUC_F+MMUC_L+MMUC_D+MMUC_P
+                ; All of these bits should be off already, but just in case...
+        DCD     MMUC_B+MMUC_W+MMUC_C+MMUC_A+MMUC_M+MMUC_RR+MMUC_V+MMUC_I+MMUC_Z+MMUC_R+MMUC_S
  ]
 
 ; void RISCOS_InitARM(unsigned int flags)
@@ -52,15 +64,13 @@ RISCOS_InitARM
         MOVEQ   a3, #0
         ARM_read_control a3, NE
  [ MEMM_Type = "VMSAv6"
-        ; Use a lookup table to get the correct control register set/clear mask
-        CMP     a1, #ARMvF
-        ADREQ   a2, mmuc_table_armvf
-        ADRLT   a2, mmuc_table
-        ADDLT   a2, a2, a1, LSL #3
-        LDMIA   a2, {a2, a4}
+        CMP     a1, #ARMv6
+        CMPNE   a1, #ARMvF
+        ADREQ   a2, mmuc_init_new
+        ADRNE   a2, mmuc_init_old
+        LDMIA   a2, {a2, lr}
         ORR     a3, a3, a2
-        BIC     a3, a3, a4
-        CMP     a1,#0
+        BIC     a3, a3, lr
  |
         ; Late abort (ARM6 only), 32-bit Data and Program space. No Write buffer (ARM920T
         ; spec says W bit should be set, but I reckon they're bluffing).
@@ -693,7 +703,7 @@ MMU_activation_zone
         MCRGT   p15, 0, lr, c12, c0, 0          ; Ensure exception vector base is 0 (Cortex)
         myISB   ,lr,,y
         ORRGE   v5, v5, #MMUC_XP ; Extended pages enabled (v6)
-        BICGT   v5, v5, #MMUC_TRE+MMUC_AFE ; TEX remap, Access Flag disabled (Cortex)
+        BICGE   v5, v5, #MMUC_TRE+MMUC_AFE ; TEX remap, Access Flag disabled
         BICGE   v5, v5, #MMUC_EE+MMUC_TE+MMUC_VE ; Exceptions = nonvectored LE ARM
         CMP     ip, #0
   ]
@@ -1059,6 +1069,12 @@ HAL_InvalidateCache_ARMvF
         MCR     p15, 0, r8, c7, c5, 6           ; invalidate branch target predictor
         myDSB   ,r8,,y                          ; Wait for completion
         myISB   ,r8,,y
+        ; Check whether we're ARMv7 (and thus multi-level cache) or ARMv6 (and thus single-level cache)
+        MRC     p15, 0, r9, c0, c0, 1
+        TST     r9, #&80000000 ; EQ=ARMv6, NE=ARMv7
+        MCREQ   ARM_config_cp,0,r8,ARMv4_cache_reg,C7 ; ARMv3-ARMv6 I+D cache flush
+        BEQ     %FT10 ; Skip to the end
+
         MRC     p15, 1, r8, c0, c0, 1 ; Cache level ID register
         BIC     r8, r8, #&FF000000 ; Discard unification/coherency bits
         MOV     r9, #0 ; Current cache level
