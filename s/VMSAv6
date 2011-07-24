@@ -476,8 +476,17 @@ DAbPreVeneer    ROUT
         ; MVA TLB ops have the form coproc=p15, CRn=c8, opc1=0, opc2=1
         ; Note that some non-MVA ops also follow the above rules - at the moment we make no attempt to filter those false-positives out
         ; This code is also written from the perspective of running on an ARMv7 CPU - behaviour under ARMv6 hasn't been checked!
-        ; Also, as wrong as it seems, attempting to load the aborting instruction could trigger an abort (something wrong with the prefetch handler?)
+
+        ; Also, as wrong as it seems, attempting to load the aborting instruction could trigger an abort (something wrong with the prefetch handler? or cache flushes not being done properly?)
         ; So this code must protect DFAR, DFSR, spsr_abort, and lr_abort from being clobbered
+
+        ; We also need to be careful about how AMBControl will react to the abort:
+        ; If DFAR and lr_abort both point to the same page, when we try loading the instruction (and it triggers an abort), AMBControl will map in the page
+        ; So when control returns to us (and we determine that it wasn't an MVA op) AMBControl will be called again (for DFAR), see that the page is mapped in, and claim that it's a real abort instead of the lazy fixup that it really is
+        ; (The workaround for that issue probably makes the DFAR, DFSR, spsr_abort, lr_abort saving irrelevant, but it's better to be safe than sorry)
+
+        CMP     lr, #AplWorkMaxSize             ; Assume that MVA ops won't come from application space (cheap workaround for above-mentioned AMBControl issue)
+        BLO     %FT10
         MRS     r1, SPSR
         TST     r1, #T32_bit
         BNE     %FT10                           ; We don't cope with Thumb ATM. Should really check for Jazelle too!
