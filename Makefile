@@ -66,6 +66,7 @@ EXPORTS   = ${EXP_HDR}.EnvNumbers \
             ${EXP_HDR}.HALDevice \
             ${EXP_HDR}.RTCDevice \
             ${EXP_HDR}.VideoDevice \
+            ${EXP_HDR}.GPIODevice \
             ${EXP_HDR}.OSEntries \
             ${C_EXP_HDR}.RISCOS \
             ${C_EXP_HDR}.HALEntries \
@@ -174,6 +175,9 @@ ${EXP_HDR}.OSEntries: hdr.OSEntries
 	
 ${EXP_HDR}.VideoDevice: hdr.VideoDevice
 	${CP} hdr.VideoDevice $@ ${CPFLAGS}
+	
+${EXP_HDR}.GPIODevice: hdr.GPIODevice
+	${CP} hdr.GPIODevice $@ ${CPFLAGS}
 	
 ${C_EXP_HDR}.RISCOS: hdr.RISCOS
 	${MKDIR} ${C_EXP_HDR}

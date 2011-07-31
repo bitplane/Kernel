@@ -64,6 +64,7 @@ HALDeviceType_Comms     *       4 :SHL: 8
                         ^       1
 HALDeviceComms_UART     #       1       ; UART
 HALDeviceComms_EtherNIC #       1       ; Ethernet NIC
+HALDeviceComms_GPIO     #       1       ; GPIO interface
 
 
 HALDeviceBus_Pro        *       0 :SHL: 28
@@ -130,6 +131,9 @@ HALDeviceID_VDU_OMAP3           #       1
                                 ^       0
 HALDeviceID_EtherNIC_SMSC9221   #       1
 HALDeviceID_EtherNIC_DM9000     #       1
+
+                                ^       0
+HALDeviceID_GPIO_OMAP3          #       1
 
  ]
 
