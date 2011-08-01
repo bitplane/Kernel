@@ -38,6 +38,7 @@ LD      = link
 CP      = copy
 RM      = remove
 WIPE    = -wipe
+PERL    = do <Perl$Dir>.perl
 CCFLAGS = -c -depend !Depend -IC:
 ASFLAGS = -depend !Depend ${THROWBACK} -Stamp -quit -To $@ -From
 ARMASMFLAGS = -depend !Depend -g ${THROWBACK}
@@ -181,11 +182,11 @@ ${EXP_HDR}.GPIODevice: hdr.GPIODevice
 	
 ${C_EXP_HDR}.RISCOS: hdr.RISCOS
 	${MKDIR} ${C_EXP_HDR}
-	perl Build:Hdr2H hdr.RISCOS $@
+	${PERL} Build:Hdr2H hdr.RISCOS $@
 
 ${C_EXP_HDR}.HALEntries: hdr.HALEntries
 	${MKDIR} ${C_EXP_HDR}
-	perl Build:Hdr2H hdr.HALEntries $@
+	${PERL} Build:Hdr2H hdr.HALEntries $@
 
 ${C_EXP_HDR}.HALDevice: o.Global.h.HALDevice h.HALDevice
 	${CP} h.HALDevice $@ ${CPFLAGS}
@@ -193,16 +194,16 @@ ${C_EXP_HDR}.HALDevice: o.Global.h.HALDevice h.HALDevice
 
 ${C_EXP_HDR}.OSEntries: hdr.OSEntries
 	${MKDIR} ${C_EXP_HDR}
-	perl Build:Hdr2H hdr.OSEntries $@
+	${PERL} Build:Hdr2H hdr.OSEntries $@
 
 ${C_EXP_HDR}.Variables: hdr.Variables
 	${MKDIR} ${C_EXP_HDR}
-	perl Build:Hdr2H hdr.Variables $@
+	${PERL} Build:Hdr2H hdr.Variables $@
 
 o.Global.h.HALDevice: hdr.HALDevice
 	${MKDIR} o.Global.h
 	dir o
-	perl Build:Hdr2H ^.hdr.HALDevice Global.h.HALDevice
+	${PERL} Build:Hdr2H ^.hdr.HALDevice Global.h.HALDevice
 	back
 
 BBETYPE = kernel
