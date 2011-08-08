@@ -144,7 +144,7 @@ Write
   ]
 
   [ E2ROMSupport
-        MOV     R14, #0                 ; don't write to protected section
+        LDR     R14, =ZeroPage          ; don't write to protected section
         LDRB    R14, [R14, #NVRamWriteSize]
         CMP     R0, R14, LSL #8         ; (note assumption that NVRamWriteSize is
         Pull    "R0-R4, PC", HS         ; outside mangled region).
@@ -171,7 +171,7 @@ Write
 10
 	CMP	r2, #&100		; check small cache limit
 	BCS	%FT15
-	LDR	R1, =CMOSRAMCache	; update cache, but always write to
+	LDR	R1, =ZeroPage+CMOSRAMCache	; update cache, but always write to
 	STRB	R3, [R1, R2]		; real hardware as well
 15
 
@@ -197,7 +197,7 @@ Write
     	CallHAL	HAL_NVMemoryWrite
         TST     R4, #&1000000
         BNE     %FT18
-        LDR     R1, =CMOSRAMCache
+        LDR     R1, =ZeroPage+CMOSRAMCache
         STRB    R4, [R1, #PhysChecksum]
         STRB    R4, [sp]
         MOV     R0, #PhysChecksum
@@ -260,7 +260,7 @@ Write
 WriteBlock ROUT
         Push    "R0-R4,R14"
   [     E2ROMSupport
-        MOV	R14, #0
+        LDR	R14, =ZeroPage
         LDRB    R4, [R14, #NVRamWriteSize]
         LDRB	R14, [R14, #NVRamSize]
         MOV     R4, R4, LSL #8
@@ -384,7 +384,7 @@ WriteSubBlock ROUT
         MOVHI   R3, R14
  [ E2ROMSupport
 ; R3 = logical end of possible transaction (exclusive). Now check we don't cross page boundaries.
-        MOV	R14, #0
+        LDR	R14, =ZeroPage
         LDRB	R14, [R14, #NVRamPageSize]
         MOV     R5, #1
         MOV     R14, R5, LSL R14        ; R14 = (1<<pagesize)
@@ -402,7 +402,7 @@ WriteSubBlock ROUT
         CMP     R0, #&100               ; check it's a cacheable segment
         BHS     %FT15
 
-        LDR     R14, =CMOSRAMCache
+        LDR     R14, =ZeroPage+CMOSRAMCache
         Push    "R3, R4"
         ADD     R3, R3, R4              ; R3 = physical end address
         ADD     R4, R4, R0              ; R4 = physical address
@@ -550,7 +550,7 @@ Read
   [     E2ROMSupport
         BHS     %FT13
         ; If there's no RTC, read dummy values from the cache
-        MOV     R14, #0
+        LDR     R14, =ZeroPage
         LDR     R14, [R14, #RTCFitted]
         TEQ     R14, #0
         BNE     %FT15
@@ -558,7 +558,7 @@ Read
         BLO     %FT15
   ]
 13	CMP	R0, #&100		; check small cache limit
-	LDRCC	R2, =CMOSRAMCache	; if in range
+	LDRCC	R2, =ZeroPage+CMOSRAMCache ; if in range
 	LDRCCB	R0, [R2, R0]		; read from cache
 	Pull	"R1,R2,PC", CC		; and exit
 15
@@ -643,7 +643,7 @@ Read
 ReadBlock ROUT
         Push    "R0-R3,R14"
   [     E2ROMSupport
-        MOV	R14, #0
+        LDR	R14, =ZeroPage
         LDRB	R14, [R14, #NVRamSize]
         MOV     R14, R14, LSL #8
   |
@@ -722,7 +722,7 @@ ReadSubBlock ROUT
         CMP     R0, #&100
         BHS     %FT15
 
-        LDR     R14, =CMOSRAMCache
+        LDR     R14, =ZeroPage+CMOSRAMCache
         ADD     R3, R3, R4              ; R3 = physical end address
         ADD     R4, R4, R0              ; R4 = physical address
         ADD     R3, R3, R14             ; R3 = cache end address
@@ -904,7 +904,7 @@ ChecksumSubBlock ROUT
         CMP     R0, #&100
         BHS     %FT15
 
-        LDR     R14, =CMOSRAMCache
+        LDR     R14, =ZeroPage+CMOSRAMCache
         ADD     R3, R3, R4              ; R3 = physical end address
         ADD     R4, R4, R0              ; R4 = physical address
         ADD     R3, R3, R14             ; R3 = cache end address
@@ -1036,16 +1036,17 @@ ChecksumSubBlock ROUT
   [	E2ROMSupport
 GetI2CAddress ROUT
 	Push	"R14"
-	MOV	R14, #0			; get no 256 byte blocks and calculate end address
+	LDR	R14, =ZeroPage		; get no 256 byte blocks and calculate end address
 	LDRB	R14, [R14, #NVRamSize]
 	MOV	R14, R14, LSL #8
 	CMP	R0, R14
 	Pull	"PC",CS 		; indicate invalid
 
 ; address is < end address -> is valid
-	MOV	R1, #0
+	LDR	R1, =ZeroPage
 	;LDR	R1, [R1, #RTCFitted]    ; This causes a headache if both an RTC and NVRAM are fitted
 	;TEQ	R1, #0
+	;LDREQ	R1, =ZeroPage
 	;LDREQB  R1, [R1, #NVRamBase]   ; RTC overlaps bottom of NVRAM
 	LDRB    R1, [R1, #NVRamBase]    ; RTC overlaps bottom of NVRAM
 
@@ -1081,7 +1082,7 @@ GetI2CAddress ROUT
 MangleCMOSAddress ROUT
  [ E2ROMSupport
 	Push	"R14"
-	MOV	R14, #0			; read no 256 byte blocks and calculate end address
+	LDR	R14, =ZeroPage		; read no 256 byte blocks and calculate end address
 	LDRB	R14, [R14, #NVRamSize]
 	MOV	R14, R14, LSL #8
 	CMP	R0, R14			; if >= end address then
@@ -1134,7 +1135,7 @@ ValChecksum	Entry "R1-R2"
         MOV     R0, #0
         MOV     R1, #CMOSxseed
    [ E2ROMSupport
-	MOV	R2, #0			; read number of 256 byte blocks and calculate end address
+	LDR	R2, =ZeroPage		; read number of 256 byte blocks and calculate end address
 	LDRB	R2, [R2, #NVRamSize]
 	MOV	R2, R2, LSL #8
    |
@@ -1172,7 +1173,7 @@ MakeChecksum	ROUT
         MOV     R0, #0
         MOV     R1, #CMOSxseed
   [ E2ROMSupport
-	MOV	R2, #0
+	LDR	R2, =ZeroPage
 	LDRB	R2, [R2, #NVRamSize]
 	MOV	R2, R2, LSL #8
   |
@@ -1605,20 +1606,19 @@ InitCMOSCache	Entry "r1-r6, sb,r12"
 	STRB    R3, [R4, #NVRamSpeed]
 
 	; Have we got an RTC ?
-	LDR 	R2, =ZeroPage
-	MOV	R4, #0
+	MOV	R2, #0
      [  RTCSupport
 	MOV	R0, #RTCAddressDAL
 	BL	DummyAccess
 	BVC	%FT13
 	MOV	R0, #RTCAddressPHI
 	BL	DummyAccess
-	STRVS   R4, [R2, #RTCFitted]
+	STRVS   R2, [R4, #RTCFitted]
 13
-	STRVC   R0, [R2, #RTCFitted]
+	STRVC   R0, [R4, #RTCFitted]
 	BLVC    InitRTC
      |
-        STR     R4, [R2, #RTCFitted]
+        STR     R2, [R4, #RTCFitted]
      ]
 
  [ HAL
@@ -1675,7 +1675,7 @@ InitCMOSCache	Entry "r1-r6, sb,r12"
 
     	; Else use HAL routine.
     	MOV 	R0, #0
-    	LDR 	R1, =CMOSRAMCache
+    	LDR 	R1, =ZeroPage+CMOSRAMCache
     	MOV 	R2, #&100
     	CallHAL	HAL_NVMemoryRead
     	TEQ 	R0, #&100
@@ -1780,7 +1780,7 @@ InitCMOSCache_NoCMOS
         STRB    R3, [R2, #NVRamSpeed]
 06
 	; Initialise the cache
-	LDR	R3, =CMOSRAMCache
+	LDR	R3, =ZeroPage+CMOSRAMCache
 
         TEQ     R4, #8                  ; check for 2K part
 	MOVNE	r0, #&00		; if not, then start at 0 anyway and read non-OTP data into location 0..15
@@ -1796,7 +1796,7 @@ InitCMOSCache_NoCMOS
     	MOV	R1, #RTCAddressPHI
     	MOV	R2, #&10
     	MOV	R4, #&100		; stop at address &100
-    	LDR	R3, =CMOSRAMCache
+    	LDR	R3, =ZeroPage+CMOSRAMCache
     ]
 
         ; Note - R4 MUST be &100 to prevent crossover between 256-byte pages
@@ -1923,7 +1923,12 @@ NVMemory_Unknown
 ;
 NVMemory_Size
   [     E2ROMSupport
+      [ ZeroPage = 0
         LDRB    R1, [R0, #NVRamSize]
+      |
+        LDR     R1, =ZeroPage
+        LDRB    R1, [R1, #NVRamSize]
+      ]
         MOV     R1, R1, LSL #8
   |
         MOV     R1, #240

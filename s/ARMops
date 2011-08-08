@@ -72,7 +72,7 @@ ARM_Analyse
         Push    "v1,v2,v5,v6,v7,lr"
         ARM_read_ID v1
         ARM_read_cachetype v2
-        MOV     v6, #ZeroPage
+        LDR     v6, =ZeroPage
 
         ADRL    v7, KnownCPUTable
 FindARMloop
@@ -111,6 +111,9 @@ FindARMloop
         |
         MOV     v5, #0
         ]
+        [ HiProcVecs
+        ORR     v5, v5, #CPUFlag_HiProcVecs
+        ]
 
         TST     v2, #CT_S
         ORRNE   v5, v5, #CPUFlag_SplitCache+CPUFlag_SynchroniseCodeAreas
@@ -147,9 +150,10 @@ FindARMloop
         BNE     %FT35
 
         ; Do we get vector exceptions on read?
-        MOV     a1, #0
+        LDR     a2, =ZeroPage
+        MOV     a1, a2
         LDR     a1, [a1]                        ; If this aborts a1 will be left unchanged
-        TEQ     a1, #0
+        TEQ     a1, a2
         ORREQ   v5, v5, #CPUFlag_VectorReadException
         ]
 35
@@ -342,8 +346,7 @@ Analyse_WB_CR7_LDa
         ADRL    a1, MMU_ChangingUncachedEntries_WB_CR7_LDa
         STR     a1, [v6, #Proc_MMU_ChangingUncachedEntries]
 
-        MOV     a1, #0
-        LDRB    a2, [a1, #DCache_Associativity]
+        LDRB    a2, [v6, #DCache_Associativity]
 
         MOV     a3, #256
         MOV     a4, #8           ; to find log2(ASSOC), rounded up
@@ -357,15 +360,15 @@ Analyse_WB_CR7_LDa_L1
         RSB     a2, a4, #32
         MOV     a3, #1
         MOV     a3, a3, LSL a2
-        STR     a3, [a1, #DCache_IndexBit]
-        LDR     a4, [a1, #DCache_NSets]
-        LDRB    a2, [a1, #DCache_LineLen]
+        STR     a3, [v6, #DCache_IndexBit]
+        LDR     a4, [v6, #DCache_NSets]
+        LDRB    a2, [v6, #DCache_LineLen]
         SUB     a4, a4, #1
         MUL     a4, a2, a4
-        STR     a4, [a1, #DCache_IndexSegStart]
+        STR     a4, [v6, #DCache_IndexSegStart]
 
         MOV     a2, #64*1024                         ; arbitrary-ish
-        STR     a2, [a1, #DCache_RangeThreshold]
+        STR     a2, [v6, #DCache_RangeThreshold]
 
         ADRL    a1, XCBTableWBR                      ; assume read-allocate WB/WT cache
         STR     a1, [v6, #MMU_PCBTrans]
@@ -421,14 +424,13 @@ Analyse_WB_Crd
         ADRL    a1, MMU_ChangingUncachedEntries_WB_Crd
         STR     a1, [v6, #Proc_MMU_ChangingUncachedEntries]
 
-        MOV     a1, #0
         LDR     a2, =DCacheCleanAddress
-        STR     a2, [a1, #DCache_CleanBaseAddress]
-        STR     a2, [a1, #DCache_CleanNextAddress]
+        STR     a2, [v6, #DCache_CleanBaseAddress]
+        STR     a2, [v6, #DCache_CleanNextAddress]
         MOV     a2, #64*1024                       ;arbitrary-ish threshold
-        STR     a2, [a1, #DCache_RangeThreshold]
+        STR     a2, [v6, #DCache_RangeThreshold]
 
-        LDRB    a2, [a1, #ProcessorType]
+        LDRB    a2, [v6, #ProcessorType]
         TEQ     a2, #SA110
         ADREQL  a2, XCBTableSA110
         BEQ     Analyse_WB_Crd_finish
@@ -437,7 +439,7 @@ Analyse_WB_Crd
         ADREQL  a2, XCBTableSA1110
         ADRNEL  a2, XCBTableWBR
 Analyse_WB_Crd_finish
-        STR     a2, [a1, #MMU_PCBTrans]
+        STR     a2, [v6, #MMU_PCBTrans]
         B       %FT90
 
 Analyse_WB_Cal_LD
@@ -489,16 +491,15 @@ Analyse_WB_Cal_LD
         ADRL    a1, MMU_ChangingUncachedEntries_WB_Cal_LD
         STR     a1, [v6, #Proc_MMU_ChangingUncachedEntries]
 
-        MOV     a1, #0
         LDR     a2, =DCacheCleanAddress
-        STR     a2, [a1, #DCache_CleanBaseAddress]
-        STR     a2, [a1, #DCache_CleanNextAddress]
+        STR     a2, [v6, #DCache_CleanBaseAddress]
+        STR     a2, [v6, #DCache_CleanNextAddress]
 
   [ XScaleMiniCache
         !       1, "You need to arrange for XScale mini-cache clean area to be mini-cacheable"
         LDR     a2, =DCacheCleanAddress + 4 * 32*1024
-        STR     a2, [a1, #MCache_CleanBaseAddress]
-        STR     a2, [a1, #MCache_CleanNextAddress]
+        STR     a2, [v6, #MCache_CleanBaseAddress]
+        STR     a2, [v6, #MCache_CleanNextAddress]
   ]
 
 
@@ -508,14 +509,14 @@ Analyse_WB_Cal_LD
   |
         MOV     a2, #32*1024
   ]
-        STR     a2, [a1, #DCache_RangeThreshold]
+        STR     a2, [v6, #DCache_RangeThreshold]
 
         ; enable full coprocessor access
         LDR     a2, =&3FFF
         MCR     p15, 0, a2, c15, c1
 
         ADRL    a2, XCBTableXScaleWA ; choose between RA and WA here
-        STR     a2, [a1, #MMU_PCBTrans]
+        STR     a2, [v6, #MMU_PCBTrans]
 
         B       %FT90
 
@@ -769,7 +770,7 @@ KnownCPUFlags
 ARM_Analyse_Fancy
         Push    "v1,v2,v5,v6,v7,lr"
         ARM_read_ID v1
-        MOV     v6, #ZeroPage
+        LDR     v6, =ZeroPage
         ADRL    v7, KnownCPUTable_Fancy
 10
         LDMIA   v7!, {a1, a2}
@@ -791,6 +792,9 @@ ARM_Analyse_Fancy
         STRB    a1, [v6, #Cache_Type]
 
         MOV     v5, #CPUFlag_32bitOS+CPUFlag_No26bitMode ; 26bit has been obsolete for a long time
+        [ HiProcVecs
+        ORR     v5, v5, #CPUFlag_HiProcVecs
+        ]
 
         ; Work out whether the cache info is in ARMv6 or ARMv7 style
         MRC     p15, 0, a1, c0, c0, 1
@@ -1132,7 +1136,7 @@ Cache_CleanAll_WB_CR7_LDa ROUT
 ;    DCache_IndexSegStart = &000000E0  (start at index=0, segment = 7)
 ;
         Push    "a2, ip"
-        MOV     ip, #0
+        LDR     ip, =ZeroPage
         LDRB    a1, [ip, #DCache_LineLen]        ; segment field starts at this bit
         LDR     a2, [ip, #DCache_IndexBit]       ; index field starts at this bit
         LDR     ip, [ip, #DCache_IndexSegStart]  ; starting value, with index at min, seg at max
@@ -1153,7 +1157,7 @@ Cache_CleanInvalidateAll_WB_CR7_LDa ROUT
 ; similar to Cache_CleanAll, but does clean&invalidate of Dcache, and invalidates ICache
 ;
         Push    "a2, ip"
-        MOV     ip, #0
+        LDR     ip, =ZeroPage
         LDRB    a1, [ip, #DCache_LineLen]        ; segment field starts at this bit
         LDR     a2, [ip, #DCache_IndexBit]       ; index field starts at this bit
         LDR     ip, [ip, #DCache_IndexSegStart]  ; starting value, with index at min, seg at max
@@ -1180,7 +1184,7 @@ Cache_InvalidateAll_WB_CR7_LDa ROUT
 
 
 Cache_RangeThreshold_WB_CR7_LDa ROUT
-        MOV     a1, #0
+        LDR     a1, =ZeroPage
         LDR     a1, [a1, #DCache_RangeThreshold]
         MOV     pc, lr
 
@@ -1226,7 +1230,7 @@ IMB_Range_WB_CR7_LDa ROUT
         ADD     a2, a2, a1
         BHS     IMB_Full_WB_CR7_LDa
         Push    "lr"
-        MOV     lr, #0
+        LDR     lr, =ZeroPage
         LDRB    lr, [lr, #DCache_LineLen]
 10
         MCR     p15, 0, a1, c7, c10, 1           ; clean DCache entry by VA
@@ -1250,7 +1254,7 @@ MMU_Changing_WB_CR7_LDa ROUT
 MMU_ChangingEntry_WB_CR7_LDa ROUT
         Push    "a2, lr"
         ADD     a2, a1, #PageSize
-        MOV     lr, #0
+        LDR     lr, =ZeroPage
         LDRB    lr, [lr, #DCache_LineLen]
 10
         MCR     p15, 0, a1, c7, c14, 1          ; clean&invalidate DCache entry
@@ -1271,13 +1275,12 @@ MMU_ChangingEntry_WB_CR7_LDa ROUT
 MMU_ChangingEntries_WB_CR7_LDa ROUT
         Push    "a2, a3, lr"
         MOV     a2, a2, LSL #Log2PageSize
-        MOV     a3, #0
-        LDR     a3, [a3, #DCache_RangeThreshold]   ;check whether cheaper to do global clean
+        LDR     lr, =ZeroPage
+        LDR     a3, [lr, #DCache_RangeThreshold]   ;check whether cheaper to do global clean
         CMP     a2, a3
         BHS     %FT30
         ADD     a2, a2, a1                         ;clean end address (exclusive)
-        MOV     a3, #0
-        LDRB    a3, [a3, #DCache_LineLen]
+        LDRB    a3, [lr, #DCache_LineLen]
         MOV     lr, a1
 10
         MCR     p15, 0, a1, c7, c14, 1             ; clean&invalidate DCache entry
@@ -1365,7 +1368,7 @@ Cache_CleanAll_WB_Crd ROUT
 ;
 
         Push    "a2-a4, v1, v2, lr"
-        MOV     lr, #0
+        LDR     lr, =ZeroPage
         LDR     a1, [lr, #DCache_CleanBaseAddress]
         LDR     a2, =DCache_CleanNextAddress
         LDR     a3, [lr, #DCache_Size]
@@ -1409,7 +1412,7 @@ Cache_InvalidateAll_WB_Crd
         MOV     pc, lr
 
 Cache_RangeThreshold_WB_Crd
-        MOV     a1, #0
+        LDR     a1, =ZeroPage
         LDR     a1, [a1, #DCache_RangeThreshold]
         MOV     pc, lr
 
@@ -1435,7 +1438,7 @@ IMB_Range_WB_Crd ROUT
         ADD     a2, a2, a1
         BHS     IMB_Full_WB_Crd
         Push    "lr"
-        MOV     lr, #0
+        LDR     lr, =ZeroPage
         LDRB    lr, [lr, #DCache_LineLen]
 10
         MCR     p15, 0, a1, c7, c10, 1             ;clean DCache entry
@@ -1462,7 +1465,7 @@ MMU_ChangingEntry_WB_Crd ROUT
 ;
         Push    "a2, lr"
         ADD     a2, a1, #PageSize
-        MOV     lr, #0
+        LDR     lr, =ZeroPage
         LDRB    lr, [lr, #DCache_LineLen]
 10
         MCR     p15, 0, a1, c7, c10, 1             ;clean DCache entry
@@ -1483,13 +1486,12 @@ MMU_ChangingEntries_WB_Crd ROUT
 ;
         Push    "a2, a3, lr"
         MOV     a2, a2, LSL #Log2PageSize
-        MOV     a3, #0
-        LDR     a3, [a3, #DCache_RangeThreshold]   ;check whether cheaper to do global clean
+        LDR     lr, =ZeroPage
+        LDR     a3, [lr, #DCache_RangeThreshold]   ;check whether cheaper to do global clean
         CMP     a2, a3
         BHS     %FT30
         ADD     a2, a2, a1                         ;clean end address (exclusive)
-        MOV     a3, #0
-        LDRB    a3, [a3, #DCache_LineLen]
+        LDRB    a3, [lr, #DCache_LineLen]
         MOV     lr, a1
 10
         MCR     p15, 0, a1, c7, c10, 1             ;clean DCache entry
@@ -1603,9 +1605,9 @@ Cache_CleanAll_WB_Cal_LD ROUT
 ; - see remarks at top of XScale ops for discussion of strategy
 ;
         Push    "a2-a4, v1, v2, lr"
-        MOV     lr, #0
+        LDR     lr, =ZeroPage
         LDR     a1, [lr, #DCache_CleanBaseAddress]
-        LDR     a2, =DCache_CleanNextAddress
+        LDR     a2, =ZeroPage+DCache_CleanNextAddress
         LDR     a3, [lr, #DCache_Size]
         LDRB    a4, [lr, #DCache_LineLen]
         MOV     v2, #0
@@ -1634,9 +1636,9 @@ Cache_MiniInvalidateAll_WB_Cal_LD ROUT
 ; 'cleans' to achieve invalidate as side effect (mini cache will be configured writethrough)
 ;
         Push    "a2-a4, v1, v2, lr"
-        MOV     lr, #0
+        LDR     lr, =ZeroPage
         LDR     a1, [lr, #MCache_CleanBaseAddress]
-        LDR     a2, =MCache_CleanNextAddr
+        LDR     a2, =ZeroPage+MCache_CleanNextAddr
         LDR     a3, [lr, #MCache_Size]
         LDRB    a4, [lr, #MCache_LineLen]
         MOV     v2, #0
@@ -1684,7 +1686,7 @@ Cache_InvalidateAll_WB_Cal_LD ROUT
 
 
 Cache_RangeThreshold_WB_Cal_LD ROUT
-        MOV     a1, #0
+        LDR     a1, =ZeroPage
         LDR     a1, [a1, #DCache_RangeThreshold]
         MOV     pc, lr
 
@@ -1723,7 +1725,7 @@ IMB_Range_WB_Cal_LD ROUT
         ADD     a2, a2, a1
         BHS     IMB_Full_WB_Cal_LD
         Push    "lr"
-        MOV     lr, #0
+        LDR     lr, =ZeroPage
         LDRB    lr, [lr, #DCache_LineLen]
 10
         MCR     p15, 0, a1, c7, c10, 1           ; clean DCache entry
@@ -1759,7 +1761,7 @@ MMU_ChangingEntry_WB_Cal_LD ROUT
 ;
         Push    "a2, lr"
         ADD     a2, a1, #PageSize
-        MOV     lr, #0
+        LDR     lr, =ZeroPage
         LDRB    lr, [lr, #DCache_LineLen]
 10
         MCR     p15, 0, a1, c7, c10, 1          ; clean DCache entry
@@ -1789,13 +1791,12 @@ MMU_ChangingEntries_WB_Cal_LD ROUT
 ;
         Push    "a2, a3, lr"
         MOV     a2, a2, LSL #Log2PageSize
-        MOV     a3, #0
-        LDR     a3, [a3, #DCache_RangeThreshold]   ;check whether cheaper to do global clean
+        LDR     lr, =ZeroPage
+        LDR     a3, [lr, #DCache_RangeThreshold]   ;check whether cheaper to do global clean
         CMP     a2, a3
         BHS     %FT30
         ADD     a2, a2, a1                         ;clean end address (exclusive)
-        MOV     a3, #0
-        LDRB    a3, [a3, #DCache_LineLen]
+        LDRB    a3, [lr, #DCache_LineLen]
         MOV     lr, a1
 10
         MCR     p15, 0, a1, c7, c10, 1             ; clean DCache entry
@@ -1866,7 +1867,7 @@ MMU_ChangingUncachedEntries_WB_Cal_LD ROUT
 Cache_CleanAll_WB_CR7_Lx ROUT
 ; Clean cache by traversing all sets and ways for all data caches
         Push    "a2,a3,a4,v1,v2,v3,v4,v5,lr"
-        MOV     lr, #ZeroPage
+        LDR     lr, =ZeroPage
         LDR     a1, [lr, #Cache_Lx_Info]!
         ADD     lr, lr, #Cache_Lx_DTable-Cache_Lx_Info
         BIC     a1, a1, #&FF000000 ; Discard unification/coherency bits
@@ -1911,7 +1912,7 @@ Cache_CleanInvalidateAll_WB_CR7_Lx ROUT
 ; similar to Cache_CleanAll, but does clean&invalidate of Dcache, and invalidates ICache
 ;
         Push    "a2,a3,a4,v1,v2,v3,v4,v5,lr"
-        MOV     lr, #ZeroPage
+        LDR     lr, =ZeroPage
         LDR     a1, [lr, #Cache_Lx_Info]!
         ADD     lr, lr, #Cache_Lx_DTable-Cache_Lx_Info
         BIC     a1, a1, #&FF000000 ; Discard unification/coherency bits
@@ -1961,7 +1962,7 @@ Cache_InvalidateAll_WB_CR7_Lx ROUT
 ; no clean, assume caller knows what's happening
 ;
         Push    "a2,a3,a4,v1,v2,v3,v4,v5,lr"
-        MOV     lr, #ZeroPage
+        LDR     lr, =ZeroPage
         LDR     a1, [lr, #Cache_Lx_Info]!
         ADD     lr, lr, #Cache_Lx_DTable-Cache_Lx_Info
         BIC     a1, a1, #&FF000000 ; Discard unification/coherency bits
@@ -2007,7 +2008,7 @@ Cache_InvalidateAll_WB_CR7_Lx ROUT
 
 
 Cache_RangeThreshold_WB_CR7_Lx ROUT
-        MOV     a1, #0
+        LDR     a1, =ZeroPage
         LDR     a1, [a1, #DCache_RangeThreshold]
         MOV     pc, lr
 
@@ -2056,7 +2057,7 @@ IMB_Full_WB_CR7_Lx ROUT
 ; Luckily, we only need to clean as far as the level of unification
 ;
         Push    "a2,a3,a4,v1,v2,v3,v4,v5,lr"
-        MOV     lr, #ZeroPage
+        LDR     lr, =ZeroPage
         LDR     a1, [lr, #Cache_Lx_Info]!
         ADD     lr, lr, #Cache_Lx_DTable-Cache_Lx_Info
         MOV     a1, a1, LSR #27
@@ -2111,7 +2112,7 @@ IMB_Range_WB_CR7_Lx ROUT
         CMPLO   a1, a2 ; The routine below will fail if the end address wraps around, so just IMB_Full instead
         BHS     IMB_Full_WB_CR7_Lx
         Push    "a1,a3,lr"
-        MOV     lr, #0
+        LDR     lr, =ZeroPage
         LDRB    lr, [lr, #DCache_LineLen] ; log2(line len)-2
         MOV     a3, #4
         MOV     lr, a3, LSL lr
@@ -2122,7 +2123,7 @@ IMB_Range_WB_CR7_Lx ROUT
         BLO     %BT10
         myDSB   ,a1  ; Wait for clean to complete
         Pull    "a1" ; Get start address back
-        MOV     lr, #0
+        LDR     lr, =ZeroPage
         LDRB    lr, [lr, #ICache_LineLen] ; Use ICache line length, just in case D&I length differ
         MOV     lr, a3, LSL lr
 10
@@ -2150,9 +2151,9 @@ MMU_Changing_WB_CR7_Lx ROUT
 ;
 MMU_ChangingEntry_WB_CR7_Lx ROUT
         Push    "a2, lr"
-        MOV     lr, #0
-        myDSB   ,lr,,y ; Ensure the page table write has actually completed
+        myDSB   ,lr ; Ensure the page table write has actually completed
         myISB   ,lr,,y ; Also required
+        LDR     lr, =ZeroPage
         LDRB    lr, [lr, #DCache_LineLen] ; log2(line len)-2
         MOV     a2, #4
         MOV     lr, a2, LSL lr
@@ -2162,8 +2163,8 @@ MMU_ChangingEntry_WB_CR7_Lx ROUT
         ADD     a1, a1, lr
         CMP     a1, a2
         BNE     %BT10
-        MOV     lr, #0
-        myDSB   ,lr,,y ; Wait for clean to complete
+        myDSB   ,lr ; Wait for clean to complete
+        LDR     lr, =ZeroPage
         LDRB    lr, [lr, #ICache_LineLen] ; Use ICache line length, just in case D&I length differ
         MOV     a1, #4
         MOV     lr, a1, LSL lr
@@ -2188,13 +2189,12 @@ MMU_ChangingEntries_WB_CR7_Lx ROUT
         myDSB   ,lr    ; Ensure the page table write has actually completed
         myISB   ,lr,,y ; Also required
         MOV     a2, a2, LSL #Log2PageSize
-        MOV     a3, #0
-        LDR     a3, [a3, #DCache_RangeThreshold]   ;check whether cheaper to do global clean
+        LDR     lr, =ZeroPage
+        LDR     a3, [lr, #DCache_RangeThreshold]   ;check whether cheaper to do global clean
         CMP     a2, a3
         BHS     %FT30
         ADD     a2, a2, a1                         ;clean end address (exclusive)
-        MOV     a3, #0
-        LDRB    a3, [a3, #DCache_LineLen] ; log2(line len)-2
+        LDRB    a3, [lr, #DCache_LineLen] ; log2(line len)-2
         MOV     lr, #4
         MOV     a3, lr, LSL a3
         MOV     lr, a1
@@ -2203,8 +2203,8 @@ MMU_ChangingEntries_WB_CR7_Lx ROUT
         ADD     a1, a1, a3
         CMP     a1, a2
         BNE     %BT10
-        MOV     a3, #0
-        myDSB   ,a3,,y ; Wait for clean to complete
+        myDSB   ,a3 ; Wait for clean to complete
+        LDR     a3, =ZeroPage
         LDRB    a3, [a3, #ICache_LineLen] ; Use ICache line length, just in case D&I length differ
         MOV     a1, #4
         MOV     a3, a1, LSL a3
@@ -2261,7 +2261,7 @@ MMU_ChangingUncachedEntries_WB_CR7_Lx ROUT
 ;        IMPORT  Write0_Translated
 
 ARM_PrintProcessorType
-        MOV     a1, #ZeroPage
+        LDR     a1, =ZeroPage
         LDRB    a1, [a1, #ProcessorType]
         TEQ     a1, #ARMunk
         MOVEQ   pc, lr

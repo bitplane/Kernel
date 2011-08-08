@@ -179,4 +179,6 @@ SpoolBadExit
         MOVVC   R0, R1                  ; if closed OK, then restore old error
         RETURNVS                        ; still indicate error
 
+        LTORG
+
         END

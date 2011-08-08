@@ -357,7 +357,9 @@ GetMessages     SETS    ""
               ]
 
                 GBLL    HiProcVecs              ; Relocate processor vectors and first 16K of workspace to &FFFF0000
-HiProcVecs      SETL    {FALSE} ; Coming soon!
+HiProcVecs      SETL    {FALSE} ; Leave off for now
+; In an ideal world, we'd use something like this:
+; HiProcVecs      SETL    M_Tungsten :LOR: :LNOT: NoARMv6
 
                 GBLL    DebugForcedReset        ; debug forced hard resets
 DebugForcedReset SETL   {FALSE}

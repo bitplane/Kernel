@@ -728,7 +728,7 @@ OsWord0F_5byte
 
 CheckYear ROUT
         Push    "R0,R1,R2,R14"
-        MOV     R0, #0
+        LDR     R0, =ZeroPage
         LDR     R0, [R0, #RTCFitted]
  [ HAL
         CMP     R0, #2048
@@ -866,5 +866,7 @@ OsWord12
 OsWord13
 OsWord14
         Unused
+
+        LTORG
 
         END

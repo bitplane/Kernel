@@ -167,7 +167,7 @@ IIC_OpV ROUT
       |
         MOV     r9, #IOC
       ]
-        MOV     r2, #IRQsema
+        LDR     r2, =ZeroPage+IRQsema
         MOV     r12, sp                 ; original sp, also pointer to link
         ORR     lr, r8, #2_10000
         MSR     CPSR_c, lr              ; IRQs off, force 32-bit mode
@@ -282,7 +282,7 @@ IICDoOp ROUT
         ; Get correct IICBus ptr in R2
         AND     R3, R1, #255
         MOV     iiclr, #IICBus_Size
-        MOV     R2, #IICBus_Base
+        LDR     R2, =ZeroPage+IICBus_Base
         MLA     R2, R3, iiclr, R2
 
         MOV     R3, R0
@@ -386,7 +386,7 @@ IIC_ExitOK
      iicBL      Stop
         LDRB    R0, [iicsp]
         MOV     R1, #IICBus_Size
-        MOV     R2, #IICBus_Base
+        LDR     R2, =ZeroPage+IICBus_Base
         MLA     R2, R0, R1, R2
 IIC_ExitNoAck
         MOV     R0, #0
@@ -450,7 +450,7 @@ SetC1C0 ROUT
  ]
 
       [ E2ROMSupport
-        MOV     R0, #0
+        LDR     R0, =ZeroPage
         LDRB    R0, [R0, #NVRamSpeed]
         TEQ     R0, #0
         MOVEQ   R0, #10                         ; default value if speed not checked yet
@@ -880,12 +880,12 @@ interrupt_protected_end
 IICIRQ
         ; R12 = bus number
         Push    "R8-R9,R14"
-        MOV     R14,#0
+        LDR     R14,=ZeroPage
         AddressHAL R14
 
         ; Get IICBus ptr
         MOV     R0, #IICBus_Size
-        MOV     R1, #IICBus_Base
+        ADD     R1, R14, #IICBus_Base
         MLA     R8, R12, R0, R1
 
         MOV     R0, R12
@@ -909,7 +909,7 @@ IICAbort
         CallHAL HAL_IICBuses
         SUBS    R0,R0,#1
         BLT     %FT20
-        MOV     R1,#IICBus_Base
+        LDR     R1,=ZeroPage+IICBus_Base
         MOV     R12,#IICBus_Size
         MLA     R1,R12,R0,R1
         LDR     R12,[R1,#IICBus_Type]
@@ -948,7 +948,7 @@ IICInit
         Push    "R7-R9,R14"
         AddressHAL
         MOV     R7, #0
-        MOV     R8, #IICBus_Base
+        LDR     R8, =ZeroPage+IICBus_Base
 10
         CallHAL HAL_IICBuses
         CMP     R7, R0

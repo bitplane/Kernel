@@ -17,6 +17,9 @@
         GBLL    DebugAborts
 DebugAborts SETL {FALSE}
 
+        GBLL    UseProcessTransfer
+UseProcessTransfer SETL {FALSE} ; Needs updating to cope with HiProcVecs (for proc. vector protection) and all the ARMv6+ (ARMv3+?) load/store instructions
+
 
 ; MMU interface file - VMSAv6 version
 
@@ -68,13 +71,13 @@ BangCamUpdate ROUT
         TST     r11, #DynAreaFlags_DoublyMapped ; if moving page to doubly mapped area
         SUBNE   r3, r3, r9                      ; then CAM soft copy holds ptr to 1st copy
 
-        MOV     r1, #0
+        LDR     r1, =ZeroPage
         LDR     r1, [r1, #CamEntriesPointer]
         ADD     r1, r1, r2, LSL #3              ; point at cam entry (logaddr, PPL)
         LDMIA   r1, {r0, r6}                    ; r0 = current logaddress, r6 = current PPL
         STMIA   r1, {r3, r11}                   ; store new address, PPL
         Push    "r0, r6"                        ; save old logical address, PPL
-        MOV     r1, #PhysRamTable               ; go through phys RAM table
+        LDR     r1, =ZeroPage+PhysRamTable      ; go through phys RAM table
         MOV     r6, r2                          ; make copy of r2 (since that must be preserved)
 10
         LDMIA   r1!, {r0, r4}                   ; load next address, size
@@ -137,7 +140,7 @@ BangCam ROUT
         TST     r11, #DynAreaFlags_DoublyMapped ; if area doubly mapped
         SUBNE   r3, r3, r9              ; then move ptr to 1st copy
 
-        MOV     r1, #PhysRamTable       ; go through phys RAM table
+        LDR     r1, =ZeroPage+PhysRamTable ; go through phys RAM table
         MOV     r6, r2                  ; make copy of r2 (since that must be preserved)
 10
         LDMIA   r1!, {r0, r4}           ; load next address, size
@@ -169,7 +172,7 @@ BangCamAltEntry
 
         ORR     r0, r0, r1
 
-        MOV     r6, #ZeroPage
+        LDR     r6, =ZeroPage
         LDR     r6, [r6, #MMU_PCBTrans]
         AND     r4, r11, #DynAreaFlags_CPBits
         AND     r1, r11, #DynAreaFlags_NotCacheable + DynAreaFlags_NotBufferable
@@ -205,7 +208,7 @@ BangL2PT                                        ; internal entry point used only
         TSTEQ   r11, #DynAreaFlags_NotCacheable ;EQ if also cacheable (overcautious for temp uncache+illegal PCB combos)
         MOV     r0, r3                          ;MMU page entry address
         ADR     lr, %FT20
-        MOV     r4, #0
+        LDR     r4, =ZeroPage
         ARMop   MMU_ChangingEntry, EQ, tailcall, r4
         ARMop   MMU_ChangingUncachedEntry, NE, tailcall, r4
 
@@ -221,7 +224,7 @@ BangL2PT_sledgehammer
         TEQ     r6, #0                          ;EQ if mapping out
         TSTEQ   r11, #DynAreaFlags_NotCacheable ;EQ if also cacheable (overcautious for temp uncache+illegal PCB combos)
         ADR     lr, %FT30
-        MOV     r4, #0
+        LDR     r4, =ZeroPage
         ARMop   MMU_Changing, EQ, tailcall, r4
         ARMop   MMU_ChangingUncached, NE, tailcall, r4
 
@@ -261,7 +264,7 @@ PageShifts
 SSETMEMC ROUT
 
         AND     r10, r0, r1
-        MOV     r12, #0
+        LDR     r12, =ZeroPage
         WritePSRc SVC_mode+I_bit+F_bit, r0
         LDR     r0, [r12, #MEMC_CR_SoftCopy] ; return old value
         BIC     r11, r0, r1
@@ -372,12 +375,11 @@ MMUControl_Unknown
 
 
 MMUControl_ModifyControl ROUT
-        Push    "r3,r4,r5"
+        Push    "r0,r3,r4,r5"
         CMP     r1,#0
         CMPEQ   r2,#&FFFFFFFF
         BEQ     MMUC_modcon_readonly
-        MOV     r3,#ZeroPage
-        ASSERT  ZeroPage = 0 ; r3 assumed to be zero for CP15 ops
+        LDR     r3,=ZeroPage
         PHPSEI  r4                      ; disable IRQs while we modify soft copy (and possibly switch caches off/on)
 
         ; We're ARMv6+, just read the real control reg and ignore the soft copy
@@ -403,27 +405,28 @@ MMUControl_ModifyControl ROUT
         ARMop   Cache_CleanAll,,,r3
 15
         ARM_write_control r2
-        myISB   ,r3,,y ; Must be running on >=ARMv6, so perform ISB to ensure CP15 write is complete
+        myISB   ,r3 ; Must be running on >=ARMv6, so perform ISB to ensure CP15 write is complete
         BIC     lr, r1, r2              ; lr = bits going from 1->0
         TST     lr, #MMUC_C             ; if cache turning off then flush cache afterwards
         TSTNE   lr, #MMUC_I
         BEQ     %FT20
+        LDR     r3,=ZeroPage
         ARMop   Cache_InvalidateAll,,,r3
 20
         PLP     r4                      ; restore IRQ state
-        Pull    "r3,r4,r5,pc"
+        Pull    "r0,r3,r4,r5,pc"
 
 MMUC_modcon_readonly
-        MOV     r3, #0
+        LDR     r3, =ZeroPage
         ; We're ARMv6+, just read the real control reg and ignore the soft copy
         ARM_read_control r1
         STR     r1, [r3, #MMUControlSoftCopy]
         MOV     r2, r1
-        Pull    "r3,r4,r5,pc"
+        Pull    "r0,r3,r4,r5,pc"
 
 MMUControl_Flush
        MOVS     r10, r0
-       MOV      r12, #0
+       LDR      r12, =ZeroPage
        ARMop    Cache_CleanInvalidateAll,MI,,r12
        TST      r10,#&40000000
        ARMop    TLB_InvalidateAll,NE,,r12
@@ -527,7 +530,7 @@ DAbPreVeneer    ROUT
         MRS     r1, CPSR                        ; r1 = CPSR
         ADD     r2, r13_abort, #8*4             ; r2 -> saved register bank for r8 onwards
 
-        LDR     r4, =Abort32_dumparea+3*4       ;use temp area (avoid overwriting main area for expected aborts)
+        LDR     r4, =ZeroPage+Abort32_dumparea+3*4 ;use temp area (avoid overwriting main area for expected aborts)
         ARM_read_FAR r3
         STMIA   r4, {r0,r3,lr_abort}            ; dump 32-bit PSR, fault address, 32-bit PC
 
@@ -558,12 +561,9 @@ DAbPreVeneer    ROUT
         STR     r4, [sp, #7*4]                  ; store aborter's PC in user register bank
 ; B %FT90
 
+ [ UseProcessTransfer
         TST     r0, #T32_bit                    ; were they in Thumb mode? if so, give up now
         BNE     %FT90
-
- [ {TRUE}
-        B       %FT90                           ; Skip the old & broken LDR/STR fixup code and go straight to the exception handler
- ]
 
 ;ARM 810 or StrongARM allow signed byte load or half-word load/stores - not supported at present
 ;***KJB - need to think about LDRH family
@@ -600,7 +600,7 @@ DAbPreVeneer    ROUT
 ;we want r6 = base reg value before assumed writeback (r7 is base reg value after abort)
 ;writeback will have been performed for ARMs with CPUFlag_BaseRestored clear
 ;
-        MOV     r6, #0
+        LDR     r6, =ZeroPage
         LDR     r6, [r6, #ProcessorFlags]
         TST     r6, #CPUFlag_BaseRestored
         MOVNE   r6, r7
@@ -782,7 +782,7 @@ DAbPreVeneer    ROUT
         TST     r10, #1 :SHL: 23                ; test for up/down
         RSBEQ   r9, r9, #0                      ; if down then negate
 
-        MOV     r8, #0
+        LDR     r8, =ZeroPage
         LDR     r8, [r8, #ProcessorFlags]
         TST     r8, #CPUFlag_BaseRestored
         BNE     %FT62
@@ -812,7 +812,7 @@ DAbPreVeneer    ROUT
         MOV     r7, r7, LSR #28                 ; r7 = base register number
         LDR     r6, [r11, r7, LSL #2]           ; r6 = base register value
 
-        MOV     r1, #0
+        LDR     r1, =ZeroPage
         LDR     r1, [r1, #ProcessorFlags]
         TST     r1, #CPUFlag_BaseRestored
         SUBEQ   r0, r6, r0                      ; compute adjusted base register (if not base restored)
@@ -910,13 +910,15 @@ DAbPreVeneer    ROUT
         SUBS    pc, lr_abort, #4                ; go back 8 to adjust for PC being 2 words out,
                                                 ; then forward 4 to skip instruction we've just executed
 
+ ] ; UseProcessTransfer
+
 ; Call normal exception handler
 
 90
 
 ; copy temp area to real area (we believe this is an unexpected data abort now)
 
-        LDR     r0, =Abort32_dumparea
+        LDR     r0, =ZeroPage+Abort32_dumparea
         LDR     r1, [r0,#3*4]
         STR     r1, [r0]
         LDR     r1, [r0,#4*4]
@@ -924,11 +926,15 @@ DAbPreVeneer    ROUT
         LDR     r1, [r0,#5*4]
         STR     r1, [r0,#2*4]
 
-        MOV     r0, #0                                  ; we're going to call abort handler
+        LDR     r0, =ZeroPage                           ; we're going to call abort handler
+      [ ZeroPage = 0
         STR     r0, [r0, #CDASemaphore]                 ; so allow recovery if we were in CDA
+      |
+        MOV     r2, #0
+        STR     r2, [r0, #CDASemaphore]                 ; so allow recovery if we were in CDA
+      ]
 
-        LDR     r0, =DAbHan
-        LDR     r0, [r0]                                ; get address of data abort handler
+        LDR     r0, [r0, #DAbHan]                       ; get address of data abort handler
  [ DebugAborts
         DREG    r0, "Handler address = "
  ]
@@ -961,6 +967,8 @@ DAbPreVeneer    ROUT
         ADD     r13_abort, r13_abort, #16*4     ; we use stacks, dontcherknow
 
         Pull    pc
+
+ [ UseProcessTransfer
 
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ;
@@ -1057,6 +1065,7 @@ ProcessTransfer Entry "r1-r7,r12"
 ; do it in words if >= 4 bytes, so word writes to VIDC work for example
 
 25
+        ASSERT  (:LNOT: HiProcVecs) ; Needs updating for high vectors!
         CMP     r2, #&1C                                ; if in abort area (but allow any access to &1C)
   [ OnlyKernelCanAccessHardwareVectors
         BHS     %FT22
@@ -1176,7 +1185,7 @@ Fault
 
 ; Now scan list of user abort addresses
 
-        MOV     r6, #0
+        LDR     r6, =ZeroPage
         LDR     r6, [r6, #AbortIndirection]
         TEQ     r6, #0
         BEQ     %FT85                           ; address not in any abort node
@@ -1227,6 +1236,8 @@ Fault
         BNE     %BT10                           ; yes, then loop
         EXIT                                    ; no, then exit (V=0 from SUBS)
 
+ ] ; UseProcessTransfer
+
 ;
 ; ---------------- XOS_SynchroniseCodeAreas implementation ---------------
 ;
@@ -1259,13 +1270,13 @@ SyncCodeAreasRange
         Push    "r0-r2, lr"
         MOV     r0, r1
         ADD     r1, r2, #4                 ;exclusive end address
-        MOV     r2, #0
+        LDR     r2, =ZeroPage
         LDRB    lr, [r2, #Cache_Type]
         CMP     lr, #CT_ctype_WB_CR7_Lx ; DCache_LineLen lin or log?
         LDRB    lr, [r2, #DCache_LineLen]
         MOVEQ   r2, #4
         MOVEQ   lr, r2, LSL lr
-        MOVEQ   r2, #0
+        LDREQ   r2, =ZeroPage
         SUB     lr, lr, #1
         ADD     r1, r1, lr                 ;rounding up end address
         MVN     lr, lr
@@ -1276,7 +1287,7 @@ SyncCodeAreasRange
 
 SyncCodeAreasFull
         Push    "r0, lr"
-        MOV     r0, #0
+        LDR     r0, =ZeroPage
         ARMop   IMB_Full,,,r0
         Pull    "r0, pc"
 

@@ -1323,7 +1323,7 @@ DoSetDriverBank ROUT
         MOVEQ   R2, #1
         MOVNE   R2, #2
 10
-        MOV     R0, #0
+        LDR     R0, =ZeroPage
         LDRB    R1, [R0, #OsbyteVars + :INDEX: MemDriver] ; old value
 
         Push    "R1,R4-R10"             ; save registers
@@ -1380,7 +1380,7 @@ DoSetDisplayBank ROUT
         MOVEQ   R2, #1
         MOVNE   R2, #2
 10
-        MOV     R0, #0
+        LDR     R0, =ZeroPage
         LDRB    R1, [R0, #OsbyteVars + :INDEX: MemDisplay] ; old value
         Push    "R1,R4-R5"              ; save registers
         BL      ConvertBankToAddress    ; R3 := start address of NEXT bank

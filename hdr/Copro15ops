@@ -572,7 +572,7 @@ C15 CN 15
      |
       [ NoARMv7
         ; ARMv6, use legacy MCR op
-       [ "$quick"="q"
+       [ "$quick"=""
         MOV$cond $temp,#0
        ]
         MCR$cond p15,0,$temp,c7,c5,4
