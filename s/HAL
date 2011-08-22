@@ -2416,25 +2416,34 @@ Reset_IRQ_Handler
         ORR     a3, a2, #SVC32_mode
         MSR     CPSR_c, a3
         Push    "a1-a2,lr"
+        ; If it's not an IIC interrupt, pass it on to the keyboard scan code
         LDR     v2, =ZeroPage
         AddressHAL v2
+        CallHAL HAL_IRQSource
         ADD     v1, v2, #IICBus_Base
-      [ ZeroPage <> 0
-        MOV     v2, #0
-      ]
+        MOV     ip, #0
 10
         LDR     a2, [v1, #IICBus_Type]
         TST     a2, #IICFlag_Background
-        MOVNE   ip, v2
-        BLNE    IICIRQ
-        ADD     v2, v2, #1
+        BEQ     %FT20
+        LDR     a2, [v1, #IICBus_Device]
+        CMP     a2, a1
+        ADREQ   lr, Reset_IRQ_Exit
+        BEQ     IICIRQ
+20
+        ADD     ip, ip, #1
         ADD     v1, v1, #IICBus_Size
-        CMP     v2, #IICBus_Count
+        CMP     ip, #IICBus_Count
         BNE     %BT10
-        LDR     a1, =ZeroPage+InitIRQWs
-        LDRB    a1, [a1, #KbdScanActive]
-        TEQ     a1, #0
+        LDRB    a2, [v2, #InitIRQWs+KbdScanActive]
+        TEQ     a2, #0
         CallHAL HAL_KbdScanInterrupt,NE
+        ; Keyboard scan code will have return -1 if it handled the IRQ
+        ; If it didn't handle it, or keyboard scanning is inactive, something
+        ; bad has happened
+        CMP     a1, #-1
+        CallHAL HAL_IRQDisable,NE ; Stop the rogue device from killing us completely
+Reset_IRQ_Exit
         Pull    "a1-a2,lr"
         MSR     CPSR_c, a2
         MSR     SPSR_cxsf, a1
