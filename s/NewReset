@@ -181,7 +181,7 @@ ConfigureRMA
 ;         R8 = last entry we can use
 
         LDR     r6, [r7, #VideoSize]            ; find out how many pages in video area
-        MOV     r7, #0
+;        MOV     r7, #0
         MOV     r6, r6, LSR #12                 ; = page number of start of skipped bit
         ASSERT  SoftCamMapSize = L2PTSize +4
         MOV     r7, #L2PTSize
@@ -1066,7 +1066,7 @@ DefaultCMOSTable ; list of non-zero options wanted :
 ; byte pairs of offset, value
 ; terminated by offset &FF
         =       KeyDelCMOS,     32
-   [ M_CortexA8
+   [ M_CortexA8 :LOR: M_CortexA9
         =       FileLangCMOS,   26      ; SCSIFS for OMAP3, etc.
    |
         =       FileLangCMOS,   8       ; ADFS
@@ -1162,7 +1162,7 @@ DefaultCMOSTable ; list of non-zero options wanted :
         ]
         =       AlarmAndTimeCMOS,2_00010000 ; !Alarm autosave on
         =       FSLockCMOS+5,   &EA     ; Checksum for no password
-   [ M_CortexA8
+   [ M_CortexA8 :LOR: M_CortexA9
         =       CDROMFSCMOS,    &C0     ; drives = 0, buffer size = 256K
    |
         =       CDROMFSCMOS,    &C1     ; drives = 1, buffer size = 256K
@@ -1438,7 +1438,7 @@ losepirqlink
         BNE     hard_reset_forced
         LDR     R2, =ZeroPage+PIRQ_Chain
         CMP     R11, R2
-        LDR     R2, =ZeroPage=PFIQasIRQ_Chain
+        LDR     R2, =ZeroPage+PFIQasIRQ_Chain
         MOVEQ   R11, R2
         CMPNE   r11, r2
         LDREQ   r11, =ZeroPage+CallBack_Vector
@@ -1469,7 +1469,7 @@ hard_reset
         MOV     r2, #0                  ; indicate normal hard reset
  ]
 hard_reset_forced
-        LDR     R8, =ZeroPage
+        LDR     r8, =ZeroPage
  [ DebugForcedReset
         STR     r2, [r8]                ; store to logical address zero
  ]

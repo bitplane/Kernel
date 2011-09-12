@@ -1305,7 +1305,7 @@ DebuggerSpace_Size      *       &1000
 
 NVRamSize          #    1               ; Size of NVRam (E2ROM & CMOS) fitted in 256byte units
 NVRamBase          #    1               ; Base of NVRam
-NVRamSpeed         #    1               ; Clock hold time in 0.5µs units
+NVRamSpeed         #    1               ; Clock hold time in 0.5us units
 NVRamPageSize      #    1               ; Page size for writing (log2)
 NVRamWriteSize     #    1               ; Size of writable region (256byte units)
 
@@ -1897,11 +1897,15 @@ RedirectBuff            |#|     OscliBuffSize
 ; 6 interrupts for I/O and sound DMA (this is really IOMD specific, not
 ; ARM600/700 specific but for the moment it is assumed that they are
 ; used on the same machines).
+ [ HAL :LAND: M_CortexA9
+DefIRQ1Vspace           *       12*160+128
+ |
  [ MorrisSupport
 DefIRQ1Vspace           *       12*4+12*23+2*256+64 + 7*4+12*16+32+256 ;Morris adds 2 more IRQ registers
  |
 DefIRQ1Vspace           *       12*4+12*23+2*256+64     ; for size checking in MOS
  ]
+ ] ; HAL :LAND: M_CortexA9
 DefaultIRQ1V            |#|     DefIRQ1Vspace
 
  [ AssemblingArthur :LAND: :DEF: ShowWS

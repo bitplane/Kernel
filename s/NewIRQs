@@ -214,7 +214,11 @@ DefaultIRQ1Vcode_end
 Devices * DefaultIRQ1Vcode_end + 12
 
 NoInterrupt     * -1
+  [ M_CortexA9
+MaxInterrupts   * 160
+  |
 MaxInterrupts   * 96
+  ] ; M_CortexA9
 
 DevicesEnd * Devices + MaxInterrupts * 12
 
