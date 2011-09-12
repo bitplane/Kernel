@@ -1323,8 +1323,8 @@ MMUControlSoftCopy #    4               ; Soft copy of ARM control register
 DeviceCount     #       4       ; size of our table of devices in the system heap
 DeviceTable     #       4       ; pointer to table
 Cache_Lx_Info   #       4       ; Cache level ID register
-Cache_Lx_DTable #       4*8     ; Data/unified cache layout for all 8 levels
-Cache_Lx_ITable #       4*8     ; Instruction cache layout for all 8 levels
+Cache_Lx_DTable #       4*7     ; Data/unified cache layout for all 7 levels
+Cache_Lx_ITable #       4*7     ; Instruction cache layout for all 7 levels
  ]
 
 AplWorkSize * AppSpaceDANode + DANode_Size

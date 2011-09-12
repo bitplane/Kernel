@@ -605,10 +605,10 @@ C15 CN 15
         DCI &F57FF04E ; DSB ST
        |
        [ "$option"="ISH"
-        DCI &F57FF04D ; DSB ISH
+        DCI &F57FF04B ; DSB ISH
        |
        [ "$option"="ISHST"
-        DCI &F57FF04C ; DSB ISHST
+        DCI &F57FF04A ; DSB ISHST
        |
        [ "$option"="NSH"
         DCI &F57FF047 ; DSB NSH
@@ -656,10 +656,10 @@ C15 CN 15
         DCI &F57FF05E ; DMB ST
        |
        [ "$option"="ISH"
-        DCI &F57FF05D ; DMB ISH
+        DCI &F57FF05B ; DMB ISH
        |
        [ "$option"="ISHST"
-        DCI &F57FF05C ; DMB ISHST
+        DCI &F57FF05A ; DMB ISHST
        |
        [ "$option"="NSH"
         DCI &F57FF057 ; DMB NSH

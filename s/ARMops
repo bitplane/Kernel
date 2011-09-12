@@ -529,29 +529,42 @@ Analyse_WB_CR7_Lx
         MRC     p15, 1, a1, c0, c0, 1 ; Cache level ID register
         MOV     v2, v6 ; Work around DTable/ITable alignment issues
         STR     a1, [v2, #Cache_Lx_Info]!
-        ADD     a1, v2, #Cache_Lx_DTable-Cache_Lx_Info
-        ADD     a2, v2, #Cache_Lx_ITable-Cache_Lx_Info
+        ADD     a2, v2, #Cache_Lx_DTable-Cache_Lx_Info
         MOV     a3, #0
         MOV     a4, #256 ; Smallest instruction cache line length
         MOV     v2, #256 ; Smallest data/unified cache line length (although atm we only need this to be the smallest data cache line length)
 10
-        MCR     p15, 2, a3, c0, c0, 0 ; Program cache size selection register
-        MRC     p15, 1, v1, c0, c0, 0 ; Get size info (data/unified)
-        STR     v1, [a1],#4
-        CMP     v1, #0 ; Does the cache exist?
+        ANDS    v1, a1, #6 ; Data or unified cache at this level?
+        MCRNE   p15, 2, a3, c0, c0, 0 ; Program cache size selection register
+        myISB   ,v1
+        MRCNE   p15, 1, v1, c0, c0, 0 ; Get size info (data/unified)
+        STR     v1, [a2]
         AND     v1, v1, #7 ; Get line size
-        CMPNE   v1, v2
-        MOVLT   v2, v1 ; Earlier CMP will not set LE flags if v1=0
+        CMP     v1, v2
+        MOVLT   v2, v1
         ADD     a3, a3, #1
-        MCR     p15, 2, a3, c0, c0, 0 ; Program cache size selection register
-        MRC     p15, 1, v1, c0, c0, 0 ; Get size info (instruction)
-        STR     v1, [a2],#4
-        CMP     v1, #0 ; Does the cache exist?
+        ANDS    v1, a1, #1 ; Instruction cache at this level?
+        MCRNE   p15, 2, a3, c0, c0, 0 ; Program cache size selection register
+        myISB   ,v1
+        MRCNE   p15, 1, v1, c0, c0, 0 ; Get size info (instruction)
+        STR     v1, [a2, #Cache_Lx_ITable-Cache_Lx_DTable]
         AND     v1, v1, #7 ; Get line size
-        CMPNE   v1, a4
-        MOVLT   a4, v1 ; Earlier CMP will not set LE flags if v1=0
+        CMP     v1, a4
+        MOVLT   a4, v1
+        ; Shift the cache level ID register along to get the type of the next
+        ; cache level
+        ; However, we need to stop once we reach the first blank entry, because
+        ; ARM have been sneaky and started to reuse some of the bits from the
+        ; high end of the register (the Cortex-A8 TRM lists bits 21-23 as being
+        ; for cache level 8, but the ARMv7 ARM lists them as being for the level
+        ; of unification for inner shareable memory). The ARMv7 ARM does warn
+        ; about making sure you stop once you find the first blank entry, but
+        ; it doesn't say why!
+        TST     a1, #7
         ADD     a3, a3, #1
-        CMP     a3, #16
+        MOVNE   a1, a1, LSR #3
+        CMP     a3, #14 ; Stop after level 7 (even though an 8th level might exist on some CPUs?)
+        ADD     a2, a2, #4
         BLT     %BT10
         STRB    a4, [v6, #ICache_LineLen] ; Store log2(line size)-2
         STRB    v2, [v6, #DCache_LineLen] ; log2(line size)-2
@@ -1878,150 +1891,122 @@ MMU_ChangingUncachedEntries_WB_Cal_LD ROUT
 ; ICache_LineLen = log2(line len)-2 for smallest instruction cache line length
 ; DCache_RangeThreshold = clean threshold for data cache
 ; Cache_Lx_Info = Cache level ID register
-; Cache_Lx_DTable = Cache size identification register for all 8 data/unified caches
-; Cache_Lx_ITable = Cache size identification register for all 8 instruction caches
+; Cache_Lx_DTable = Cache size identification register for all 7 data/unified caches
+; Cache_Lx_ITable = Cache size identification register for all 7 instruction caches
+
+; ARMv7 cache maintenance routines are a bit long-winded, so we use this macro
+; to reduce the risk of mistakes creeping in due to code duplication
+;
+; $op: Operation to perform ('clean', 'invalidate', 'cleaninvalidate')
+; $levels: Which levels to apply to ('lou', 'loc', 'louis')
+; Uses r0-r8 & lr as temp
+; Performs the indicated op on the indicated data & unified caches
+;
+; Code based around the alternate/faster code given in the ARMv7 ARM (section
+; B2.2.4, alternate/faster code only in doc revision 9), but tightened up a bit
+;
+; Note that HAL_InvalidateCache_ARMvF uses its own implementation of this
+; algorithm, since it must cope with different temporary registers and it needs
+; to read the cache info straight from the CP15 registers
+;
+        MACRO
+        MaintainDataCache_WB_CR7_Lx $op, $levels
+        LDR     lr, =ZeroPage
+        LDR     r0, [lr, #Cache_Lx_Info]!
+        ADD     lr, lr, #Cache_Lx_DTable-Cache_Lx_Info
+      [ "$levels"="lou"
+        ANDS    r3, r0, #&38000000
+        MOV     r3, r3, LSR #26 ; Cache level value (naturally aligned)
+      |
+      [ "$levels"="loc"
+        ANDS    r3, r0, #&07000000
+        MOV     r3, r3, LSR #23 ; Cache level value (naturally aligned)
+      |
+      [ "$levels"="louis"
+        ANDS    r3, r0, #&00E00000
+        MOV     r3, r3, LSR #20 ; Cache level value (naturally aligned)
+      |
+        ! 1, "Unrecognised levels"
+      ]
+      ]
+      ]
+        BEQ     %FT50
+        MOV     r8, #0 ; Current cache level
+10 ; Loop1
+        ADD     r2, r8, r8, LSR #1 ; Work out 3 x cachelevel
+        MOV     r1, r0, LSR r2 ; bottom 3 bits are the Cache type for this level
+        AND     r1, r1, #7 ; get those 3 bits alone
+        CMP     r1, #2
+        BLT     %FT40 ; no cache or only instruction cache at this level
+        LDR     r1, [lr, r8, LSL #1] ; read CCSIDR to r1
+        AND     r2, r1, #&7 ; extract the line length field
+        ADD     r2, r2, #4 ; add 4 for the line length offset (log2 16 bytes)
+        LDR     r7, =&3FF
+        AND     r7, r7, r1, LSR #3 ; r7 is the max number on the way size (right aligned)
+        CLZ     r5, r7 ; r5 is the bit position of the way size increment
+        LDR     r4, =&7FFF
+        AND     r4, r4, r1, LSR #13 ; r4 is the max number of the index size (right aligned)
+20 ; Loop2
+        MOV     r1, r4 ; r1 working copy of the max index size (right aligned)
+30 ; Loop3
+        ORR     r6, r8, r7, LSL r5 ; factor in the way number and cache number into r6
+        ORR     r6, r6, r1, LSL r2 ; factor in the index number
+      [ "$op"="clean"
+        MCR     p15, 0, r6, c7, c10, 2 ; Clean
+      |
+      [ "$op"="invalidate"
+        MCR     p15, 0, r6, c7, c6, 2 ; Invalidate
+      |
+      [ "$op"="cleaninvalidate"
+        MCR     p15, 0, r6, c7, c14, 2 ; Clean & invalidate
+      |
+        ! 1, "Unrecognised op"
+      ]
+      ]
+      ]
+        SUBS    r1, r1, #1 ; decrement the index
+        BGE     %BT30
+        SUBS    r7, r7, #1 ; decrement the way number
+        BGE     %BT20
+40 ; Skip
+        ADD     r8, r8, #2
+        CMP     r3, r8
+        BGT     %BT10
+        myDSB   ,r0
+50 ; Finished
+        MEND
 
 Cache_CleanAll_WB_CR7_Lx ROUT
 ; Clean cache by traversing all sets and ways for all data caches
-        Push    "a2,a3,a4,v1,v2,v3,v4,v5,lr"
-        LDR     lr, =ZeroPage
-        LDR     a1, [lr, #Cache_Lx_Info]!
-        ADD     lr, lr, #Cache_Lx_DTable-Cache_Lx_Info
-        BIC     a1, a1, #&FF000000 ; Discard unification/coherency bits
-        MOV     a2, #0 ; Current cache level
-20
-        TST     a1, #7 ; Get flags
-        BEQ     %FT10 ; Cache clean complete
-        LDR     a3, [lr], #4 ; Get size info
-        AND     v1, a3, #&7 ; log2(Line size)-2
-        BIC     a3, a3, #&F0000007 ; Clear flags & line size
-        MOV     v2, a3, LSL #19 ; Number of ways-1 in upper 10 bits
-        MOV     v3, a3, LSR #13 ; Number of sets-1 in lower 15 bits
-        ; Way number needs to be packed right up at the high end of the data word; shift it up
-        CLZ     a4, v2
-        MOV     v2, v2, LSL a4
-        ; Set number needs to start at log2(Line size)+2
-        MOV     v3, v3, LSL #4 ; Start at bit 4
-        MOV     v3, v3, LSL v1 ; Start at log2(Line size)+2
-        ; Now calculate the offset numbers we will use to increment sets & ways
-        BIC     v4, v2, v2, LSL #1 ; Way increment
-        BIC     v5, v3, v3, LSL #1 ; Set increment
-        ; Now we can finally clean this cache!
-        ORR     a3, a2, v3 ; Current way (0), set (max), and level
-30
-        MCR     p15, 0, a3, c7, c10, 2 ; Clean
-        ADDS    a3, a3, v4 ; Increment way
-        BCC     %BT30 ; Overflow will occur once ways are enumerated
-        TST     a3, v3 ; Are set bits all zero?
-        SUBNE   a3, a3, v5 ; No, so decrement set and loop around again
-        BNE     %BT30
-        ; This cache is now clean. Move on to the next level.
-        ADD     a2, a2, #2
-        MOVS    a1, a1, LSR #3
-        BNE     %BT20
-10
-        myDSB   ,a1 ; Wait for cache cleaning to complete
-        Pull    "a2,a3,a4,v1,v2,v3,v4,v5,pc"
+        Push    "r1-r8,lr"
+        MaintainDataCache_WB_CR7_Lx clean, loc
+        Pull    "r1-r8,pc"
 
 
 Cache_CleanInvalidateAll_WB_CR7_Lx ROUT
 ;
 ; similar to Cache_CleanAll, but does clean&invalidate of Dcache, and invalidates ICache
 ;
-        Push    "a2,a3,a4,v1,v2,v3,v4,v5,lr"
-        LDR     lr, =ZeroPage
-        LDR     a1, [lr, #Cache_Lx_Info]!
-        ADD     lr, lr, #Cache_Lx_DTable-Cache_Lx_Info
-        BIC     a1, a1, #&FF000000 ; Discard unification/coherency bits
-        MOV     a2, #0 ; Current cache level
-20
-        TST     a1, #7 ; Get flags
-        BEQ     %FT10 ; Cache clean complete
-        LDR     a3, [lr], #4 ; Get size info
-        AND     v1, a3, #&7 ; log2(Line size)-2
-        BIC     a3, a3, #&F0000007 ; Clear flags & line size
-        MOV     v2, a3, LSL #19 ; Number of ways-1 in upper 10 bits
-        MOV     v3, a3, LSR #13 ; Number of sets-1 in lower 15 bits
-        ; Way number needs to be packed right up at the high end of the data word; shift it up
-        CLZ     a4, v2
-        MOV     v2, v2, LSL a4
-        ; Set number needs to start at log2(Line size)+2
-        MOV     v3, v3, LSL #4 ; Start at bit 4
-        MOV     v3, v3, LSL v1 ; Start at log2(Line size)+2
-        ; Now calculate the offset numbers we will use to increment sets & ways
-        BIC     v4, v2, v2, LSL #1 ; Way increment
-        BIC     v5, v3, v3, LSL #1 ; Set increment
-        ; Now we can finally clean this cache!
-        ORR     a3, a2, v3 ; Current way (0), set (max), and level
-30
-        MCR     p15, 0, a3, c7, c14, 2 ; Clean & invalidate
-        ADDS    a3, a3, v4 ; Increment way
-        BCC     %BT30 ; Overflow will occur once ways are enumerated
-        TST     a3, v3 ; Are set bits all zero?
-        SUBNE   a3, a3, v5 ; No, so decrement set and loop around again
-        BNE     %BT30
-        ; This cache is now clean. Move on to the next level.
-        ADD     a2, a2, #2
-        MOVS    a1, a1, LSR #3
-        BNE     %BT20
-10
-        MOV     a1, #0
-        myDSB   ,a1,,y                ; Wait for cache clean to complete
+        Push    "r1-r8,lr"
+        MaintainDataCache_WB_CR7_Lx cleaninvalidate, loc
         MCR     p15, 0, a1, c7, c5, 0 ; invalidate ICache
         MCR     p15, 0, a1, c7, c5, 6 ; invalidate branch predictors
         myDSB   ,a1,,y                ; Wait for cache/branch invalidation to complete
         myISB   ,a1,,y                ; Ensure that the effects of the completed cache/branch invalidation are visible
-        Pull    "a2,a3,a4,v1,v2,v3,v4,v5,pc"
+        Pull    "r1-r8,pc"
 
 
 Cache_InvalidateAll_WB_CR7_Lx ROUT
 ;
 ; no clean, assume caller knows what's happening
 ;
-        Push    "a2,a3,a4,v1,v2,v3,v4,v5,lr"
-        LDR     lr, =ZeroPage
-        LDR     a1, [lr, #Cache_Lx_Info]!
-        ADD     lr, lr, #Cache_Lx_DTable-Cache_Lx_Info
-        BIC     a1, a1, #&FF000000 ; Discard unification/coherency bits
-        MOV     a2, #0 ; Current cache level
-20
-        TST     a1, #7 ; Get flags
-        BEQ     %FT10 ; Cache clean complete
-        LDR     a3, [lr], #4 ; Get size info
-        AND     v1, a3, #&7 ; log2(Line size)-2
-        BIC     a3, a3, #&F0000007 ; Clear flags & line size
-        MOV     v2, a3, LSL #19 ; Number of ways-1 in upper 10 bits
-        MOV     v3, a3, LSR #13 ; Number of sets-1 in lower 15 bits
-        ; Way number needs to be packed right up at the high end of the data word; shift it up
-        CLZ     a4, v2
-        MOV     v2, v2, LSL a4
-        ; Set number needs to start at log2(Line size)+2
-        MOV     v3, v3, LSL #4 ; Start at bit 4
-        MOV     v3, v3, LSL v1 ; Start at log2(Line size)+2
-        ; Now calculate the offset numbers we will use to increment sets & ways
-        BIC     v4, v2, v2, LSL #1 ; Way increment
-        BIC     v5, v3, v3, LSL #1 ; Set increment
-        ; Now we can finally clean this cache!
-        ORR     a3, a2, v3 ; Current way (0), set (max), and level
-30
-        MCR     p15, 0, a3, c7, c6, 2 ; Invalidate
-        ADDS    a3, a3, v4 ; Increment way
-        BCC     %BT30 ; Overflow will occur once ways are enumerated
-        TST     a3, v3 ; Are set bits all zero?
-        SUBNE   a3, a3, v5 ; No, so decrement set and loop around again
-        BNE     %BT30
-        ; This cache is now clean. Move on to the next level.
-        ADD     a2, a2, #2
-        MOVS    a1, a1, LSR #3
-        BNE     %BT20
-10
-        MOV     a1, #0
-        myDSB   ,a1,,y                ; Wait for invalidation to complete
+        Push    "r1-r8,lr"
+        MaintainDataCache_WB_CR7_Lx cleaninvalidate, loc
         MCR     p15, 0, a1, c7, c5, 0 ; invalidate ICache
         MCR     p15, 0, a1, c7, c5, 6 ; invalidate branch predictors
         myDSB   ,a1,,y                ; Wait for cache/branch invalidation to complete
         myISB   ,a1,,y                ; Ensure that the effects of the completed cache/branch invalidation are visible
-        Pull    "a2,a3,a4,v1,v2,v3,v4,v5,pc"
+        Pull    "r1-r8,pc"
 
 
 Cache_RangeThreshold_WB_CR7_Lx ROUT
@@ -2073,51 +2058,13 @@ IMB_Full_WB_CR7_Lx ROUT
 ; do: clean DCache; drain WBuffer, invalidate ICache/branch predictor
 ; Luckily, we only need to clean as far as the level of unification
 ;
-        Push    "a2,a3,a4,v1,v2,v3,v4,v5,lr"
-        LDR     lr, =ZeroPage
-        LDR     a1, [lr, #Cache_Lx_Info]!
-        ADD     lr, lr, #Cache_Lx_DTable-Cache_Lx_Info
-        MOV     a1, a1, LSR #27
-        AND     a1, a1, #&7 ; Get level of unification
-        MOV     a2, #0 ; Current cache level
-        SUBS    a1, a1, #1
-        BLT     %FT10 ; Cache clean complete
-20
-        LDR     a3, [lr], #4 ; Get size info
-        AND     v1, a3, #&7 ; log2(Line size)-2
-        BIC     a3, a3, #&F0000007 ; Clear flags & line size
-        MOV     v2, a3, LSL #19 ; Number of ways-1 in upper 10 bits
-        MOV     v3, a3, LSR #13 ; Number of sets-1 in lower 15 bits
-        ; Way number needs to be packed right up at the high end of the data word; shift it up
-        CLZ     a4, v2
-        MOV     v2, v2, LSL a4
-        ; Set number needs to start at log2(Line size)+2
-        MOV     v3, v3, LSL #4 ; Start at bit 4
-        MOV     v3, v3, LSL v1 ; Start at log2(Line size)+2
-        ; Now calculate the offset numbers we will use to increment sets & ways
-        BIC     v4, v2, v2, LSL #1 ; Way increment
-        BIC     v5, v3, v3, LSL #1 ; Set increment
-        ; Now we can finally clean this cache!
-        ORR     a3, a2, v3 ; Current way (0), set (max), and level
-30
-        MCR     p15, 0, a3, c7, c10, 2 ; Clean
-        ADDS    a3, a3, v4 ; Increment way
-        BCC     %BT30 ; Overflow will occur once ways are enumerated
-        TST     a3, v3 ; Are set bits all zero?
-        SUBNE   a3, a3, v5 ; No, so decrement set and loop around again
-        BNE     %BT30
-        ; This cache is now clean. Move on to the next level.
-        ADD     a2, a2, #2
-        SUBS    a1, a1, #1
-        BGE     %BT20
-10
-        MOV     a1, #0
-        myDSB   ,a1,,y                ; Wait for clean to complete
+        Push    "r1-r8,lr"
+        MaintainDataCache_WB_CR7_Lx clean, lou
         MCR     p15, 0, a1, c7, c5, 0 ; invalidate ICache
         MCR     p15, 0, a1, c7, c5, 6 ; invalidate branch predictors
         myDSB   ,a1,,y                ; Wait for cache/branch invalidation to complete
         myISB   ,a1,,y                ; Ensure that the effects of the completed cache/branch invalidation are visible
-        Pull    "a2,a3,a4,v1,v2,v3,v4,v5,pc"
+        Pull    "r1-r8,pc"
 
 ;  a1 = start address (inclusive, cache line aligned)
 ;  a2 = end address (exclusive, cache line aligned)
@@ -2160,7 +2107,7 @@ MMU_Changing_WB_CR7_Lx ROUT
         BL      Cache_CleanInvalidateAll_WB_CR7_Lx
         MOV     a1, #0
         MCR     p15, 0, a1, c8, c7, 0 ; invalidate ITLB and DTLB
-        myDSB   ,a1,,y                ; Wait TLB invalidation to complete
+        myDSB   ,a1,,y                ; Wait for TLB invalidation to complete
         myISB   ,a1,,y                ; Ensure that the effects are visible
         Pull    "pc"
 

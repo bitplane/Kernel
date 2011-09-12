@@ -687,15 +687,13 @@ kbdwait
         SUBS    r6, r6, #1              ; else wait a maximum of 5 seconds.
         BNE     kbdwait
 kbddone
-        DebugTX "Keyboard scan complete"
         MSR     CPSR_c, #I32_bit+SVC32_mode
-        DebugTX "FIQ enabled"
         CallHAL HAL_KbdScanFinish
         LDR     r1, =ZeroPage+InitIRQWs
         MOV     r0, #0
         STRB    r0, [r1, #KbdScanActive]
         MSR     CPSR_c, #SVC32_mode
-        DebugTX "IRQ enabled"
+        DebugTX "Keyboard scan complete"
  |
     [ KeyWait <> 0
 ; Check for keyboard there every 1/5 sec. but give up after 2 secs.
