@@ -724,7 +724,7 @@ $var    SETA    $var+(CT_M_$sz:SHL:CT_M_pos)
 
 ; CPUDesc table for ARMv3-ARMv6
 KnownCPUTable
-;                                                        /------Cache Type register fields-----\
+;                                                        /------Cache Type register fields-----\.
 ;                              ID reg   Mask     Arch    Type         S  Dsz Das Dln Isz Ias Iln
         CPUDesc ARM600,        &000600, &00FFF0, ARMv3,   WT,         0,  4K, 64, 4
         CPUDesc ARM610,        &000610, &00FFF0, ARMv3,   WT,         0,  4K, 64, 4
@@ -2001,7 +2001,7 @@ Cache_InvalidateAll_WB_CR7_Lx ROUT
 ; no clean, assume caller knows what's happening
 ;
         Push    "r1-r8,lr"
-        MaintainDataCache_WB_CR7_Lx cleaninvalidate, loc
+        MaintainDataCache_WB_CR7_Lx invalidate, loc
         MCR     p15, 0, a1, c7, c5, 0 ; invalidate ICache
         MCR     p15, 0, a1, c7, c5, 6 ; invalidate branch predictors
         myDSB   ,a1,,y                ; Wait for cache/branch invalidation to complete
