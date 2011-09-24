@@ -304,7 +304,8 @@ inspect_IRQ_stack
 
 iis_end                                 ; store the registers in the info block
         LDR     R12, =ZeroPage+HeapSavedReg_R0
-        STMIA   R12, {R0-R4, stack}
+        STMIA   R12, {R0-R4}
+        STR     stack, [R12, #5*4]
 
 first_heap_address_to_trap              ; because register saveblock now set.
         LDR     R12, [R12, #HeapReturnedReg_PSR-HeapSavedReg_R0]

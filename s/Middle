@@ -308,7 +308,7 @@ SBRKPT ROUT
   ]
         STR     r14, [r10, #15*4]       ; PC of the SWI put in.
         BNE     %FT01                   ; NE if not in user mode
-        STMIA   r10!, {r0}
+        STR     r0, [r10], #4
         MOV     r0, r10
         LDMFD   sp, {r10-r12}
 
@@ -331,19 +331,22 @@ SBRKPT ROUT
         BEQ     %FT02                   ; [yes]
 
 ; Non-user, non-supervisor - must be IRQ, ABT, UND or SYS (no SWIs from FIQ)
-        STMIA   r10!, {r0}
+        STR     r0, [r10], #4
         MOV     r0, r10
         BIC     r14, r12, #T32_bit      ; don't go into Thumb mode
         LDMFD   sp, {r10-r12}           ; Not banked
         MSR     CPSR_c, R14             ; get at registers r13 and r14
-        STMIA   r0, {r1-r14}
+        STMIA   r0, {r1-r12}
+        STR     sp, [r0, #12*4]
+        STR     r14, [r0, #13*4]
         WritePSRc SVC_mode, r12
         B       %BT10
 
 ; Supervisor mode case
 02      MOV     r14, r12                ; supervisor mode. R14 in buffer dead
         LDMFD   sp!, {r10-r12}
-        STMIA   r14, {r0-r13}
+        STMIA   r14, {r0-r12}
+        STR     r13, [r14, #13*4]
         LDR     r12, =&DEADDEAD
         STR     r12, [r14, #14*4]       ; mark R14 as dead
         B       %BT10
@@ -681,10 +684,13 @@ DumpyTheRegisters  ROUT
         ORR     R2, R1, #I32_bit :OR: F32_bit
         BIC     R2, R2, #T32_bit
         MSR     CPSR_c, R2              ; change into original mode
-        STMIA   R0, {R8-R14}            ; save the banked registers
+        STMIA   R0, {R8-R12}            ; save the banked registers
 
         AND     R2, R1, #&0F
+        STR     SP, [R0, #5*4]
         EORS    R2, R2, #FIQ_mode       ; Was we in FIQ ? Zero if so
+        STR     R14, [R0, #6*4]
+
      [ HAL
         BNE     UNDEF2
         MSR     CPSR_c, #I32_bit+F32_bit+SVC32_mode ; into SVC mode so we have a stack
@@ -923,7 +929,8 @@ Branch0_FromTrampoline
 
         LDR     R1, =ZeroPage
         LDR     R1, [R1, #ExceptionDump]
-        STMIA   R1, {R0-R13}
+        STMIA   R1, {R0-R12}
+        STR     R13, [R1, #13*4]
         LDR     R0, [R14, #0]
         STR     R0, [R1, #1*4]
         LDR     R0, [R14, #4]

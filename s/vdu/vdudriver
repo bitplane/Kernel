@@ -419,7 +419,8 @@ Vdu     ROUT
         BL      Vdu05
         BL      PostWrchCursor
         CLC                             ; also clears V
-        Pull    "R14,PC"
+        ADD     SP,SP,#4
+        Pull    PC
 
 VduPrintExit                             ; exit used if print required
         BL      PostWrchCursor
@@ -485,14 +486,19 @@ Vdu07   ROUT
         BL      PreWrchCursor           ; exits with R6 = CursorFlags
         Pull    "R0"
 10
+ [ No26bitCode
+        ADR     R14, VduPrintExit
+ |
         MOV     R14, PC
         ADD     R14, R14, #(VduPrintExit-%BT10-8) ; push address of SEC exit
                                                   ; (with flags)
+ ]
         Push    R14
         BL      Vdu10
         BL      PostWrchCursor
         CLC                             ; also clears V
-        Pull    "R14,PC"
+        ADD     SP, SP, #4
+        Pull    PC
 
 ;
 ; This is the only byte of a single byte Vdu sequence
@@ -547,14 +553,19 @@ Vdu20   ROUT
         BL      PreWrchCursor           ; exits with R6 = CursorFlags
         Pull    "R0"
 05
+ [ No26bitCode
+        ADR     R14, VduPrintExit
+ |
         MOV     R14, PC
         ADD     R14, R14, #(VduPrintExit-%BT05-8) ; push address of SEC exit
                                                   ; (with flags)
+ ]
         Push    R14
         BL      TimWrch
         BL      PostWrchCursor
         CLC                             ; also clears V
-        Pull    "R14,PC"
+        ADD     SP, SP, #4
+        Pull    PC
 
 ; *****************************************************************************
 
@@ -723,8 +734,9 @@ SYN     ROUT                            ; Select screen mode (MODE)
 VduBadExit                              ; jumped to if an error in VDU code
         Push    R0                      ; save error pointer
         BL      PostWrchCursor
+        LDR     R0, [R13], #8           ; get error pointer, junk next entry
         SETV
-        Pull    "R0, R14,PC"
+        Pull    PC
 
 ModeChangeSub ROUT
         Push    lr

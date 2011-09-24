@@ -382,7 +382,8 @@ ReadVduVarForSam
         MOV     R0, sp
         MOV     R1, sp
         SWI     XOS_ReadVduVariables
-        Pull   "R0, R14, PC"
+        LDR     R0, [sp], #8
+        LDR     pc, [sp], #4
 
 ;*****************************************************************************
 ; R0 -> envstring, R1 -> 5 byte time

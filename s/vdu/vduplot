@@ -1050,7 +1050,7 @@ NewHLine ROUT                           ; Entry point for sorted Xcoords
         TST     R11, #2                 ; can we do 2 words ?
         STMNEIA R9!, {R0-R1}            ; write 2 words to screen
         TST     R11, #1                 ; can we do 1 word ?
-        STMNEIA R9!, {R0}               ; write 1 word to screen
+        STRNE   R0, [R9], #4            ; write 1 word to screen
         AND     R10, R10, R14           ; do partial word at end
  [ AvoidScreenReads
         CMP     R14, #&FFFFFFFF

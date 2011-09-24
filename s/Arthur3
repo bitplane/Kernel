@@ -201,18 +201,50 @@ op_UnaryMinus * 67 ; unary minus
 
         MACRO
 $label  ePush  $reglist
+        LCLS   temps
+        LCLL   onereg
+temps   SETS   "$reglist"
+onereg  SETL   {TRUE}
+        WHILE  onereg :LAND: :LEN: temps > 0
+        [ temps :LEFT: 1 = "," :LOR: temps :LEFT: 1 = "-"
+onereg  SETL   {FALSE}
+        ]
+temps   SETS   temps :RIGHT: (:LEN: temps - 1)
+        WEND
+      [ onereg
+$label  STR    $reglist, [R11, #-4]!
+      |
 $label  STMFD  R11!, {$reglist}
+      ]
         CMP    R11, R10
         BLE    StackOFloErr
         MEND
 
         MACRO
 $label  ePull  $reglist, $writeback, $cc
+        LCLS   temps
+        LCLL   onereg
+temps   SETS   "$reglist"
+onereg  SETL   {TRUE}
+        WHILE  onereg :LAND: :LEN: temps > 0
+        [ temps :LEFT: 1 = "," :LOR: temps :LEFT: 1 = "-"
+onereg  SETL   {FALSE}
+        ]
+temps   SETS   temps :RIGHT: (:LEN: temps - 1)
+        WEND
+    [ onereg
+      [ "$writeback" = ""
+        LDR$cc     $reglist, [R11], #4
+      |
+        LDR$cc     $reglist, [R11]
+      ]
+    |
       [ "$writeback" = ""
         LDM$cc.FD  R11!, {$reglist}
       |
         LDM$cc.FD  R11, {$reglist}
       ]
+    ]
         MEND
 
 ;*************************************************************************

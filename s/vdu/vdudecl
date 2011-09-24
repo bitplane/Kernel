@@ -272,7 +272,7 @@ Pal_Blocksize           #       0
 ;
         MACRO
         Return $cond
-        LDM$cond.FD StkPtr!, {PC}
+        LDR$cond PC, [StkPtr], #4
         MEND
 
 ;

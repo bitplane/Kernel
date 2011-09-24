@@ -1256,7 +1256,8 @@ IRQ ROUT
         BL      CallVector
 
  [ HAL
-        Pull    "r10, lr, pc"           ; new-style CDV - pull return address
+        Pull    "r10, lr"
+        Pull    "pc"                    ; new-style CDV - pull return address
  |
         Pull    "r10, pc"               ; return: someone will always claim it.
  ]

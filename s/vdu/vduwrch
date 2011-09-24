@@ -396,7 +396,7 @@ FastCLS ROUT
         ADDCC   R9, R9, #256                    ; add back the last 256
 30
         SUBS    R9, R9, #4
-        STMCSIA R8!, {R0}
+        STRCS   R0, [R8], #4
         BHI     %BT30
 
         Pull    PC

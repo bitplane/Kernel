@@ -24,10 +24,11 @@ maxword * &16                                   ; highest known osword
         ASSERT  "$cond"="" :LOR: "$cond"="VS"
 
         [ "$cond"=""
-        Pull    "R0-R4,R11,WsPtr,link,PC", VC
+        LDRVC   R0,[R13]
         ]
-        ADDVS   R13, R13, #4                    ; junk stacked R0
-        Pull    "R1-R4,R11,WsPtr,link,PC", VS
+        LDM$cond.IB R13,{R1-R4,R11,WsPtr}
+        ADD$cond    R13,R13,#8*4 ; R0-R4,R11,WsPtr,R14
+        LDR$cond    PC,[R13],#4
 
         MEND
 
@@ -50,7 +51,9 @@ OsWord
 
 GoMyOsword
         CLRPSR  V_bit, R4
-        Pull    "R0-R4, R11, R12, R14, PC"
+        Pull    "R0-R4, R11, R12"
+        ADD     R13, R13, #4
+        Pull    PC
 
 ; *****************************************************************************
 
@@ -119,7 +122,9 @@ OsWord00 ROUT
 
         MOV     R2, R1                  ; put line length into R2
         Pull    "R0,R1,R3"              ; don't overwrite R2
-        Pull    "R3, R4, R11, R12, R14, PC"
+        Pull    "R3, R4, R11, R12"
+        ADD     R13, R13, #4
+        Pull    PC
 
 ; *****************************************************************************
 

@@ -153,8 +153,9 @@ Util_ChocService
         STRB    r0, [lr, #OsbyteVars + :INDEX: SerialOutHandle]
 20
         SWI     XOS_Find                        ; close file, ignore errors (if we get an error it's closed anyway)
+        LDR     r0, [sp], #8                    ; restore r0, junk r1
         MOV     r1, #Service_Serviced           ; indicate we closed it
-        Pull    "r0,lr,pc"                      ; restore r0, junk r1, and exit
+        LDR     pc, [sp], #4                    ; exit
 
 
 Util_Die   ROUT
@@ -813,8 +814,8 @@ KeyHelpCommon                  ; also used by *Configure
         MOVVC  r1, r0
         MOVVC  r0, r2
         SWIVC  XOS_PrettyPrint
-        Pull   "r1,lr,PC", VS  ; if error, pull R1, junk stacked R0 and exit
         Pull   "r1,r3"         ; restore r1 and get buffer pointer
+        Pull   "pc", VS        ; if error, exit
         MOV    r0, #0
         ADRL   R2, SysCommsModule
         BL     OneModuleK
@@ -879,11 +880,11 @@ OneModuleK     ROUT
         CMP    r0, #0
         BEQ    OneModuleK_PrintTitle ; Don't trust MessageTrans to preserve Z
         SWI    XMessageTrans_Dictionary
-        STMDB  sp!, {r1}
+        Push   "r1"
         MOVVC  r1, r0
         MOVVC  r0, r4
         SWIVC  XOS_PrettyPrint
-        LDMIA  sp!, {r1}
+        Pull   "r1"
         B      %FT77
 OneModuleK_PrintTitle
         LDR    r0, [stack]

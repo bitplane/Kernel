@@ -1872,7 +1872,8 @@ ClearPhysRAM ROUT
 
 20      TEQ     r0, r1                                  ; *this* is the speed critical bit - executed
         TEQNE   r0, r5                                  ; 32768 times per outer loop
-        STMNEIA r0!, {r2,r8-r14}
+        STMNEIA r0!, {r2,r8-r10}
+        STMNEIA r0!, {r2,r8-r10}
         BNE     %BT20
 
         TEQ     r0, r1

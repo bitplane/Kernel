@@ -1235,7 +1235,7 @@ ReturnNULR0 ROUT
 KeyREMOVECheckRS423 ROUT
         Push    R14
         BL      KeyREMOVE
-        Pull    "R14, PC", CS           ; pull stacked R14 if CS
+        ADDCS   R13, R13, #4            ; pull stacked R14 if CS
         Pull    PC
 
 ; *****************************************************************************

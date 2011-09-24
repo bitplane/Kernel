@@ -336,12 +336,13 @@ MoveCAMatR0toR3 Entry "r0,r1,r6,r7"
         ADR     lr, PhysicalAddressNotFoundError
         B       %BT95
 
-StoreDebugRegs
+StoreDebugRegs ; Note: Corrupts R0,R1
         Push    "lr"
-        MOV     lr, #CamMapCorruptDebugBlock
-        STMIA   lr, {r0-lr}
-        LDR     r0, [sp, #1*4]                  ; reload stacked r0 (error pointer)
-        STR     r0, [lr, #15*4]                 ; store in stacked PC position
+        LDR     lr, =ZeroPage+CamMapCorruptDebugBlock
+        STMIA   lr, {r0-r12}
+        STR     sp, [lr, #13*4]!
+        LDMIA   sp, {r0,r1}                     ; reload stacked LR & return R0 (error pointer)
+        STMIB   lr, {r0,r1}                     ; LR -> LR, error -> PC
         Pull    "pc"
 
 NoL2ForPageBeingRemovedError
