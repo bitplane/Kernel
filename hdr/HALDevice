@@ -66,6 +66,10 @@ HALDeviceComms_UART     #       1       ; UART
 HALDeviceComms_EtherNIC #       1       ; Ethernet NIC
 HALDeviceComms_GPIO     #       1       ; GPIO interface
 
+HALDeviceType_ExpCtl    *       5 :SHL: 8
+                        ^       1
+HALDeviceExpCtl_SDIO    #       1       ; SD/SDIO host controller
+                                        ; things like USB, FireWire, SATA, SAS controllers might go here
 
 HALDeviceBus_Pro        *       0 :SHL: 28
 
@@ -142,6 +146,9 @@ HALDeviceID_EtherNIC_DM9000     #       1
                                 ^       0
 HALDeviceID_GPIO_OMAP3          #       1
 HALDeviceID_GPIO_OMAP4		#	1
+
+                                ^       0
+HALDeviceID_SDIO_SDHCI          #       1
 
  ] ; Included_Hdr_HALDevice
 
