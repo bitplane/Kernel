@@ -221,6 +221,12 @@ FindARMloop
         ; others ...
 
 WeirdARMPanic
+        ! 0, "FIXME: temporary code"
+;!!!
+  MOV ip,#&C0
+  STR a1,[ip,#&40]
+  STMIA ip,{a1-ip}
+
         B       WeirdARMPanic                   ; stiff :)
 
 Analyse_ARMv3
@@ -566,6 +572,10 @@ Analyse_WB_CR7_Lx
         CMP     a3, #14 ; Stop after level 7 (even though an 8th level might exist on some CPUs?)
         ADD     a2, a2, #4
         BLT     %BT10
+        ! 0, "FIXME: temporary code"
+;!!!
+  MOV a4,#32
+  MOV v2,#32
         STRB    a4, [v6, #ICache_LineLen] ; Store log2(line size)-2
         STRB    v2, [v6, #DCache_LineLen] ; log2(line size)-2
 
@@ -839,6 +849,12 @@ ARM_Analyse_Fancy
         MOV     a1, v2, LSR #CT_Dsize_pos
         ADD     a2, v6, #DCache_Info
         BL      EvaluateCache
+
+;EvaluateCache isn't doing our job for us....assuming these flags are true! ;)
+        ! 0, "FIXME: temporary code"
+;!!!
+   ORR   v5, v5, #CPUFlag_SynchroniseCodeAreas+CPUFlag_SplitCache
+
         B       %FT27
 
 25

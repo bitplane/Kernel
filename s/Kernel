@@ -42,9 +42,13 @@
         MACRO
         DebugTX $str
     [ DebugHALTX
+        ! 0, "FIXME: temporary code"
+;!!!
+  STR lr,[sp,#-4]!
         BL      DebugHALPrint
         =       "$str", 0
         ALIGN
+  LDR lr,[sp],#4
     ]
         MEND
   |

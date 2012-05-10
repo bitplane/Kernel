@@ -1417,6 +1417,17 @@ TickOne ROUT
         STRB    R0, [R3, #IOCIRQCLRA]   ; clear timer 0 interrupt
  ]
 
+
+        ! 0, "FIXME: temporary code"
+;!!! HAPPY HACK
+        STMFD   sp!,{r0-r12}
+        ADR     r0,ret_from_vs
+        Push    r0
+        B       VsyncIRQ_ExtEntry
+ret_from_vs
+        LDMFD   sp!,{r0-r12}
+;!!! HAPPY HACK
+
         LDR     R1, =ZeroPage
         LDR     R0, [R1, #MetroGnome]
         ADD     R0, R0, #1

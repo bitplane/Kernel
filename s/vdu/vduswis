@@ -698,6 +698,7 @@ NSM_yshftfactor
 ;
 
 SWICheckModeValid ROUT
+  DebugTX "CheckModeValid"
         VDWS    WsPtr
         Push    "r1,r9,lr"
         BL      FindOKMode              ; out: r1 = substitute mode
@@ -772,6 +773,11 @@ SWICheckModeValid ROUT
 ;
 
 FindOKMode ROUT
+        ! 0, "FIXME: temporary code"
+;!!!
+  ADDS R1,R0,#0
+  MOV pc,lr
+
         Push    "r0,r2-r4,r10,r11,lr"
         BL      ReadMonitorType
         CMP     r0, #&100               ; if it's a mode number

@@ -1565,6 +1565,7 @@ WallopDuffOnes
         MOV     r1, #AP_UndStackSoftCam
         BL      AddCamEntries
  ]
+        DebugTX "InitDynamicAreas"
 
 ; let's boogie with the CMOS for a bit
 ; read info and move as much memory as we can
@@ -1712,6 +1713,7 @@ WallopDuffOnes
         STR     R1, [R0, #AplWorkSize]
         STR     R1, [R0, #MemLimit]
 
+        DebugTX "InitVectors"
         BL      InitVectors               ; ready for OsByte to read mode
 
         LDR     R1, =ZeroPage+ModuleSWI_HashTab
@@ -1776,6 +1778,7 @@ ResetPart1Done                          ; R0 is reset type
  ]
         Push    "R0, R1"                ; save until after MOSInit
 
+        DebugTX "InitIRQ1"
         BL      InitialiseIRQ1Vtable
 
         LDR     R3, =ZeroPage
@@ -1826,6 +1829,7 @@ ResetPart1Done                          ; R0 is reset type
         MOV     R4, #0
         STMIA   R2!, {R3,R4}
         STMIA   R2!, {R3,R4}
+        DebugTX "IMB_Full"
 
    ;we need to do an IMB type thing for modifying code in vector area,
    ;and for copying irq handler code
@@ -1914,7 +1918,8 @@ ResetPart1Done                          ; R0 is reset type
         STR     R0, [R1, #DeviceTable]
       ]
         CallHAL HAL_InitDevices         ; get HAL to register any devices it has
-        BL      LookForHALRTC ; Check if an RTC was just added. This is currently the only place where HAL RTCs are checked for; if we wanted to check anywhere else (e.g. after ROM module initialisation) then we'd have to listen for Service_Hardware so we can cope with device removal
+        ! 0, "FIXME: we're going to need this back at some point"
+;        BL      LookForHALRTC ; Check if an RTC was just added. This is currently the only place where HAL RTCs are checked for; if we wanted to check anywhere else (e.g. after ROM module initialisation) then we'd have to listen for Service_Hardware so we can cope with device removal
  |
         BL      L1L2PTenhancements      ; little tricks on cacheability etc for performance
  ]

@@ -365,7 +365,12 @@ InitialiseMode Entry
         MOV     r0, #1                  ; no need to check for soft reset,
         SWI     XOS_ReadSysInfo         ; always use configured value
  ]
-        MOV     r1, r0
+        ! 0, "FIXME: temporary code"
+;!!!
+   ADR r1,mode_defn
+
+;        MOV     r1, r0
+
         MOV     r0, #ScreenModeReason_SelectMode
         SWI     XOS_ScreenMode
         EXIT    VC
@@ -376,6 +381,14 @@ InitialiseMode Entry
         SWI     XOS_WriteI+22
         SWIVC   XOS_WriteI+0            ; and if we can't get mode 0, we're really fooked!!!
         EXIT
+
+        ! 0, "FIXME: temporary code"
+mode_defn DCD 1
+        DCD 1920
+        DCD 1080
+        DCD 5
+        DCD -1
+        DCD -1
 
 ;
 ;------------------------------------------------------------------------------
@@ -744,6 +757,10 @@ VduBadExit                              ; jumped to if an error in VDU code
 ModeChangeSub ROUT
         Push    lr
 
+        ! 0, "FIXME: temporary code"
+; !!!
+  ADRL R2,mode_defn
+
         ;If its a common mode number (0..49) consider a possible mode number
         ;substitution, if hardware does not support given bits per pixel.
         ;We are vaguely assuming h/w supports at least 8 bpp, otherwise we may
@@ -809,6 +826,7 @@ mchsub_3
 
         TEQ     R0, R1                  ; if substitute mode
         MOVNE   R2, #0                  ; then don't use shadow
+  DebugTX "FindOKMode reached"
 
         CMP     r1, #&100
         BICCC   r10, r1, #&80
@@ -816,6 +834,7 @@ mchsub_3
         MOV     R11, R10
         BL      PushModeInfo
         BVS     %FT07                   ; [probably duff mode selector]
+  DebugTX "PushModeInfo done"
 
         LDR     R11, [R13, #wkScreenSize] ; get screen size for this mode
         LDR     R9, [WsPtr, #TotalScreenSize] ; maximum allowed amount
@@ -843,7 +862,9 @@ mchsub_3
       [ International
         BL      TranslateError
       ]
+  DebugTX "Can't grow framestore"
 07
+  DebugTX "Mode fail"
         SETV                            ; indicate error
         Pull    PC
 
@@ -926,10 +947,20 @@ TV_Mode_string
 
  [ UseGraphicsV
         Push    "r0-r4"
+        ! 0, "FIXME: temporary code"
+;!!!
+  [ {FALSE}
         MOV     r4, #GraphicsV_FramestoreAddress
         BL      CallGraphicsV
         TEQ     r4, #0
         BNE     %FT581
+  |
+  ;hardcoded values for R-Pi alpha. external framestore requires a GraphicsV client,
+  ;  but still debating the merits of external vs internal
+  MOV r0,#&2000000
+  MOV r1,#&0800000
+  MOV r4,#0
+  ]
         MOV     r1, r1, LSR #20                 ; round size down to 1MB
         MOV     r2, r1, LSL #20
         ADD     r0, r0, #1:SHL:20               ; round addr up to 1MB
@@ -1214,8 +1245,13 @@ PushModeInfo ROUT
         BL      ReadMonitorType
 PushModeInfoCommon
         MOV     r2, r10                 ; r2 = original mode
-        BL      OfferModeExtension
-        BEQ     %FT30                   ; [service claimed]
+        ! 0, "FIXME: temporary code"
+;!!!
+;        BL      OfferModeExtension
+;        BEQ     %FT30                   ; [service claimed]
+  MOV r3,#0
+  MOV r4,#0
+  B %FT30
 
         CMP     r2, #&100               ; service not claimed - check if mode selector
         MOVCC   r10, r11                ; unrecognised mode number, so use substitute
@@ -1414,9 +1450,11 @@ GenerateModeSelectorVars Entry "r0,r1,r3-r8,r10-r12"
         TST     r2, #1                          ; is it a new format sprite mode word?
         BNE     %FT50                           ; [yes, so skip]
         MOV     r0, r2
+;  DebugTX "ValModeSel"
         BL      ValidateModeSelector
         BVS     %FT95                           ; invalid - return error
         LDMIB   r2, {r4-r6}                     ; r4 = xres; r5 = yres; r6 = pixdepth
+;  DebugTX "Passed"
 
         STR     r6, [r9, #wkLog2BPC]            ; log2bpc = log2bpp = pixdepth
         STR     r6, [r9, #wkLog2BPP]
