@@ -838,12 +838,6 @@ MMUon_nol1ptoverlap
         MOV     v3, #0                                  ; "MMU is on" signal
 
         BL      ARM_Analyse
-        ! 0, "FIXME: temporary code"
-;!!! STILL DON'T KNOW WHY THE BODGE IN ARM_ANALYSE ITSELF DOESN'T WORK!
-  MOV a1,#0
-  MOV a2,#32
-  STRB a2,[a1,#DCache_LineLen]
-  STRB a2,[a1,#ICache_LineLen]
 
         ChangedProcVecs a1
 
