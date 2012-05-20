@@ -946,21 +946,36 @@ TV_Mode_string
                                         ; ConvertBankToAddress (was a bug!)
 
  [ UseGraphicsV
-        Push    "r0-r4"
-        ! 0, "FIXME: temporary code"
-;!!!
-  [ {FALSE}
+        Push    "r0-r6"
+        ! 0, "FIXME: fixed (!?) temporary code"
         MOV     r4, #GraphicsV_FramestoreAddress
         BL      CallGraphicsV
         TEQ     r4, #0
         BNE     %FT581
+ [ {TRUE}
+; for mapping in, round start address down and size up to megabyte boundaries
+; r0 = physical start, r1= size
+; so frame buffer is wholly contained within the mapped in area
+        MOV     r3, #1<<20                      ; 1 Megabyte
+        SUB     r3, r3, #1                      ; convert to mask
+        MOV     r4, r1                          ; remember what was asked for
+        AND     r5, r0, r3                      ; and offset from megabyte base
+        TST     r1, r3                          ; non integer megabyte?
+        BIC     r2, r1, r3                      ; (clear the bits)
+        ADDNE   r2, r2, #1<<20                  ; yes.. up to next megabyte
+        BIC     r1, r0, r3                      ; ensure megabyte boundary at start
+        MOV     r0, #13                         ; map in permanently
+        ORR     r0, r0, #1:SHL:8                ; buffered, uncached
+        ORR     r0, r0, #1:SHL:16+1:SHL:17      ; doubly map, access permission specified
+        SWI     XOS_Memory
+        BVS     %FT581
+        STR     r4, [WsPtr, #TotalScreenSize]   ; what we asked for
+        ADD     r3, r3, r4                      ; compute end
+        ADD     r3, r3, r5                      ; and allow offset dfrom start
+        STR     r3, [WsPtr, #ScreenEndAddr]     ; actual screen end
+        MOV     r14, #1
+        B       %FT582
   |
-  ;hardcoded values for R-Pi alpha. external framestore requires a GraphicsV client,
-  ;  but still debating the merits of external vs internal
-  MOV r0,#&2000000
-  MOV r1,#&0800000
-  MOV r4,#0
-  ]
         MOV     r1, r1, LSR #20                 ; round size down to 1MB
         MOV     r2, r1, LSL #20
         ADD     r0, r0, #1:SHL:20               ; round addr up to 1MB
@@ -977,6 +992,8 @@ TV_Mode_string
         STR     r3, [WsPtr, #ScreenEndAddr]
         MOV     r14, #1
         B       %FT582
+
+ ]
 581
         MOV     r0, #128+2
         SWI     XOS_ReadDynamicArea
@@ -985,7 +1002,7 @@ TV_Mode_string
         STRVC   r0, [WsPtr, #ScreenEndAddr]
         MOV     r14, #0
 582
-        Pull    "r0-r4"
+        Pull    "r0-r6"
         STRB    r14, [WsPtr, #ExternalFramestore]
  ]
 

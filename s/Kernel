@@ -39,6 +39,34 @@
         CallHAL $rout
         MEND
 
+
+        MACRO
+        DebugTXHex
+        ! 0, "FIXME: jb temporary code"
+;!!!
+  STR lr,[sp,#-4]!
+        BL      HALDebugHexTX
+  LDR lr,[sp],#4
+        MEND
+
+        MACRO
+        DebugTXHex4
+        ! 0, "FIXME: temporary code"
+;!!!
+  STR lr,[sp,#-4]!
+        BL      HALDebugHexTX4
+  LDR lr,[sp],#4
+        MEND
+
+        MACRO
+        DebugTXHex2
+        ! 0, "FIXME: temporary code"
+;!!!
+  STR lr,[sp,#-4]!
+        BL      HALDebugHexTX2
+  LDR lr,[sp],#4
+        MEND
+
         MACRO
         DebugTX $str
     [ DebugHALTX
@@ -1470,11 +1498,11 @@ VecSwiDespatch ROUT
       [ NoARMT2
         AND     r14, r14, #&F0000000    ; extract caller's CCs
         BIC     r11, r11, #&F0000000    ; mask out ours
-        BIC     r11, r11, #I32_bit      ; enable IRQs
+        ORR     r11, r11, #I32_bit      ; disable IRQs   (cf J Lee mod)
         ORR     r11, r11, r14           ; add in CCs
       |
         MOV     r14, r14, LSR #28
-        BIC     r11, r11, #I32_bit      ; enable IRQs
+        ORR     r11, r11, #I32_bit      ; disable IRQs   (cf J Lee mod)
         BFI     r11, r14, #28, #4       ; add in caller's CCs
       ]
         MSR     CPSR_cf, r11            ; and set it all up

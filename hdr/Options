@@ -292,6 +292,9 @@ DebugTerminal   SETL    {FALSE}
                 GBLL    DebugHALTX
 DebugHALTX      SETL    (Version :AND: 1) = 1   ; Yes for odd numbered development
 
+                GBLL    InverseTextTransparency
+InverseTextTransparency SETL    {FALSE}
+
                 GBLL    DebugHeaps              ; initialise claimed and freed blocks
 DebugHeaps      SETL    {FALSE}                 ; (may slow things down unacceptably)
 

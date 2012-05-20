@@ -165,8 +165,13 @@ DefaultColours ROUT
  [ {TRUE} ; TMD 25-Jun-93 - change default text colour in 16bpp to &7FFF, and 32bpp to &00FFFFFF
         LDR     r14, =&FFFF
         CMP     fore, r14
+ [ InverseTextTransparency     ; test to invert text transparency when transparency channel inverted
+        ORREQ   fore, fore, #&8000              ;     &7FFF     ->      &FFFF
+        ORRHI   fore, fore, #&FF000000          ; &00FFFFFF     ->  &FFFFFFFF
+ |
         BICEQ   fore, fore, #&8000              ;     &FFFF     ->      &7FFF
         BICHI   fore, fore, #&FF000000          ; &FFFFFFFF     ->  &00FFFFFF
+ ]
  ]
         MOV     back, #0
         ADD     R14, WsPtr, #TForeCol
