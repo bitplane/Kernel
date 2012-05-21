@@ -1498,11 +1498,11 @@ VecSwiDespatch ROUT
       [ NoARMT2
         AND     r14, r14, #&F0000000    ; extract caller's CCs
         BIC     r11, r11, #&F0000000    ; mask out ours
-        ORR     r11, r11, #I32_bit      ; disable IRQs   (cf J Lee mod)
+        BIC     r11, r11, #I32_bit      ; enable IRQs
         ORR     r11, r11, r14           ; add in CCs
       |
         MOV     r14, r14, LSR #28
-        ORR     r11, r11, #I32_bit      ; disable IRQs   (cf J Lee mod)
+        BIC     r11, r11, #I32_bit      ; enable IRQs
         BFI     r11, r14, #28, #4       ; add in caller's CCs
       ]
         MSR     CPSR_cf, r11            ; and set it all up
