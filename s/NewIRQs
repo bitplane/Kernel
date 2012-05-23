@@ -1408,6 +1408,8 @@ TickOne ROUT
         ; Don't push r14 - we're using new interface, and claim the vector
         Push    "r9,r12"
         AddressHAL
+        MOV     r0, #0                  ; timer 0
+        CallHAL HAL_TimerIRQClear
         CallHAL HAL_IRQClear
         Pull    "r9,r12"
  |
