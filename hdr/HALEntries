@@ -172,6 +172,8 @@ EntryNo_HAL_ExtMachineID        #       1 ; 115, ReadSysInfo 10
 
 EntryNo_HAL_Video_FramestoreAddress  #  1 ; 116
 
+EntryNo_HAL_UARTDefault         #       1 ; 117
+
 KnownHALEntries                 #       0       ; Used inside Kernel
 
 ; Various flags and constants
