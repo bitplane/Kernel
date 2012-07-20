@@ -178,6 +178,12 @@ KnownHALEntries                 #       0       ; Used inside Kernel
 
 ; Various flags and constants
 
+; PhysInfo
+                                ^ 0
+PhysInfo_GetTableSize           # 1
+PhysInfo_WriteTable             # 1
+PhysInfo_HardROM                # 1
+
 ; NVMemory
 
 NVMemoryFlag_None               * 0
