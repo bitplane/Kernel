@@ -60,11 +60,12 @@ HALDeviceSysPeri_DMAL   #       1       ; DMA channel - list type
 HALDeviceSysPeri_RTC    #       1       ; RTCDevice
 HALDeviceSysPeri_CPUClk #       1       ; CPU clock generator
 
-HALDeviceType_Comms     *       4 :SHL: 8
-                        ^       1
-HALDeviceComms_UART     #       1       ; UART
-HALDeviceComms_EtherNIC #       1       ; Ethernet NIC
-HALDeviceComms_GPIO     #       1       ; GPIO interface
+HALDeviceType_Comms      *      4 :SHL: 8
+                         ^      1
+HALDeviceComms_UART      #      1       ; UART
+HALDeviceComms_EtherNIC  #      1       ; Ethernet NIC
+HALDeviceComms_GPIO      #      1       ; GPIO interface
+HALDeviceComms_InterProc #      1       ; Inter-processor mailboxes, etc.
 
 HALDeviceType_ExpCtl    *       5 :SHL: 8
                         ^       1
@@ -151,6 +152,10 @@ HALDeviceID_EtherNIC_DM9000     #       1
                                 ^       0
 HALDeviceID_GPIO_OMAP3          #       1
 HALDeviceID_GPIO_OMAP4          #       1
+HALDeviceID_GPIO_BCM2835        #       1
+
+                                ^       0
+HALDeviceID_InterProc_VCHIQ     #       1
 
                                 ^       0
 HALDeviceID_SDIO_SDHCI          #       1
