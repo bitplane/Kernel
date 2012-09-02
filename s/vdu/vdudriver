@@ -365,11 +365,13 @@ InitialiseMode Entry
         MOV     r0, #1                  ; no need to check for soft reset,
         SWI     XOS_ReadSysInfo         ; always use configured value
  ]
-        ! 0, "FIXME: temporary code"
-;!!!
-   ADR r1,mode_defn
+; at this stage, r0 = current screen mode either mode number or mode specifier
+; lets give the HAL a chance to be fussy.
+        mjsAddressHAL
+        mjsCallHAL    HAL_Video_StartupMode
 
-;        MOV     r1, r0
+01
+        MOV     r1, r0
 
         MOV     r0, #ScreenModeReason_SelectMode
         SWI     XOS_ScreenMode
@@ -382,14 +384,7 @@ InitialiseMode Entry
         SWIVC   XOS_WriteI+0            ; and if we can't get mode 0, we're really fooked!!!
         EXIT
 
-        ! 0, "FIXME: temporary code"
-mode_defn DCD 1
-        DCD 1920
-        DCD 1080
-        DCD 5
-        DCD -1
-        DCD -1
-
+;
 ;
 ;------------------------------------------------------------------------------
 ;
@@ -757,10 +752,6 @@ VduBadExit                              ; jumped to if an error in VDU code
 ModeChangeSub ROUT
         Push    lr
 
-        ! 0, "FIXME: temporary code"
-; !!!
-  ADRL R2,mode_defn
-
         ;If its a common mode number (0..49) consider a possible mode number
         ;substitution, if hardware does not support given bits per pixel.
         ;We are vaguely assuming h/w supports at least 8 bpp, otherwise we may
@@ -808,7 +799,6 @@ mchsub_3
         IssueService
         TEQ     R1, #0                  ; was service claimed ?
         BNE     %FT03                   ; no, so continue
-
         CMP     R0, #0                  ; service claimed; generate error ?
         Pull    PC, EQ                  ; no, just exit (V=0 from CMP)
         B       %FT07                   ; yes, then generate error
@@ -826,7 +816,6 @@ mchsub_3
 
         TEQ     R0, R1                  ; if substitute mode
         MOVNE   R2, #0                  ; then don't use shadow
-  DebugTX "FindOKMode reached"
 
         CMP     r1, #&100
         BICCC   r10, r1, #&80
@@ -834,7 +823,6 @@ mchsub_3
         MOV     R11, R10
         BL      PushModeInfo
         BVS     %FT07                   ; [probably duff mode selector]
-  DebugTX "PushModeInfo done"
 
         LDR     R11, [R13, #wkScreenSize] ; get screen size for this mode
         LDR     R9, [WsPtr, #TotalScreenSize] ; maximum allowed amount
@@ -846,7 +834,9 @@ mchsub_3
  [ UseGraphicsV
         LDRB    R0, [WsPtr, #ExternalFramestore]
         TEQ     R0, #0
-        BNE     %FT06                   ; can't grow an external framestore
+        BNE     %FT08                   ; video driver agreed to the mode change
+                                        ; so should handle memory growth OK
+                                        ; maybe complain if GV_Features R0 bit 5 not set?
  ]
 
 ; try to extend the amount of screen memory
@@ -862,9 +852,7 @@ mchsub_3
       [ International
         BL      TranslateError
       ]
-  DebugTX "Can't grow framestore"
 07
-  DebugTX "Mode fail"
         SETV                            ; indicate error
         Pull    PC
 
@@ -947,11 +935,20 @@ TV_Mode_string
 
  [ UseGraphicsV
         Push    "r0-r6"
-        ! 0, "FIXME: fixed (!?) temporary code"
+        MOV     r4, #GraphicsV_DisplayFeatures
+        BL      CallGraphicsV
+
+; If driver handles memory allocation, must change mode before asking for memory
+
+        TST     r0, #1<<5
+        ADDNE   R0, R13, #wkwordsize+7*4        ; R0 -> VIDCList3
+        BLNE    HardwareModeChange
+
         MOV     r4, #GraphicsV_FramestoreAddress
         BL      CallGraphicsV
         TEQ     r4, #0
         BNE     %FT581
+
  [ {TRUE}
 ; for mapping in, round start address down and size up to megabyte boundaries
 ; r0 = physical start, r1= size
@@ -1079,70 +1076,12 @@ TV_Mode_string
 
 ; finished doing other variables
 
- [ :LNOT:UseGraphicsV
-        Push    "R0-R3, R9, R12"                ; preserve registers ready to make HAL call later
-        ADD     R0, R13, #wkwordsize+6*4        ; R0 -> VIDCList3 (we have just pushed 6 regs)
- |
-        ADD     R0, R13, #wkwordsize            ; R0 -> VIDCList3
- ]
-
-;adjust vertical porch parameters in VIDCList3 for TVVertical (from *TV)
-;
-        LDROSB  R1, TVVertical
-        MOV     R1, R1, LSL #24          ; sign extend to 32 bits
-        MOV     R1, R1, ASR #24-3        ; and multiply by 8
-        LDR     R2, [WsPtr, #ModeFlags]
-        TST     R2, #Flag_GapMode        ; gap mode ?
-        ADDNE   R1, R1, R1, ASR #2       ; add on 2 rows if so
-        TST     R2, #Flag_DoubleVertical ; if double vertical
-        ADDNE   R1, R1, R1               ; then double it
-        LDR     R2, [R0, #VIDCList3_VertiBackPorch]
-        SUBS    R2, R2, R1
-        MOVMI   R2, #0
-        STR     R2, [R0, #VIDCList3_VertiBackPorch]   ;subtract from back porch, clamp at 0
-        LDR     R2, [R0, #VIDCList3_VertiFrontPorch]
-        ADDS    R2, R2, R1
-        MOVMI   R2, #0
-        STR     R2, [R0, #VIDCList3_VertiFrontPorch]  ;add to front porch, clamp at 0
-
-;remember pixel rate (kHz) and border settings from VIDCList3
-;
-        LDR     R2, [R0, #VIDCList3_PixelRate]
-        STR     R2, [WsPtr, #PixelRate]
-        LDR     R2, [R0, #VIDCList3_HorizLeftBorder]
-        STR     R2, [WsPtr, #BorderL]
-        LDR     R2, [R0, #VIDCList3_VertiBottomBorder]
-        STR     R2, [WsPtr, #BorderB]
-        LDR     R2, [R0, #VIDCList3_HorizRightBorder]
-        STR     R2, [WsPtr, #BorderR]
-        LDR     R2, [R0, #VIDCList3_VertiTopBorder]
-        STR     R2, [WsPtr, #BorderT]
-
-;remember DPMSState (if specified) from VIDCList3
-;
-        MOV     R2, #0                      ; DPMSState = 0 if not specified in list
-        ADD     R1, R0, #VIDCList3_ControlList
-20      LDR     R3, [R1], #8                ; loop over the control parameter list
-        CMP     R3, #-1
-        BEQ     %FT30                       ; didn't find the DPMSState entry
-        TEQ     R3, #ControlList_DPMSState
-        BNE     %BT20                       ; next control parameter
-        LDR     R2, [R1, #-4]               ; read DPMSState value
-        AND     R2, R2, #3                  ; only bits 0,1 valid
-30
-        STRB    R2, [WsPtr, #ScreenBlankDPMSState]
-
-;kernel/HAL split - call the HAL to program video controller for mode,
-;
- [ UseGraphicsV
-        MOV     R4, #GraphicsV_SetMode
+; tell hardware to change mode, unless already done
+        MOV     r4, #GraphicsV_DisplayFeatures
         BL      CallGraphicsV
- |
-        mjsAddressHAL
-        mjsCallHAL    HAL_Video_SetMode
-
-        Pull    "R0-R3, R9, R12"            ; restore registers after HAL call
- ]
+        TST     r0, #1<<5
+        ADDEQ   R0, R13, #wkwordsize            ; R0 -> VIDCList3
+        BLEQ    HardwareModeChange
 
         ADD     R13, R13, #PushedInfoSize       ; junk stacked data
 
@@ -1192,6 +1131,72 @@ TV_Mode_string
 
         CLRV                            ; indicate no error
         Pull    PC                      ; return to caller
+
+; *****************************************************************************
+;
+;       HardwareModeChange - Tell the video driver to change the mode
+;
+; in:   R0 = VIDC list
+;
+; out:  All regs preserved
+;
+
+HardwareModeChange
+        Push    "R0-R4, LR"
+
+;adjust vertical porch parameters in VIDCList3 for TVVertical (from *TV)
+;
+        LDROSB  R1, TVVertical
+        MOV     R1, R1, LSL #24          ; sign extend to 32 bits
+        MOV     R1, R1, ASR #24-3        ; and multiply by 8
+        LDR     R2, [WsPtr, #ModeFlags]
+        TST     R2, #Flag_GapMode        ; gap mode ?
+        ADDNE   R1, R1, R1, ASR #2       ; add on 2 rows if so
+        TST     R2, #Flag_DoubleVertical ; if double vertical
+        ADDNE   R1, R1, R1               ; then double it
+        LDR     R2, [R0, #VIDCList3_VertiBackPorch]
+        SUBS    R2, R2, R1
+        MOVMI   R2, #0
+        STR     R2, [R0, #VIDCList3_VertiBackPorch]   ;subtract from back porch, clamp at 0
+        LDR     R2, [R0, #VIDCList3_VertiFrontPorch]
+        ADDS    R2, R2, R1
+        MOVMI   R2, #0
+        STR     R2, [R0, #VIDCList3_VertiFrontPorch]  ;add to front porch, clamp at 0
+
+;remember pixel rate (kHz) and border settings from VIDCList3
+;
+        LDR     R2, [R0, #VIDCList3_PixelRate]
+        STR     R2, [WsPtr, #PixelRate]
+        LDR     R2, [R0, #VIDCList3_HorizLeftBorder]
+        STR     R2, [WsPtr, #BorderL]
+        LDR     R2, [R0, #VIDCList3_VertiBottomBorder]
+        STR     R2, [WsPtr, #BorderB]
+        LDR     R2, [R0, #VIDCList3_HorizRightBorder]
+        STR     R2, [WsPtr, #BorderR]
+        LDR     R2, [R0, #VIDCList3_VertiTopBorder]
+        STR     R2, [WsPtr, #BorderT]
+
+;remember DPMSState (if specified) from VIDCList3
+;
+        MOV     R2, #0                      ; DPMSState = 0 if not specified in list
+        ADD     R1, R0, #VIDCList3_ControlList
+20      LDR     R3, [R1], #8                ; loop over the control parameter list
+        CMP     R3, #-1
+        BEQ     %FT30                       ; didn't find the DPMSState entry
+        TEQ     R3, #ControlList_DPMSState
+        BNE     %BT20                       ; next control parameter
+        LDR     R2, [R1, #-4]               ; read DPMSState value
+        AND     R2, R2, #3                  ; only bits 0,1 valid
+30
+        STRB    R2, [WsPtr, #ScreenBlankDPMSState]
+
+;kernel/HAL split - call the HAL to program video controller for mode,
+;
+        MOV     R4, #GraphicsV_SetMode
+        BL      CallGraphicsV
+
+        Pull    "R0-R4, PC"
+
 
         MakeErrorBlock BadMODE
 
@@ -1262,13 +1267,8 @@ PushModeInfo ROUT
         BL      ReadMonitorType
 PushModeInfoCommon
         MOV     r2, r10                 ; r2 = original mode
-        ! 0, "FIXME: temporary code"
-;!!!
-;        BL      OfferModeExtension
-;        BEQ     %FT30                   ; [service claimed]
-  MOV r3,#0
-  MOV r4,#0
-  B %FT30
+        BL      OfferModeExtension
+        BEQ     %FT30                   ; [service claimed]
 
         CMP     r2, #&100               ; service not claimed - check if mode selector
         MOVCC   r10, r11                ; unrecognised mode number, so use substitute
@@ -1343,7 +1343,6 @@ PushModeInfoCommonNoService
         LDR     r2, [r3, #0]            ; is it type 3? (actually, it always should be now)
         TEQ     r2, #3
         BNE     %FT58
-
         LDR     r10, [r3, #VIDCList3_SyncPol]
         TST     r10, #SyncPol_InterlaceSpecified
         BNE     %FT56                              ; Interlace already specified
@@ -1467,11 +1466,9 @@ GenerateModeSelectorVars Entry "r0,r1,r3-r8,r10-r12"
         TST     r2, #1                          ; is it a new format sprite mode word?
         BNE     %FT50                           ; [yes, so skip]
         MOV     r0, r2
-;  DebugTX "ValModeSel"
         BL      ValidateModeSelector
         BVS     %FT95                           ; invalid - return error
         LDMIB   r2, {r4-r6}                     ; r4 = xres; r5 = yres; r6 = pixdepth
-;  DebugTX "Passed"
 
         STR     r6, [r9, #wkLog2BPC]            ; log2bpc = log2bpp = pixdepth
         STR     r6, [r9, #wkLog2BPP]

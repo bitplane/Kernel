@@ -41,30 +41,33 @@
 
 
         MACRO
-        DebugTXHex
+        DebugTXHex $reg
         ! 0, "FIXME: jb temporary code"
 ;!!!
-  STR lr,[sp,#-4]!
+  stmfd sp!,{a1,lr}
+        mov     a1, $reg
         BL      HALDebugHexTX
-  LDR lr,[sp],#4
+  ldmfd sp!,{a1,lr}
         MEND
 
         MACRO
-        DebugTXHex4
+        DebugTXHex4 $reg
         ! 0, "FIXME: temporary code"
 ;!!!
-  STR lr,[sp,#-4]!
+  stmfd sp!,{a1,lr}
+        mov     a1, $reg
         BL      HALDebugHexTX4
-  LDR lr,[sp],#4
+  ldmfd sp!,{a1,lr}
         MEND
 
         MACRO
-        DebugTXHex2
+        DebugTXHex2 $reg
         ! 0, "FIXME: temporary code"
 ;!!!
-  STR lr,[sp,#-4]!
+  stmfd sp!,{a1,lr}
+        mov     a1, $reg
         BL      HALDebugHexTX2
-  LDR lr,[sp],#4
+  ldmfd sp!,{a1,lr}
         MEND
 
         MACRO

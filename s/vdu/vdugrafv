@@ -139,8 +139,11 @@ GV_DisplayFeatures
 GV_FramestoreAddress
         Push    "r3, r9, lr"
         mjsAddressHAL WsPtr
-        MOV     r4, #0
+        MOV     r0, #0
+        MOV     r1, #0
         mjsCallHAL HAL_Video_FramestoreAddress
+        ORRS    r2, r0, r1
+        MOVNE   r4, #0
         Pull    "r3, r9, pc"
 
 GV_WritePaletteEntry
