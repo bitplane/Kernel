@@ -279,18 +279,18 @@ Cursor32loop
 
 PostWrchCursor ROUT
 
-        MOV     R6,R14
-        LDR     R14,[WsPtr, #HALVideoFeatures]
-        TST     R14,#2
+        LDR     R6,[WsPtr, #HALVideoFeatures]
+        TST     R6,#2
         BNE     %FT10
 
+        MOV     R6,R14
         MRS     R4,CPSR
         ORR     R3,R4,#I32_bit
-        MSR CPSR_c,R3
+        MSR     CPSR_c,R3
         BL      RestorePointer
-        MSR CPSR_c,R4
-10
+        MSR     CPSR_c,R4
         MOV     R14,R6
+10
 
         LDR     R6, [WsPtr, #CursorFlags]
         LDR     R0, [WsPtr, #CursorStack]

@@ -1091,23 +1091,6 @@ RedirectBadExit                         ; got an error from BGET
 ; in:   R1 = input buffer id (0 => keyboard, 1 => RS423)
 
 RDCHG   ROUT
-
-  [ {FALSE}
-  STMFD sp!,{R1-R12,R14}
-  MOV a1, #0
-  AddressHAL a1
-  SUB sp,sp,#4
-  MOV a2,sp
-  CallHAL HAL_UARTReceiveByte
-  LDR a2,[sp],#4
-  TST a2,#1
-  BNE %FT00
-  SEC
-  LDMFD sp!,{R1-R12,PC}
-00
-  CLC
-  LDMFD sp!,{R1-R12,PC}
-  ]
         Push    R14
 
 ; insert check here for ECONET interception of RDCH

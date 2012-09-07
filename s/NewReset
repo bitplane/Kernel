@@ -1922,8 +1922,7 @@ ResetPart1Done                          ; R0 is reset type
         STR     R0, [R1, #DeviceTable]
       ]
         CallHAL HAL_InitDevices         ; get HAL to register any devices it has
-        ! 0, "FIXME: we're going to need this back at some point"
-;        BL      LookForHALRTC ; Check if an RTC was just added. This is currently the only place where HAL RTCs are checked for; if we wanted to check anywhere else (e.g. after ROM module initialisation) then we'd have to listen for Service_Hardware so we can cope with device removal
+        BL      LookForHALRTC ; Check if an RTC was just added. This is currently the only place where HAL RTCs are checked for; if we wanted to check anywhere else (e.g. after ROM module initialisation) then we'd have to listen for Service_Hardware so we can cope with device removal
  |
         BL      L1L2PTenhancements      ; little tricks on cacheability etc for performance
  ]

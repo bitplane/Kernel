@@ -39,47 +39,12 @@
         CallHAL $rout
         MEND
 
-
-        MACRO
-        DebugTXHex $reg
-        ! 0, "FIXME: jb temporary code"
-;!!!
-  stmfd sp!,{a1,lr}
-        mov     a1, $reg
-        BL      HALDebugHexTX
-  ldmfd sp!,{a1,lr}
-        MEND
-
-        MACRO
-        DebugTXHex4 $reg
-        ! 0, "FIXME: temporary code"
-;!!!
-  stmfd sp!,{a1,lr}
-        mov     a1, $reg
-        BL      HALDebugHexTX4
-  ldmfd sp!,{a1,lr}
-        MEND
-
-        MACRO
-        DebugTXHex2 $reg
-        ! 0, "FIXME: temporary code"
-;!!!
-  stmfd sp!,{a1,lr}
-        mov     a1, $reg
-        BL      HALDebugHexTX2
-  ldmfd sp!,{a1,lr}
-        MEND
-
         MACRO
         DebugTX $str
     [ DebugHALTX
-        ! 0, "FIXME: temporary code"
-;!!!
-  STR lr,[sp,#-4]!
         BL      DebugHALPrint
         =       "$str", 0
         ALIGN
-  LDR lr,[sp],#4
     ]
         MEND
   |

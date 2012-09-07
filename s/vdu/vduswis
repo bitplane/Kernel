@@ -698,7 +698,6 @@ NSM_yshftfactor
 ;
 
 SWICheckModeValid ROUT
-  DebugTX "CheckModeValid"
         VDWS    WsPtr
         Push    "r1,r9,lr"
         BL      FindOKMode              ; out: r1 = substitute mode

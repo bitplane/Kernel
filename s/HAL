@@ -2633,36 +2633,20 @@ jbdt1
        CallHAL  HAL_DebugTX
        ldmfd    r13!, {r0-r3,sb,ip,pc}
 
-jbdtxh stmfd    r13!,{r0-r3,lr}        ; print byte as hex
-       and      a4,a1,#&f              ; get low nibble
+jbdtxh stmfd    r13!,{a1,v1,lr}        ; print byte as hex. corrupts a2-a4, ip, assumes sb already AddressHAL'd
+       and      v1,a1,#&f              ; get low nibble
        and      a1,a1,#&f0             ; get hi nibble
        mov      a1,a1,lsr #4           ; shift to low nibble
        cmp      a1,#&9                 ; 9?
        addle    a1,a1,#&30
        addgt    a1,a1,#&37             ; convert letter if needed
        CallHAL  HAL_DebugTX
-       cmp      a4,#9
-       addle    a1,a4,#&30
-       addgt    a1,a4,#&37
+       cmp      v1,#9
+       addle    a1,v1,#&30
+       addgt    a1,v1,#&37
        CallHAL  HAL_DebugTX
-       ldmfd    r13!,{r0-r3,pc}
-
- |
-
-HALDebugHexTX
-HALDebugHexTX2
-HALDebugHexTX4
-       MOV     pc, lr
-
+       ldmfd    r13!,{a1,v1,pc}
  ]
-
-
-
-
-
-
-
-
 
         END
 

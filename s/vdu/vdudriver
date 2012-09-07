@@ -834,9 +834,18 @@ mchsub_3
  [ UseGraphicsV
         LDRB    R0, [WsPtr, #ExternalFramestore]
         TEQ     R0, #0
-        BNE     %FT08                   ; video driver agreed to the mode change
-                                        ; so should handle memory growth OK
-                                        ; maybe complain if GV_Features R0 bit 5 not set?
+        BEQ     %FT05
+
+; External framestore in use; does driver support growing/reallocating it?
+
+        Push    "r1-r2,r4"
+        MOV     r4, #GraphicsV_DisplayFeatures
+        BL      CallGraphicsV
+        Pull    "r1-r2,r4"
+        TST     r0, #1<<5
+        BNE     %FT08                   ; realloc supported, assume driver can allocate required memory since it OK'd the mode
+        B       %FT06                   ; not supported, complain
+05
  ]
 
 ; try to extend the amount of screen memory
