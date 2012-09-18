@@ -62,6 +62,7 @@
         GET     Hdr:Buffer
         GET     Hdr:Font
         GET     Hdr:DevNos
+        GET     Hdr:OsBytes
         GET     Hdr:Internatio
         GET     Hdr:Territory
         GET     Hdr:Portable
@@ -73,6 +74,7 @@
         GET     Hdr:Debug
         GET     Hdr:nvram
         GET     Hdr:PortMan
+        GET     Hdr:SerialOp
         GET     s.PMF.DEF          ; Common with 6502 code in the keyboard
         Protocol
 
@@ -113,7 +115,6 @@
         $GetMemInfo
         ! 0, "Main kernel size = &" :CC: :STR: (.-KernelBase)
 StartOfVduDriver
-        GET     s.vdu.vduhint
         GET     s.vdu.VduDriver
         GET     s.vdu.VduSWIs
         GET     s.vdu.VduPalette

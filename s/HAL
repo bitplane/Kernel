@@ -364,7 +364,7 @@ RISCOS_Start
         MOV     v6, v2
         TEQ     v8, a4                          ; Was this the only block? If so, leave 16M
         SUBEQS  v6, v6, #16*1024*1024
-        MOVCC   v6, v2, LSR #1                  ; If that overflowed, take half the bank.
+        MOVLS   v6, v2, LSR #1                  ; If that overflowed, take half the bank.
         CMP     v6, #32*1024*1024
         MOVHS   v6, #32*1024*1024               ; Limit allocation to 32M (arbitrary)
 
@@ -872,11 +872,7 @@ MMUon_nol1ptoverlap
         AddressHAL
         CallHAL HAL_Init
 
- [ DebugHALTX
-        BL      DebugHALPrint
-        = "HAL initialised",0
-        ALIGN
- ]
+        DebugTX "HAL initialised"
 
         LDR     a1, =ZeroPage
         LDR     v1, [a1, #InitUsedBlock]
@@ -2307,17 +2303,25 @@ NullHALEntry
 ; Can freely corrupt r10-r12 (v7,v8,ip).
 HardwareSWI
         AND     ip, v5, #&FF
-        CMP     ip, #1
-        BLO     HardwareCall
-        BEQ     HardwareLookup
-        CMP     ip, #3
+
+        CMP     ip, #OSHW_LookupRoutine
+        ASSERT  OSHW_CallHAL < OSHW_LookupRoutine
+        BLO     HardwareCallHAL
+        BEQ     HardwareLookupRoutine
+
+        CMP     ip, #OSHW_DeviceRemove
+        ASSERT  OSHW_DeviceAdd < OSHW_DeviceRemove
         BLO     HardwareDeviceAdd
         BEQ     HardwareDeviceRemove
-        CMP     ip, #5
-        BLO     HardwareDeviceEnumerate
-        BHS     HardwareBadReason
 
-HardwareCall
+        CMP     ip, #OSHW_DeviceEnumerateChrono
+        ASSERT  OSHW_DeviceEnumerate < OSHW_DeviceEnumerateChrono
+        ASSERT  OSHW_DeviceEnumerateChrono < OSHW_MaxSubreason
+        BLO     HardwareDeviceEnumerate
+        BEQ     HardwareDeviceEnumerateChrono
+        BHI     HardwareBadReason
+
+HardwareCallHAL
         Push    "v1-v4,sb,lr"
         ADD     v8, sb, #1                              ; v8 = entry no + 1
         LDR     ip, =ZeroPage
@@ -2340,7 +2344,7 @@ HardwareCall
         Pull    "sb,lr"
         ExitSWIHandler
 
-HardwareLookup
+HardwareLookupRoutine
         ADD     v8, sb, #1                              ; v8 = entry no + 1
         LDR     ip, =ZeroPage
         LDR     v7, [ip, #HAL_Descriptor]
@@ -2464,6 +2468,36 @@ HardwareDeviceEnumerate
         ADD     r3, r3, r1, LSL #2
 10      ADD     r1, r1, #1
         LDR     r2, [r3], #4
+        LDR     lr, [r2, #HALDevice_Type]
+        EOR     lr, lr, r0
+        MOVS    lr, lr, LSL #16                         ; EQ if types match
+        SUBNES  r4, r4, #1
+        BNE     %BT10
+        TEQ     lr, #0
+        MOVNE   r1, #-1
+        BNE     %FT90
+        LDR     lr, [r2, #HALDevice_Version]
+        MOV     lr, lr, LSR #16
+        CMP     lr, r0, LSR #16                         ; newer than our client understands?
+        BLS     %FT90
+        SUBS    r4, r4, #1
+        BHI     %BT10
+        MOV     r1, #-1
+90
+        Pull    "r3-r4,lr"
+        ExitSWIHandler
+
+HardwareDeviceEnumerateChrono
+        Push    "r3-r4,lr"
+        LDR     lr, =ZeroPage
+        LDR     r2, [lr, #DeviceCount]
+        LDR     r3, [lr, #DeviceTable]
+        SUBS    r4, r2, r1
+        MOVLS   r1, #-1
+        BLS     %FT90                                   ; if r1 is out of range then exit
+        ADD     r3, r3, r4, LSL #2
+10      ADD     r1, r1, #1
+        LDR     r2, [r3, #-4]!
         LDR     lr, [r2, #HALDevice_Type]
         EOR     lr, lr, r0
         MOVS    lr, lr, LSL #16                         ; EQ if types match

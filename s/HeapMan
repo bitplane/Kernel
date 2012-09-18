@@ -401,14 +401,6 @@ GoodHeapExit                            ; V cleared on entry to SWI dispatch
         ExitSWIHandler                  ; Like all good SWI handlers
       ]
 
-;HeapInUse
-;     $HeapBadAsModuleBRA
-;       SetBorder R10, R11, 15, 0, 0
-;     $HeapBadAsModuleKET
-
-;        ADR     R0, ErrorBlock_HeapFail_HeapLocked
-;        B       NaffHeapExit
-
 ; Errors
        MakeErrorBlock  HeapBadReason
        MakeErrorBlock  HeapFail_Init
@@ -1959,12 +1951,12 @@ iShowHeap ROUT ; Internal entry point for debugging heap
 
 99
         CLRV
-        GRAB   "r0, hpd, addr, size, work, bp, tp, pc"
+        Pull   "r0, hpd, addr, size, work, bp, tp, pc"
 
 
 showfailed_badhpd
         WRLN    "Invalid heap descriptor : ShowHeap failed"
-        GRAB    "r0, hpd, addr, size, work, bp, tp, pc"
+        Pull    "r0, hpd, addr, size, work, bp, tp, pc"
 
 
 HexUsedBlk
@@ -1982,7 +1974,7 @@ PrintOffset
         ADDNE   R0, R0, hpd
         DREG    r0," (",cc
         STRIM   ")"
-        GRAB   "R0, PC"
+        Pull   "R0, PC"
 
 PrintOffsetLine
         Push   "lr"

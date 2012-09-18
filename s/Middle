@@ -1129,21 +1129,6 @@ exit_AOS
  ]
         MakeErrorBlock BadEnvNumber
 
-   [ {FALSE}
-
-testcallbackpending
-        CMP     r1, #0                ; OK if only reading
-        CMPEQ   r2, #0
-        CMPEQ   r3, #0
-        LDRNEB  r10, [r0, #CallBack_Flag-CallBackHandler]
-        TSTNE   r10, #CBack_OldStyle
-        MOVEQ   pc, r14
-  SetBorder r0, r14, 15, 0, 0
-        ADR     r0, ErrorBlock_CallbackPending
-        B       exit_AOS
-        MakeErrorBlock CallbackPending
-   ]
-
 AOS_Table
         &  ZeroPage+MemLimit     ;  MemoryLimit
         &  0
@@ -2073,10 +2058,10 @@ osri6_maxvalue * (.-4-osri6_table) :SHR: 2
 110
         ; Check if both HAL_DebugTX and HAL_DebugRX are available
         Push    "r8-r9,r14"
-        MOV     R8, #1
+        MOV     R8, #OSHW_LookupRoutine
         MOV     R9, #EntryNo_HAL_DebugTX
         SWI     XOS_Hardware
-        MOVVC   R8, #1
+        MOVVC   R8, #OSHW_LookupRoutine
         MOVVC   R9, #EntryNo_HAL_DebugRX
         SWIVC   XOS_Hardware
         Pull    "r8-r9,r14"
