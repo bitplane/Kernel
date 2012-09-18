@@ -160,6 +160,7 @@ ArthurVduDriver
 VduInit ROUT
         Push    R14
         LDR     R0, =ZeroPage
+        LDR     R14, [R0, #VideoPhysAddr]
         ASSERT (ZeroPage :AND: 255) = 0
         STRB    R0, [R0, #OsbyteVars + :INDEX: VDUqueueItems] ;purge queue
         STRB    R0, [WsPtr, #ScreenBlankFlag]   ; not blanked
@@ -175,6 +176,7 @@ VduInit ROUT
         STR     R0, [WsPtr, #VduSaveAreaPtr]      ; indicate no save area yet
         STR     R0, [WsPtr, #ClipBoxEnable]       ; no clip box calculating
         STRB    R0, [WsPtr, #ExternalFramestore]
+        STR     R14, [WsPtr, #TrueVideoPhysAddr]  ; init TrueVideoPhysAddr for internal RAM/VRAM framestore case
 
         Push    "r4, r9, r12"
         mjsAddressHAL
@@ -975,6 +977,8 @@ TV_Mode_string
         ORR     r0, r0, #1:SHL:16+1:SHL:17      ; doubly map, access permission specified
         SWI     XOS_Memory
         BVS     %FT581
+        ADD     r0, r1, r5                      ; reconstruct base phys address
+        STR     r0, [WsPtr, #TrueVideoPhysAddr] ; and update our copy
         STR     r4, [WsPtr, #TotalScreenSize]   ; what we asked for
         ADD     r3, r3, r4                      ; compute end
         ADD     r3, r3, r5                      ; and allow offset dfrom start
@@ -993,6 +997,8 @@ TV_Mode_string
         ORR     r0, r0, #1:SHL:16+1:SHL:17      ; doubly map, access permission specified
         SWI     XOS_Memory
         BVS     %FT581
+        ADD     r0, r1, r5                      ; reconstruct base phys address
+        STR     r0, [WsPtr, #TrueVideoPhysAddr] ; and update our copy
         STR     r2, [WsPtr, #TotalScreenSize]
         ADD     r3, r3, r2
         STR     r3, [WsPtr, #ScreenEndAddr]

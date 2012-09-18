@@ -2191,15 +2191,13 @@ SetVstart
         SUB     r1, r0, r2
         LDR     r2, [WsPtr, #TotalScreenSize]
         ADD     r1, r1, r2                      ; now we have offset of Vstart in video RAM
-        LDR     r2, =ZeroPage
-        LDR     r2, [r2, #VideoPhysAddr]
+        LDR     r2, [WsPtr, #TrueVideoPhysAddr]
         ADD     r1, r1, r2                      ; now we have physical address of Vstart
         MOV     r0, #HALDAG_VStart
         B       Do_HALDAG
 
 SetVendDefault
-        LDR     r2, =ZeroPage
-        LDR     r2, [r2, #VideoPhysAddr]
+        LDR     r2, [WsPtr, #TrueVideoPhysAddr]
         LDR     r1, [WsPtr, #TotalScreenSize]
         ADD     r1, r1, r2                      ; physical address of Vend
         MOV     r0, #HALDAG_VEnd
@@ -2220,8 +2218,7 @@ SetVrender
         ADD     r1, r1, r0                      ; add on teletext bank offset
         CMP     r1, r2                          ; if out of range
         SUBCS   r1, r1, r2                      ; then subtract total size
-        LDR     r2, =ZeroPage
-        LDR     r2, [r2, #VideoPhysAddr]        ; now we have physical address
+        LDR     r2, [WsPtr, #TrueVideoPhysAddr] ; now we have physical address
         ADD     r1, r1, r2
         MOV     r0, #HALDAG_VRender
         B       Do_HALDAG
@@ -2236,8 +2233,7 @@ SetVinit
         ADD     r1, r1, r0                      ; add on teletext bank offset
         CMP     r1, r2                          ; if out of range
         SUBCS   r1, r1, r2                      ; then subtract total size
-        LDR     r2, =ZeroPage
-        LDR     r2, [r2, #VideoPhysAddr]        ; now we have physical address
+        LDR     r2, [WsPtr, #TrueVideoPhysAddr] ; now we have physical address
         ADD     r1, r1, r2
         MOV     r0, #HALDAG_VInit
 Do_HALDAG
