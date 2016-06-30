@@ -213,37 +213,100 @@ OldOpt  SETA    {OPT}
 
 ; Dynamic area node format
 
-                ^       0
+                  ^     0
+DANode_Link       #     4               ; points to next node (in address order)
+DANode_Number     #     4               ; number of this area
+DANode_Base       #     4               ; base address of area (points in middle of doubly-mapped areas)
+DANode_Flags      #     4               ; various flags
+DANode_Size       #     4               ; current logical size of area (not counting holes, if Sparse/PMP area)
+DANode_MaxSize    #     4               ; maximum logical size of area
+DANode_Workspace  #     4               ; workspace pointer when calling handlers
+DANode_Handler    #     4               ; pointer to handler routine for area
+DANode_Title      #     4               ; pointer to area title
+DANode_SubLink    #     4               ; next node in any disjoint sublist (currently used for Shrinkables only)
+DANode_SparseHWM  #     4               ; high water mark, if Sparse area (highest base+size claimed for area)
+DANode_SortLink   #     4               ; next node in alphabetically sorted list
+DANode_PMP        #     4               ; pointer to physical memory pool - zero if not PMP or has been resized to zero
+DANode_PMPSize    #     4               ; number of pages currently in phys pool
+DANode_PMPMaxSize #     4               ; size of phys memory pool, in pages
+DANode_NodeSize   #     0
 
-DANode_Link     #       4               ; points to next node
-DANode_Number   #       4               ; number of this area
-DANode_Base     #       4               ; base address of area (points in middle of doubly-mapped areas)
-DANode_Flags    #       4               ; various flags
-DANode_Size     #       4               ; current size of area
-DANode_MaxSize  #       4               ; maximum size of area
-DANode_Workspace #      4               ; workspace pointer when calling handlers
-DANode_Handler  #       4               ; pointer to handler routine for area
-DANode_Title    #       4               ; pointer to area title (variable length)
-DANode_NodeSize #       0
+; CAM entry format
+                  ^     0
+CAM_LogAddr       #     4               ; Logical address page is assigned to (lower address if doubly mapped, Nowhere/DuffEntry if not mapped)
+CAM_PageFlags     #     4               ; DynAreaFlags_* and PageFlags_*
+CAM_PMP           #     4               ; Pointer to PMP (DANode ptr) if DynAreaFlags_PMP. 0 if not.
+CAM_PMPIndex      #     4               ; Index of page in PMP page list. Invalid if not in PMP.
+CAM_EntrySize     #     0
+CAM_EntrySizeLog2 *     4
+
 
 ; The addresses below are only temporary; eventually most of them will be allocated at run time (we hope!)
 
- [ :DEF: OldMemoryMap
-AplWorkMaxSize      * &01000000 ; 16M
-RMAAddress          * &01800000
-RMAMaxSize          * &00400000 ; 4M
+ [ HiProcVecs
+ProcVecs            * &FFFF0000
+ |
+ProcVecs            * &00000000
+ ]
+; Currently, zero page must be located at the processor vectors
+ZeroPage            * ProcVecs
+
+ [ HAL
+; Sort out 26/32 bit versions
+SVCStackSize        *  32*1024
+IRQStackSize        *   8*1024
+ABTStackSize        *   8*1024
+UNDStackSize        *   8*1024
+KbuffsMaxSize       *  64*1024
+ScreenMaxSize       * 480*1024
+DCacheCleanSize     * 256*1024  ;should be multiple of 64k
+
+AplWorkMaxSize      * &20000000 ; 512M - temporary (need to decide this at boot time)
+RMAAddress          * AplWorkMaxSize ; temporary - run time allocate?
+RMAMaxSize          * &10000000 ; 256M
+SysHeapChunkAddress * RMAAddress + RMAMaxSize
+SysHeapAddress      * SysHeapChunkAddress
+SysHeapMaxSize      * 32:SHL:20
+FreePoolAddress     * 0
+
+IOLimit             * &BA000000 ; initial lower limit on room for IO space (DA creation may move limit up)
+IO                  * &FA000000 ; works downwards
+HALWorkspace        * &FA000000
+HALWorkspaceSize    * &00100000
+IRQStackAddress     * &FA100000
+SVCStackAddress     * &FA200000
+ABTStackAddress     * &FA300000
+UNDStackAddress     * &FA400000
+PhysicalAccess      * &FA500000
+DCacheCleanAddress  * &FA600000 ; eg. for StrongARM, 256k of space, up to FAF40000
+KbuffsBaseAddress   * &FA640000 ; kernel buffers for long command lines, size KbuffsMaxSize
+HALWorkspaceNCNB    * &FA6E8000 ; 32K of uncacheable HAL workspace (if requested)
+L2PT                * &FA800000
+L1PT                * &FAC00000
+CursorChunkAddress  * &FAFF0000
+DuffEntry           * &FAFF8000 ; No page ever mapped in here (L2PT entry always 0), also, all non mapped pages
+Nowhere             * DuffEntry ; use this as their CAM entry. There is only one 'Nowhere' (synonym).
+CAM                 * &FB000000
+CAMspace            * CAM_EntrySize*1024*1024 ; 1M entries = enough for 4GB of RAM
+
+IRQSTK              * IRQStackAddress + IRQStackSize
+ABTSTK              * ABTStackAddress + ABTStackSize
+UNDSTK              * UNDStackAddress + UNDStackSize
  |
 AplWorkMaxSize      * &01C00000 ; 28M
 RMAAddress          * &02100000
 RMAMaxSize          * &00B00000 ; 11M
- ]
 
 SVCStackSize        * 8*1024
 
 SysHeapChunkAddress * &01C00000
+SVCStackAddress     * SysHeapChunkAddress
+SysHeapAddress      * SysHeapChunkAddress+SVCStackSize
 SysHeapMaxSize      * &00200000-SVCStackSize
 
 CursorChunkAddress  * &01F00000 ; Fixed size 32K
+DuffEntry           * &01F08000 ; No page ever mapped in here (L2PT entry always 0), also, all non mapped pages
+Nowhere             * DuffEntry ; use this as their CAM entry. There is only one 'Nowhere' (synonym).
 
 ScreenEndAdr        * &05000000 ; was &02000000
 ScreenMaxSize       * 480*1024
@@ -260,6 +323,10 @@ ScreenMaxSize       * 480*1024
 FreePoolAddress     * &06000000 ; may still go lower!
 
 PhysRam         *     &05000000
+;following dynamic area only used if LongCommandLines is {TRUE}
+KbuffsBaseAddress  * &2078000   ;just above reserved area for fake 480k screen
+KbuffsMaxSize      * &0088000   ;544k (takes us up to start of RMA)
+ ]
 
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ; system variables
@@ -454,6 +521,21 @@ OSBYTEVarSize * @-OSBYTEFirstVar
 
 ; End of variables' space
 
+; *** layout of a descriptor block for a display pointer shape ***
+
+                  ^  0
+PointerBlkHAL     #  0  ; fields up to private part passed to HAL
+PointerWidth      #  1  ; actual (unpadded) shape width in bytes (from OS_Word 21)
+PointerHeight     #  1  ; shape height in pixels
+                  #  2  ; alignment padding
+PointerBuffLA     #  4  ; logical address of shape buffer (up to 8 * 32 bytes)
+PointerBuffPA     #  4  ; physical address of shape buffer
+PointerBlkPrivate #  0  ; fields below here not used by HAL
+PointerActiveX    #  1  ; active x in pixels from left
+PointerActiveY    #  1  ; active y in pixels from top
+                  #  2  ; alignment padding
+PointerBlkSize    #  0
+
 
 ; ***********************************
 ; ***  Main Vdu Driver Workspace  ***
@@ -540,7 +622,7 @@ BitsPerPix # 4  ; Bits per pixel (1,2,4,8)
 BytesPerChar # 4        ; Bytes per 8 pixels of character
                         ; (same as BitsPerPix except in double pixel modes)
 
-CursorFudgeFactor # 4   ; Factor for horizontal cursor positioning
+             # 4        ; SPARE (avoiding changes of exported addresses for now)
 
 RowMult # 4     ; Row multiplier for text manipulation
 
@@ -617,7 +699,9 @@ DisplayXWindLimit # 4   ; Used for pointer programming
 DisplayYWindLimit # 4
 DisplayXEigFactor # 4
 DisplayYEigFactor # 4
-PointerXEigFactor # 4
+DisplayLog2BPP # 1
+PointerXEigFactor # 1
+                  # 2
 
 Ecf1 # 8        ; The Ecf patterns
 Ecf2 # 8
@@ -637,7 +721,7 @@ TotalScreenSize # 4     ; Amount configured for screen (in bytes)
 
 MaxMode # 4             ; Maximum mode number allowed (20 for now)
 
-VinitCopy # 4   ; Copy of Vinit for VDU 23;12 or 13
+ScreenEndAddr # 4       ; Logical address of screen (start of 2nd copy)
 
 CursorFlags # 4 ; Silly Master cursor movement flags
 
@@ -646,6 +730,11 @@ CursorStack # 4 ; Bit stack of nested cursor states (0 => on, 1 => off)
 
 ECFShift # 4    ; number of bits to rotate right ECF OR and EOR masks by
 ECFYOffset # 4  ; vertical offset to ECF index
+
+        ASSERT  ECFShift =  Legacy_ECFShift
+        ASSERT ?ECFShift = ?Legacy_ECFShift
+        ASSERT  ECFYOffset =  Legacy_ECFYOffset
+        ASSERT ?ECFYOffset = ?Legacy_ECFYOffset
 
 WsVdu5 # 0      ; Vdu 5 workspace
 WsScr # 4
@@ -657,18 +746,21 @@ EndMask # 4
 FontOffset # 4
 TempPlain # 16  ; only used for MODE 10
 
-VIDCClockSpeed # 4      ; current VIDC clock speed in kHz
+VIDCClockSpeed # 4      ; current VIDC clock speed in kHz (now always zero)
 
 CurrentMonitorType # 4  ; initialised from configured one
 
- [ STB
 PixelRate # 4   ; Pixel Rate in kHz
- ]
+
+BorderL # 4             ; Size of border
+BorderB # 4
+BorderR # 4
+BorderT # 4
 
 GraphicWs # 300 ; All graphics workspace is overlaid here
 EndGraphicWs # 0
 
- [ AssemblingArthur
+ [ AssemblingArthur :LAND: :DEF: ShowWS
  ! 0,"16 ":CC::STR:@
  ]
         AlignSpace 16
@@ -689,13 +781,41 @@ TCharSpacing # 0
 TCharSpaceX  # 4        ; horizontal spacing between VDU 4 chars in pixels
 TCharSpaceY  # 4        ; vertical   ------------------""-----------------
 
-HLineAddr    # 4        ; address of exported HLine
+HLineAddr      # 4      ; address of exported HLine
 GcolOraEorAddr # 4      ; address of FgEcfOraEor etc
 
-FirPalSetting # 4*28            ; First palette settings (not used on VIDC20)
-FirPalAddr * FirPalSetting      ; Address of block for first palette setting (only used on VIDC20)
-SecPalSetting # 4*28            ; Second palette settings (not used on VIDC20)
-SecPalAddr * SecPalSetting      ; Address of block for second palette setting (only used on VIDC20)
+BlankPalAddr  # 4       ; address of block for blank palette
+FirPalAddr    # 4       ; address of block for first flash state palette
+SecPalAddr    # 4       ; address of block for second flash state palette
+
+CurrentGraphicsVDriver # 4 ; Current driver number
+
+PointerShapes      # 0
+PointerShape1      # 4  ; pointers to defined shapes 1 to 4
+PointerShape2      # 4
+PointerShape3      # 4
+PointerShape4      # 4
+PointerShapesH     # 0
+PointerShapeH1     # 4  ; pointers to holding shapes 1 and 2 (so updates never hit shape given to HAL)
+PointerShapeH2     # 4
+
+PointerShapeBlocks # 6*PointerBlkSize ; room for the 6 shape descriptors themselves
+
+PointerShapeLA     # 4               ; logical address of current shape buffer (owned by HAL)
+PointerShapeNumber # 1               ; includes bit 7 linkage flag
+                   # 3               ; alignment padding
+PointerX           # 4               ; co-ordinates of pointer (not always = mouse)
+PointerY           # 4
+
+ [ :DEF: ShowWS
+  ! 0, "PointerShapes @ ":CC::STR:(PointerShapes)
+ ]
+
+GraphicsVFeatures  # 4               ; features word from current driver, refreshed each mode change
+TrueVideoPhysAddr  # 4               ; VideoPhysAddr is a lie, use this instead
+MaxGraphicsVDrivers * 8
+GraphicsVDrivers # MaxGraphicsVDrivers*4 ; List of drivers
+                # 4*4                ; SPARE (avoiding changes of exported addresses for now)
 
 TextFgColour    # 4             ; Fg/Bg colour stored as a colour number, computed on VDU 18 and re-poked!
 TextBgColour    # 4             ;
@@ -708,37 +828,34 @@ TextBgColour    # 4             ;
 TextExpandArea # 4      ; Pointer to Text expand area (in system heap)
 TextExpandArea_Size * (8*1024)
 
-HSWRSoftCopy    #       4       ; soft copy of h.sync width register (for DPMS)
-VSWRSoftCopy    #       4       ; soft copy of v.sync width register (for DPMS)
+                 # 2*4   ; SPARE (avoiding changes of exported addresses for now)
 
-;ScreenBlankFlag # 1     ; 0 => unblanked, 1 => blanked
+ScreenBlankFlag # 1     ; 0 => unblanked, 1 => blanked
 
-Export_ScreenBlankFlag      #       1
-        ASSERT  Export_ScreenBlankFlag =  ScreenBlankFlag
-        ASSERT ?Export_ScreenBlankFlag = ?ScreenBlankFlag
+        ASSERT  ScreenBlankFlag =  Legacy_ScreenBlankFlag
+        ASSERT ?ScreenBlankFlag = ?Legacy_ScreenBlankFlag
 
-;ScreenBlankDPMSState # 1       ; 0 => just blank video
-                                ; 1 => blank to stand-by (hsync off)
-                                ; 2 => blank to suspend (vsync off)
-                                ; 3 => blank to off (H+V off)
+ScreenBlankDPMSState # 1       ; 0 => just blank video
+                               ; 1 => blank to stand-by (hsync off)
+                               ; 2 => blank to suspend (vsync off)
+                               ; 3 => blank to off (H+V off)
 
-Export_ScreenBlankDPMSState      #       1
-        ASSERT  Export_ScreenBlankDPMSState =  ScreenBlankDPMSState
-        ASSERT ?Export_ScreenBlankDPMSState = ?ScreenBlankDPMSState
+        ASSERT  ScreenBlankDPMSState =  Legacy_ScreenBlankDPMSState
+        ASSERT ?ScreenBlankDPMSState = ?Legacy_ScreenBlankDPMSState
 
 
- [ AssemblingArthur
+ [ AssemblingArthur :LAND: :DEF: ShowWS
  ! 0,"64 ":CC::STR:@
  ]
         AlignSpace 64
 
-Export_FgEcfOraEor # 4*16      ; Interleaved zgora & zgeor
-        ASSERT  Export_FgEcfOraEor =  FgEcfOraEor
-        ASSERT ?Export_FgEcfOraEor = ?FgEcfOraEor
+FgEcfOraEor # 4*16      ; Interleaved zgora & zgeor
+        ASSERT  FgEcfOraEor =  Legacy_FgEcfOraEor
+        ASSERT ?FgEcfOraEor = ?Legacy_FgEcfOraEor
 
-Export_BgEcfOraEor # 4*16      ; Interleaved zgora & zgeor
-        ASSERT  Export_BgEcfOraEor =  BgEcfOraEor
-        ASSERT ?Export_BgEcfOraEor = ?BgEcfOraEor
+BgEcfOraEor # 4*16      ; Interleaved zgora & zgeor
+        ASSERT  BgEcfOraEor =  Legacy_BgEcfOraEor
+        ASSERT ?BgEcfOraEor = ?Legacy_BgEcfOraEor
 
 BgEcfStore  # 4*16      ; Interleaved zgora & zgeor to store background
 
@@ -755,17 +872,17 @@ SpAreaStart # 4         ; Start of sprite area
 SpChooseName # 16       ; No comment says Richard
 SpChoosePtr # 4
 
-PointerHeights # 4      ; 4 x 1 byte
-PointerActiveXs # 4     ; 4 x 1 byte
-PointerActiveYs # 4     ; 4 x 1 byte
-PointerShapeNumber # 1  ; includes bit 7 linkage flag
-PointerShapeChanged # 1 ; non-zero: change shape next vsync
-         # 2
-PointerX # 4            ; co-ordinates of pointer (not always = mouse)
-PointerY # 4
-
-VIDCControlCopy # 4     ; Soft copy of VIDC control register
-VertAdjust # 4          ; offset to add to vertical VIDC registers
+SWP_W # 1               ; Width & height of image to restore
+SWP_H # 1
+SWP_Callback # 1        ; Nonzero if palette update callback registered
+SWP_Mutex # 1           ; Mutex to prevent re-entrancy
+SWP_Restore # 1         ; Nonzero if restore needed in RestorePointer
+SWP_Dirty # 1           ; Nonzero if need replot due to palette change
+          # 2
+SWP_Coords # 4          ; Coordinates of last plot
+SWP_Pos # 4             ; Address to restore pixels to, 0 if not displayed
+SWP_Under # 4           ; Pointer to copy of screen pixels from under the pointer
+SWP_Palette # 3*4       ; Pointer colours converted to pixel values for current mode
 
 TeletextOffset # 4      ; Offset to current teletext flash bank
 
@@ -795,22 +912,23 @@ TTXFlag_BgTransBIC      * 1:SHL:24
 BeepBlock # 8           ; OSWORD block for VDU 7
 
 ScreenMemoryClaimed # 1 ; NZ => memory has been claimed or is unusable
+ExternalFramestore # 1  ; NZ => using external framestore rather than screen memory DA
 
- [ AssemblingArthur
+ [ AssemblingArthur :LAND: :DEF: ShowWS
  ! 0,"16 ":CC::STR:@
  ]
      AlignSpace 16      ; Align workspace to 16 bytes
 
 TTXDoubleCounts # 25    ; Number of double height chars on each line
 
- [ AssemblingArthur
+ [ AssemblingArthur :LAND: :DEF: ShowWS
  ! 0,"16 ":CC::STR:@
  ]
      AlignSpace 16      ; Align workspace to 16 bytes
 
 RAMMaskTb # 32*4        ; Copy of MaskTb for this mode (up to 32 words)
 
- [ AssemblingArthur
+ [ AssemblingArthur :LAND: :DEF: ShowWS
  ! 0,"16 ":CC::STR:@
  ]
      AlignSpace 16      ; Align workspace to 16 bytes
@@ -826,7 +944,7 @@ VduSprite # 4           ; Pointer to VDU output sprite (0 if output to screen)
 VduSaveAreaPtr # 4      ; Pointer to save area for VDU variables
 
 
- [ AssemblingArthur
+ [ AssemblingArthur :LAND: :DEF: ShowWS
  ! 0,"16,12 ":CC::STR:@
  ]
     AlignSpace 16, 12   ; Make ClipBoxCoords a valid immediate,
@@ -843,14 +961,12 @@ ClipBoxTRow # 4
 FgPattern       # 4*8   ; foreground pattern as defined by OS_SetColour
 BgPattern       # 4*8   ; background pattern as defined by OS_SetColour
 
-VIDCExternalSoftCopy #  4       ; soft copy of VIDCExternal
-VIDCFSynSoftCopy     #  4       ; soft copy of VIDCFSyn
-VIDCControlSoftCopy  #  4       ; soft copy of VIDCControl
+                # 3*4   ; SPARE (avoiding changes of exported addresses for now)
 
 KernelModeSelector # 4  ; pointer to block in system heap where
                         ; current mode selector is copied
 
- [ AssemblingArthur
+ [ AssemblingArthur :LAND: :DEF: ShowWS
  ! 0,"16 ":CC::STR:@
  ]
      AlignSpace 16      ; Align workspace to 16 bytes
@@ -860,7 +976,7 @@ TextExpand # 4*1024     ; Tim's massive text expansion table for whizzy WRCH
 
 TTXSoftFonts * TextExpand + 2*1024      ; Soft fonts in teletext mode
 
- [ AssemblingArthur
+ [ AssemblingArthur :LAND: :DEF: ShowWS
  ! 0,"64 ":CC::STR:@
  ]
      AlignSpace 64      ; Align workspace to 64 bytes
@@ -879,7 +995,7 @@ ScrSavCommon    * LargeCommon   ; (size = SpriteAreaCBsize + SpriteCBsize
 FldQueueSize    * ScratchSpaceSize
 FldQueueStart   * ScratchSpace
 
- [ AssemblingArthur
+ [ AssemblingArthur :LAND: :DEF: ShowWS
  ! 0,"64 ":CC::STR:@
  ]
      AlignSpace 64      ; Align workspace to 64 bytes
@@ -894,40 +1010,69 @@ VDWSSize # 0
 
                 ASSERT  VDWSSize <= 12 * 1024
 
+; IIC bus info block
+
+               ^ 0
+IICBus_Type    # 4 ; Bus type (HAL_IICType)
+IICBus_Status  # 4 ; Bus status (HAL_IICMonitorTransfer)
+IICBus_Device  # 4 ; Bus device (HAL_IICDevice)
+IICBus_Size    # 0
+
 ; *****************************************************************************
 ;                 Space in the first 32K is allocated below
 ; *****************************************************************************
 ; Real workspace definition
+
+; locations used during reset only. Not cleared by ClearPhysRAM, but
+; cleared later (just before DEFHAN).
+
+; Note that these are all relative to ZeroPage!
+
+                ^       &80             ; steer clear of FIQ code
+InitIRQHandler  #       4               ; pointer to IRQ handler (LDR PC'ed from IRQ HW vector)
+InitIRQWs       #       16              ; workspace for IRQ handler
+InitUsedStart   #       4               ; start of used pages (L2PT etc) not to be cleared
+InitUsedEnd     #       4               ; end of used pages
+InitUsedBlock   #       4               ; current block in PhysRamTable
+InitClearRamWs  #       10*4
+InitDMABlock    #       8               ; block of DMAable memory extracted from PhysRamTable
+InitDMAOffset   #       4               ; offset+8 into PhysRamTable where memory was taken
+InitDMAEnd      #       4               ; current DMA alloc pos
+                AlignSpace 32           ; because we clear 32 at a time
+InitWsEnd       #       0
 
 ; Basic kernel space - defined locations for external modules
 
                        ^       &100
 IRQ1V                  #       4       ; &100
 
-Export_ESC_Status      #       1       ; &104
-        ASSERT  Export_ESC_Status =  ESC_Status
-        ASSERT ?Export_ESC_Status = ?ESC_Status
+ESC_Status             #       1       ; &104
+        ASSERT  ESC_Status =  Legacy_ESC_Status
+        ASSERT ?ESC_Status = ?Legacy_ESC_Status
 
-Export_LatchBSoftCopy  #       1       ; &105
-        ASSERT  Export_LatchBSoftCopy =  LatchBSoftCopy
-        ASSERT ?Export_LatchBSoftCopy = ?LatchBSoftCopy
+LatchBSoftCopy         #       1       ; &105
+        ASSERT  LatchBSoftCopy =  Legacy_LatchBSoftCopy
+        ASSERT ?LatchBSoftCopy = ?Legacy_LatchBSoftCopy
 
 IOCControlSoftCopy     #       1       ; &106
 
-Export_CannotReset     #       1       ; &107
-        ASSERT  Export_CannotReset =  CannotReset
-        ASSERT ?Export_CannotReset = ?CannotReset
+CannotReset            #       1       ; &107
+        ASSERT  CannotReset =  Legacy_CannotReset
+        ASSERT ?CannotReset = ?Legacy_CannotReset
 
-Export_IRQsema         #       4       ; &108
-        ASSERT  Export_IRQsema =  IRQsema
-        ASSERT ?Export_IRQsema = ?IRQsema
+IRQsema                #       4       ; &108
+        ASSERT  IRQsema =  Legacy_IRQsema
+        ASSERT ?IRQsema = ?Legacy_IRQsema
 
 MetroGnome             #       4       ; &10C
+        ASSERT  MetroGnome =  Legacy_MetroGnome
+        ASSERT ?MetroGnome = ?Legacy_MetroGnome
+
 MemorySpeed            #       4       ; &110
 
-Export_MEMC_CR_SoftCopy #      4       ; &114
-        ASSERT  Export_MEMC_CR_SoftCopy =  MEMC_CR_SoftCopy
-        ASSERT ?Export_MEMC_CR_SoftCopy = ?MEMC_CR_SoftCopy
+MEMC_CR_SoftCopy       #      4       ; &114
+        ASSERT  MEMC_CR_SoftCopy =  Legacy_MEMC_CR_SoftCopy
+        ASSERT ?MEMC_CR_SoftCopy = ?Legacy_MEMC_CR_SoftCopy
 
 ResetIndirection        #      4       ; &118
 
@@ -965,102 +1110,213 @@ EvtHan          #       4
 ; (256 words) which is no longer adequate, so we can reuse it
 
 JordanWS        #       0
-VInitSoftCopy   #       4       ; soft copy of VInit so we can set L bit correctly
-VEndSoftCopy    #       4       ; soft copy of VEnd  ------------""---------------
-VStartSoftCopy  #       4       ; soft copy of VStart so we can calculate VIDINITB correctly
+                #       3*4     ; SPARE
 DAList          #       4       ; Pointer to first node on dynamic area list
 
 
                 AlignSpace 16
 AMBControl_ws   #       4       ; workspace anchor word for AMBControl
-ARMA_Cleaner_flipflop # 4       ; address of 16k StrongARM data cache cleaner area (flip flops between two)
+DynArea_ws      #       4       ; workspace anchor word for data structures to accelerate OS SWIs for dynamic areas
                 [ StrongARM
 SyncCodeA_sema  #       1       ; re-entrancy semaphore for SynchroniseCodeAreas (full address space version)
- ! 0, "AMBControl_ws  at  ":CC::STR:(AMBControl_ws)
- ! 0, "ARMA_Cleaner_flipflop at ":CC::STR:(ARMA_Cleaner_flipflop)
+ [ :DEF: ShowWS
+ ! 0, "AMBControl_ws         at ":CC::STR:(AMBControl_ws)
+ ! 0, "DynArea_ws            at ":CC::STR:(DynArea_ws)
  ! 0, "SyncCodeA_sema (byte) at ":CC::STR:(SyncCodeA_sema)
+ ]
                ]
 
                 AlignSpace 4
 Oscli_CmdHashSum        # 4          ;for hashed command lookup
 Oscli_CmdHashLists      # 4          ;anchor for hashed command lists structure
+ [ :DEF: ShowWS
       ! 0, "Oscli_CmdHashSum      at ":CC::STR:(Oscli_CmdHashSum)
       ! 0, "Oscli_CmdHashLists    at ":CC::STR:(Oscli_CmdHashLists)
+ ]
 
 Serv_SysChains          # 4          ;anchor for block handling 'system' service numbers, in range 1 to 255
 Serv_UsrChains          # 4          ;anchor for block handling 'user' service numbers, > 255
 Serv_AwkwardChain       # 4          ;anchor for chain handling non-compliant modules (no service table)
+ [ :DEF: ShowWS
       ! 0, "Serv_SysChains        at ":CC::STR:(Serv_SysChains)
       ! 0, "Serv_UsrChains        at ":CC::STR:(Serv_UsrChains)
       ! 0, "Serv_AwkwardChain     at ":CC::STR:(Serv_AwkwardChain)
+ ]
 
 
                 AlignSpace 32   ; skipped bit must start on 32-byte boundary (due to speedup)
 
 SkippedTables   #       0
-PhysRamTable    #       0       ; 6 pairs of words (physaddr, size) indicating
-                                ; RAM present in machine (NB normally you would need at most 5
-                                ; on IOMD machines, but the extra one is if a soft-loaded ROM image
-                                ; causes a bank to split
+PhysRamTable    #       0       ; Pairs of words (physaddr, size+flags)
+                                ; indicating RAM present in machine
+                                ; Unused entries have size of zero
 VideoPhysAddr   #       4       ; Address of video RAM (in the case of DRAM-only machines,
-VideoSize       #       4       ; this is actually a chunk out of DRAM)
-DRAMPhysAddrA   #       4       ; Next the DRAM - note that any banks with no memory
-DRAMSizeA       #       4       ; in them will be omitted from this table, so that
-DRAMPhysAddrB   #       4       ; eg DRAMPhysAddrA corresponds to the first bank with
-DRAMSizeB       #       4       ; DRAM in it, not necessarily bank 0
-DRAMPhysAddrC   #       4       ; If not all the slots are occupied, then
-DRAMSizeC       #       4       ; the remaining entries in this table have size fields
-DRAMPhysAddrD   #       4       ; of zero (and probably addresses of zero too)
-DRAMSizeD       #       4
-DRAMPhysAddrE   #       4
-DRAMSizeE       #       4
- [ MorrisSupport
-DRAMPhysAddrExtra #     4 * 12  ; The DRAM used with MORRIS can fragment into four
-DRAMSizeExtra     #     4 * 12  ; blocks so allocate 3 extra word pairs per bank
- ]
+VideoSizeFlags  #       4       ; this is actually a chunk out of DRAM)
+DRAMPhysAddrA   #       4       ; Next the DRAM
+DRAMSizeFlagsA  #       4
+                #       8 * 16  ; Space for 17 DRAM banks + 1 VRAM bank total
 PhysRamTableEnd #       0
- ! 0, "VideoPhysAddr held at  ":CC::STR:(VideoPhysAddr)
+DRAMPhysTableSize *     (PhysRamTableEnd-DRAMPhysAddrA) / 8
 
+ [ :DEF: ShowWS
+ ! 0, "VideoPhysAddr held at  ":CC::STR:(VideoPhysAddr)
+ ]
+
+ [ HAL
+L2PTUsed        #       4       ; Amount of memory used for L2PT
+ |
 VRAMSize        #       4       ; Amount of VRAM (in bytes) (may be more than 2M) (at &200 last time I checked)
-VRAMWidth       #       4       ; 0 => no VRAM, 1 => 32-bits wide, 2 => 64-bits wide
 VideoBandwidth  #       4       ; video bandwidth in bytes/sec
 L2PTSize        #       4       ; Amount of memory (in bytes) used for static L2PT
                                 ; - this consists of fixed size first bit, plus variable size
                                 ; bit for the free pool L2, which follows directly after it
+ ]
 SoftCamMapSize  #       4       ; Amount of memory (in bytes) used for soft CAM map
                                 ; (whole number of pages)
+ [ {FALSE}
 InitKbdHandler  #       4       ; Address of interrupt routine
 InitKbdWs       #       16      ; Workspace for reset keyboard IRQ code (was 12 changed for Morris)
+ ]
+ [ :LNOT: HAL
 CLine_Softcopy  #        1      ; Added for Morris - Monitor id
 
-                [ :LNOT: STB
+VRAMWidth       #       1       ; 0 => no VRAM, 1 => 32-bits wide, 2 => 64-bits wide
+
 LCD_Active      #       1       ; Added to support LCD/CRT switching. bm 6 bits 0=>External CRT in use, 1=>Mono, 2=>Passive colour, 3=>Active colour
                                 ;                                     bit 7     unset=>single panel, set=>dual panel
 LCD_Inverted    #       1       ; Added to support LCD palette inversion. 0=normal, 1=inverted. Note that the inversion is invisible to apps.
+ [ :DEF: ShowWS
  ! 0, "LCD_Active flag byte held at  ":CC::STR:(LCD_Active)
-                ]
+ ]
+ ]
 
- [ StrongARM
-ProcessorType   #       1       ; Processor type (handles 600 series onwards)
-ProcessorFlags  #       1       ; Processor flags (IMB, Arch4 etc)
+ [ HAL
+                AlignSpace
+HAL_StartFlags  #       4
+HAL_Descriptor  #       4
+HAL_Workspace   #       4
+HAL_WsSize      #       4
+
+ICache_Info              #  0
+ICache_NSets             #  4
+ICache_Size              #  4
+ICache_LineLen           #  1
+ICache_Associativity     #  1
+
+Cache_Type               #  1
+Cache_Flags              #  1
+
+DCache_Info              #  0
+DCache_NSets             #  4
+DCache_Size              #  4
+DCache_LineLen           #  1
+DCache_Associativity     #  1
+
+ProcessorArch            #  1
+ProcessorType            #  1   ; Processor type (handles 600 series onwards)
+
+DCache_CleanBaseAddress  #  0   ; word used either for IndexBit or CleanBaseAddress
+DCache_IndexBit          #  4
+DCache_CleanNextAddress  #  0   ; word used either for IndexSegStart or CleanNextAddress
+DCache_IndexSegStart     #  4
+DCache_RangeThreshold    #  4
+ ]
+                AlignSpace
+ProcessorFlags           #  4    ; Processor flags (IMB, Arch4 etc)
+ [ :DEF: ShowWS
  ! 0, "ProcessorType  at  ":CC::STR:(ProcessorType)
  ! 0, "ProcessorFlags at  ":CC::STR:(ProcessorFlags)
  ]
+ [ HAL
 
-IOSystemType    #       1       ; 0 => old I/O subsystem, 1 => IOEB+82C710 system, 2..255 => ?
+                AlignSpace
+
+MMU_PCBTrans             #  4
+
+Proc_Cache_CleanInvalidateAll     #       4
+Proc_Cache_CleanInvalidateRange   #       4
+Proc_Cache_CleanAll               #       4
+Proc_Cache_InvalidateAll          #       4
+Proc_Cache_RangeThreshold         #       4
+Proc_Cache_Examine                #       4
+Proc_TLB_InvalidateAll            #       4
+Proc_TLB_InvalidateEntry          #       4
+Proc_DSB_ReadWrite                #       4
+Proc_DSB_Write                    #       4
+Proc_DSB_Read                     #       4
+Proc_DMB_ReadWrite                #       4
+Proc_DMB_Write                    #       4
+Proc_DMB_Read                     #       4
+Proc_IMB_Full                     #       4
+Proc_IMB_Range                    #       4
+Proc_IMB_List                     #       4
+Proc_MMU_Changing                 #       4
+Proc_MMU_ChangingEntry            #       4
+Proc_MMU_ChangingUncached         #       4
+Proc_MMU_ChangingUncachedEntry    #       4
+Proc_MMU_ChangingEntries          #       4
+Proc_MMU_ChangingUncachedEntries  #       4
+
+Cache_Lx_Info                     #       4       ; Cache level ID register
+Cache_Lx_MaxLevel                 *       2       ; Current machines have max of 2 cache levels
+Cache_Lx_DTable                   #       4*Cache_Lx_MaxLevel ; Data/unified cache layout for all supported levels
+Cache_Lx_ITable                   #       4*Cache_Lx_MaxLevel ; Instruction cache layout for all supported levels
+Cache_HALDevice                   #       4       ; Pointer to any HAL cache device we're using
+ ]
+
+
+IOAllocPtr      #       4               ; current lowpoint of mapped I/O space (also upper limit on DAs)
+IOAllocLimit    #       4               ; current lowest allowed I/O space (DA creation may move this up)
+
+
+  [ :DEF: ShowWS
+        ! 0, "Free space before DebuggerSpace = ":CC::STR:(&300-@)
+ ]
+
+        ASSERT  @ <= &300
+                        #       (&300-@)
+ [ :LNOT: HiProcVecs
+; Note that this is currently located within the skipped region, even though it
+; doesn't need to be. It was just an easy way of adding the IIC bus info to the
+; region. The debugger will initialise DebuggerSpace on startup, so it doesn't
+; matter that it doesn't get cleared during the main RAM clear.
+DebuggerSpace           #       16*8    ; Debugger module needs some zero page
+DebuggerSpace_Size      *       ?DebuggerSpace
+
+        ASSERT  DebuggerSpace =  Legacy_DebuggerSpace
+        ASSERT ?DebuggerSpace = ?Legacy_DebuggerSpace
+ |
+DebuggerSpace           *       &2000   ; Debugger gets a page all to itself!
+DebuggerSpace_Size      *       &1000
+ ]
+
+IICBus_Count       *    5 ; 5 buses is enough for all current machines
+IICBus_Base        #    IICBus_Size*IICBus_Count
 
                 AlignSpace 32   ; skipped bit must end on 32-byte boundary (due to speedup)
 SkippedTablesEnd #      0
 
+; NVRAM support
+
+NVRamSize          #    1               ; Size of NVRam (E2ROM & CMOS) fitted in 256byte units
+NVRamBase          #    1               ; Base of NVRam
+NVRamSpeed         #    1               ; Clock hold time in 0.5us units
+NVRamPageSize      #    1               ; Page size for writing (log2)
+NVRamWriteSize     #    1               ; Size of writable region (256byte units)
+
+                   AlignSpace
 
 
-AppSpaceDANode  #       DANode_NodeSize ; Dummy area node for application space (not on list)
-FreePoolDANode  #       DANode_NodeSize ; Area node for free pool
-SysHeapDANode   #       DANode_NodeSize ; Area node for system heap
-CDASemaphore    #       4               ; Semaphore for OS_ChangeDynamicArea - non-zero => routine threaded
-MMUControlSoftCopy #    4               ; Soft copy of ARM600/700 control register
-
-AplWorkSize * AppSpaceDANode + DANode_Size
+AppSpaceDANode     #    DANode_NodeSize ; Dummy area node for application space (not on list)
+FreePoolDANode     #    DANode_NodeSize ; Area node for free pool
+SysHeapDANode      #    DANode_NodeSize ; Area node for system heap
+CDASemaphore       #    4               ; Semaphore for OS_ChangeDynamicArea - non-zero => routine threaded
+MMUControlSoftCopy #    4               ; Soft copy of ARM control register
+IRQMax             #    4               ; from HAL_IRQMax
+ [ HAL
+DeviceCount     #       4       ; size of our table of devices in the system heap
+DeviceTable     #       4       ; pointer to table
+ ]
 
 ProcVec_Start           #       0       ; Start of processor vector table
 ProcVec_Branch0         #       4       ; Branch through zero
@@ -1068,41 +1324,35 @@ ProcVec_UndInst         #       4       ; Undefined instruction vector
 ProcVec_SWI             #       4       ; SWI vector
 ProcVec_PrefAb          #       4       ; Prefetch abort vector
 ProcVec_DataAb          #       4       ; Data abort vector
-ProcVec_AddrEx          #       4       ; Address exception vector (not useful on ARM600/700)
+ProcVec_AddrEx          #       4       ; not used (was Address exception vector on 26-bit-only ARMs)
 ProcVec_IRQ             #       4       ; IRQ vector
 ProcVec_End             #       0
 
 ProcVecPreVeneersSize   *       4*4     ; Space for preveneers for loading handler addresses from 0 page.
 ProcVecPreVeneers       #       ProcVecPreVeneersSize
 
-        ASSERT  @ = &300
-Export_DebuggerSpace    #       16*8    ; Debugger module needs some zero page
+AplWorkSize * AppSpaceDANode + DANode_Size
 
-  [ E2ROMSupport
-NVRamSize	#	1		; Size of NVRam (E2ROM & CMOS) fitted in 256byte units
-RTCFitted	#	1		; flag =1 iff RTC is fitted
+  [ :LNOT: LongCommandLines
+EnvString          #    256
   ]
 
-  [ E2ROMSupport
-NVRamBase       #       1               ; Base of NVRam
-NVRamSpeed      #       1               ; Clock hold time in 0.5µs units
-NVRamPageSize   #       1               ; Page size for writing (log2)
-NVRamWriteSize  #       1               ; Size of writable region (256byte units)
-  ]
+ExtendedROMFooter # 4 ; Pointer to the extended ROM footer structure. 0 if not initialised, -1 if not found.
 
+CPUFeatures # 2*4
 
-                AlignSpace
-
-EnvString         #     256
-
-	! 0, "Free space after EnvString = ":CC::STR:(&500-@)
+ [ :DEF: ShowWS
+        ! 0, "Free space after EnvString = ":CC::STR:(&500-@)
+ ]
 
         ASSERT  @ <= &500               ; a convenient address to remember
                 #       (&500-@)
 
 CamMapCorruptDebugBlock #       &40     ; somewhere to dump registers in case of emergency
 
-	! 0, "Free space after CamMap debug block = ":CC::STR:((JordanWS+256*4)-@)
+ [ :DEF: ShowWS
+        ! 0, "Free space after CamMap debug block = ":CC::STR:((JordanWS+256*4)-@)
+ ]
 
         ASSERT  @ <= JordanWS+256*4
                 #       (JordanWS+256*4-@)  ; pad out to original size
@@ -1117,7 +1367,7 @@ MaxCamEntry     #       4       ; maximum index into the cam map, ie
 
 RAMLIMIT        #       4
 
-                #       4       ; dummy slot where AplWorkSize used to be
+ROMPhysAddr     #       4
 
 HiServ_ws       #       4
 HiServ          #       4
@@ -1130,14 +1380,16 @@ ROMModuleChain  #       4               ; pointer to head of ROM module chain
 
 ; now a section that it's handy to have in simply loadable places
 
- [ AssemblingArthur
+ [ AssemblingArthur :LAND: :DEF: ShowWS
  ! 0,"16 ":CC::STR:@
  ]
              AlignSpace 16
 
 KeyWorkSpaceSize   *  &200
 KeyWorkSpace       #  KeyWorkSpaceSize
+ [ :DEF: ShowWS
       ! 0, "KeyWorkSpace          at ":CC::STR:(KeyWorkSpace)
+ ]
 
 ; The following were reordered on 26-Jul-91. Old ordering was:
 ; GeneralMOSBuffer
@@ -1159,12 +1411,15 @@ ChocolateTKBlocks     #  4            ; -> array of quick access blocks for tick
 ChocolateMRBlocks     #  4            ; -> array of blocks for ROM module nodes (reduces no. of individual blocks in heap)
 ChocolateMABlocks     #  4            ; -> array of blocks for active module nodes (reduces no. of individual blocks in heap)
 ChocolateMSBlocks     #  4            ; -> array of blocks for module SWI hash nodes (reduces no. of individual blocks in heap)
+ [ :DEF: ShowWS
       ! 0, "ChocolateCBBlocks     at ":CC::STR:(ChocolateCBBlocks)
       ! 0, "ChocolateSVBlocks     at ":CC::STR:(ChocolateSVBlocks)
       ! 0, "ChocolateTKBlocks     at ":CC::STR:(ChocolateTKBlocks)
       ! 0, "ChocolateMRBlocks     at ":CC::STR:(ChocolateMRBlocks)
       ! 0, "ChocolateMABlocks     at ":CC::STR:(ChocolateMABlocks)
       ! 0, "ChocolateMSBlocks     at ":CC::STR:(ChocolateMSBlocks)
+ ]
+
 ; !!!! Free Space (40 bytes)
 OldSWIHashspace    #  10*4
   |
@@ -1178,7 +1433,9 @@ OldSWIHashspace    #  16*4
 ;ModuleSWI_HashTab  #  4*ModuleSHT_Entries
 
 Module_List        #  4
+ [ :DEF: ShowWS
       ! 0, "Module_List           at ":CC::STR:(Module_List)
+ ]
 
 Curr_Active_Object #  4
 
@@ -1195,9 +1452,13 @@ ExceptionDump      #  4
 ; *If                   expression to be evaluated to control the *If
 ;                       Command line to be submited on the expression
 ;                         evaluating to non-zero (the THEN clause).
+  [ LongCommandLines
+OldGeneralMOSBuffer # 256+4      ;spare
+  |
 GeneralMOSBuffer   #  256+4
+  ]
 
- [ AssemblingArthur
+ [ AssemblingArthur :LAND: :DEF: ShowWS
  ! 0,"16 ":CC::STR:@
  ]
             AlignSpace  16 ; Ensures we can MOV rn, #OsbyteVars if <=&1000
@@ -1232,19 +1493,20 @@ PFIQasIRQ_Chain #       4
 
 EnvTime            #    5
 
-Export_RedirectInHandle   #    1
-        ASSERT  Export_RedirectInHandle =  RedirectInHandle
-        ASSERT ?Export_RedirectInHandle = ?RedirectInHandle
+RedirectInHandle   #    1
+        ASSERT  RedirectInHandle =  Legacy_RedirectInHandle
+        ASSERT ?RedirectInHandle = ?Legacy_RedirectInHandle
 
-Export_RedirectOutHandle  #    1
-        ASSERT  Export_RedirectOutHandle =  RedirectOutHandle
-        ASSERT ?Export_RedirectOutHandle = ?RedirectOutHandle
+RedirectOutHandle  #    1
+        ASSERT  RedirectOutHandle =  Legacy_RedirectOutHandle
+        ASSERT ?RedirectOutHandle = ?Legacy_RedirectOutHandle
 
 MOShasFIQ          #    1
 FIQclaim_interlock #    1
 CallBack_Flag      #    1
 IRQ_CallBack_Flag * CallBack_Flag
-MonitorLeadType #       1       ; some function of the monitor lead inputs, as yet undetermined
+MonitorLeadType    #    1       ; some function of the monitor lead inputs, as yet undetermined
+MentionCMOSReset   #    1       ; non zero reports CMOS resets prior to the start banner
 
                 AlignSpace
 
@@ -1262,25 +1524,37 @@ CMOSRAMCache    #       256
 ModuleSHT_Entries  *  128
 ModuleSHT_Padding0 #  12                         ;spare, so that SWI hashtable is aligned for easy immediate address load
 ModuleSWI_HashTab  #  4*ModuleSHT_Entries
+ [ :DEF: ShowWS
       ! 0, "ModuleSWI_HashTab     at ":CC::STR:(ModuleSWI_HashTab)
+ ]
 ;
 SysVars_StickyPointers # (10+1)*4                ;used if ChocolateSysVars is TRUE (1 dummy pointer for 0 size)
+ [ :DEF: ShowWS
       ! 0, "SysVars_StickyPtrs    at ":CC::STR:(SysVars_StickyPointers)
+ ]
 ;
 Abort32_dumparea   # 6*4          ;info for OS_ReadSysInfo 7 - 32-bit PSR, fault address, 32-bit PC (room for two copies)
+ [ :DEF: ShowWS
       ! 0, "Abort32_dumparea      at ":CC::STR:(Abort32_dumparea)
+ ]
 ;
 Help_guard         # 4            ;for *help, guard against foreground re-entrancy (multiple taskwindows)
 Help_msgdescr      # 4*4          ;for *help, 4 words MessageTrans descriptor
+ [ :DEF: ShowWS
       ! 0, "Help_guard            at ":CC::STR:(Help_guard)
+ ]
 ;
 PCI_status         # 4            ;bit 0 = 1 if PCI exists or 0 if PCI does not exist, bits 1..31 reserved (0)
+ [ :DEF: ShowWS
       ! 0, "PCI_status            at ":CC::STR:(PCI_status)
+ ]
 IOMD_NoInterrupt          # 4     ;no. of irq devices for extant IOMD
 IOMD_DefaultIRQ1Vcode     # 4     ;default irq code start address (ROM) for extant IOMD
 IOMD_DefaultIRQ1Vcode_end # 4     ;default irq code end address (ROM)
 IOMD_Devices              # 4     ;default irq devices table address (ROM)
+ [ :DEF: ShowWS
       ! 0, "IOMD_NoInterrupt      at ":CC::STR:(IOMD_NoInterrupt)
+ ]
 ;
   [ mjsSysHeapNodesTrace
 mjsSHNodesTrace_ws # 0
@@ -1296,10 +1570,12 @@ mjsSHNT_vxs_total  # 4    ;total SysVar ExpandOrShrinkVNode calls that tried to 
 mjsSHNT_vxh_total  # 4    ;total SysVar ExpandOrShrinkVNode calls that went to the heap
 mjsSHNT_vfs_total  # 4    ;total SysVar FreeVNode calls that stuck
 mjsSHNT_vfh_total  # 4    ;total SysVar FreeVNode calls that dropped a node to the heap
+ [ :DEF: ShowWS
       ! 0, ""
       ! 0, "**WARNING** compiling in code to trace some SysHeap node statistics (mjsSysHeapNodesTrace TRUE)"
       ! 0, ""
       ! 0, "mjsSHNodesTrace_ws    at ":CC::STR:(mjsSHNodesTrace_ws)
+ ]
 ModuleSHT_Padding1 #  752-12-4*ModuleSHT_Entries-11*4-6*4-5*4-4-4*4-12*4 ;spare
   |
 ModuleSHT_Padding1 #  752-12-4*ModuleSHT_Entries-11*4-6*4-5*4-4-4*4      ;spare
@@ -1352,7 +1628,7 @@ PreVeneerRegDump    #  17*4             ; room for r0-r15, spsr
 CachedErrorBlocks   #  4                ; pointer to sysheap node holding the error block cache
  ]
 
- [ AssemblingArthur
+ [ AssemblingArthur :LAND: :DEF: ShowWS
  ! 0, "low space free ":CC::STR:(&FE8-@)
  ]
  ASSERT @ < &FE8
@@ -1362,6 +1638,8 @@ CachedErrorBlocks   #  4                ; pointer to sysheap node holding the er
 
                         ^       &FE8
 CLibCounter             #       1               ; Counter for Shared C Library tmpnam function
+        ASSERT  CLibCounter =  Legacy_CLibCounter
+        ASSERT ?CLibCounter = ?Legacy_CLibCounter
 
         AlignSpace
 
@@ -1371,23 +1649,31 @@ CLibCounter             #       1               ; Counter for Shared C Library t
 ; ROM libraries. They cannot use the private word since the block pointed
 ; to by this will be freed.
 RISCOSLibWord           #       4
-CLibWord                #       4
-FPEAnchor               #       4
+        ASSERT  RISCOSLibWord =  Legacy_RISCOSLibWord
+        ASSERT ?RISCOSLibWord = ?Legacy_RISCOSLibWord
 
-Export_DomainId                #       4       ; SKS added for domain identification
-        ASSERT  Export_DomainId =  DomainId
-        ASSERT ?Export_DomainId = ?DomainId
+CLibWord                #       4
+        ASSERT  CLibWord =  Legacy_CLibWord
+        ASSERT ?CLibWord = ?Legacy_CLibWord
+
+FPEAnchor               #       4
+        ASSERT  FPEAnchor =  Legacy_FPEAnchor
+        ASSERT ?FPEAnchor = ?Legacy_FPEAnchor
+
+DomainId                #       4       ; SKS added for domain identification
+        ASSERT  DomainId =  Legacy_DomainId
+        ASSERT ?DomainId = ?Legacy_DomainId
 
 Modula2_Private         #       4       ; MICK has FFC and uses it it in USR mode
 
-Export_VduDriverWorkSpace      #       VDWSSize
-        ASSERT  Export_VduDriverWorkSpace =  VduDriverWorkSpace
-        ASSERT ?Export_VduDriverWorkSpace = ?VduDriverWorkSpace
+VduDriverWorkSpace      #       VDWSSize
+        ASSERT  VduDriverWorkSpace =  Legacy_VduDriverWorkSpace
+        ASSERT ?VduDriverWorkSpace = ?Legacy_VduDriverWorkSpace
 
  ASSERT (VduDriverWorkSpace :AND: 63) = 0 ; For Tim (VDU5)
 
 
- [ AssemblingArthur
+ [ AssemblingArthur :LAND: :DEF: ShowWS
  ! 0, "high space free ":CC::STR:(&4000-@)
  ]
 
@@ -1415,10 +1701,15 @@ Export_ScratchSpace            #       ScratchSpaceSize
 
 ; Tidying the RMA uses ScratchSpace while all modules are dead
 
+ [ GSWorkspaceInKernelBuffers
+; the GSTrans workspace has now moved to the kernel buffers area
+; GSInit and GSRead may now safely be called from USR mode wahey...
+ |
 ; GSTRANS workspace: GSINIT puts state into the workspacem and GSREAD uses it.
 ; DO NOT do any operations between GSINIT/GSREAD SWIS.
 ; SWIs called: OSWord in time var code
 ;              BinaryToDecimal, ReadUnsigned
+ ]
 
 ; LVR: ADFS uses scratch space to format floppies on 1772 based machines
 
@@ -1426,13 +1717,20 @@ Export_ScratchSpace            #       ScratchSpaceSize
 ;      ColourTrans_SelecTable/RetrunColourNumber and also whilst generating
 ;      stipple pattterns.
 
+ [ GSWorkspaceInKernelBuffers
+; GSVarWSpace is now in kernel buffers
+ |
 GSVarWSpace             *       ScratchSpace
+ ]
 
                         ^       0
 GSNameBuff              #       &100
 GS_Stack                #       &200
 GS_StackPtr_Lim         *       &200 / 4        ; Number of words in stack.
 GS_StackPtr             #       4
+ [ GSWorkspaceInKernelBuffers
+GSVarWSpace_Size	#	0
+ ]
 
                         ^      @ + ScratchSpace
 
@@ -1446,50 +1744,49 @@ MacExEndPtrs            #       44
 ;    are called while the buffer is held. Also used for module prefixes:
 ;    Module called twice in this case.
 
-AliasExpansionBuffer    #       100
-
+  [ LongCommandLines
+OldAliasExpansionBuffer #       100     ;spare, mjs: shouldn't this have been &100 ??!??
+  |
+AliasExpansionBuffer    #       100     ;mjs: shouldn't this be &100 ??!??
 ; *list/*type need an argument expansion buffer: ReadArgs called with it.
+ArgumentBuffer          *       AliasExpansionBuffer
+  ]
 
-ArgumentBuffer           *       AliasExpansionBuffer
 
 ; EvaluateExpression space. Calls ReadUnsigned, BinaryToDecimal and ReadVarVal.
 
 ExprWSpace              *       @
 
                         ^       0, R12
+  [ LongCommandLines
+    ;ExprBuff moved to Kernel buffers area
+  |
 ExprBuff                #       &100
+  ]
 exprBracDif             #       2       ; keep exprSTRACC aligned
 tos_op                  #       2       ; 1 byte for use as STRACC-1
 ExprSVCstack            #       4
-exprSTRACC              *       @ - ExprBuff + ExprWSpace
 
+  [ LongCommandLines
+    ;exprSTRACC moved to Kernel buffers area
+ExprStackLimit          *       @ - exprBracDif + ExprWSpace + &100   ;keep 256 buffer zone for stack overflow
+ExprStackStart          *       ScratchSpace + ScratchSpaceSize
+  |
+exprSTRACC              *       @ - ExprBuff + ExprWSpace
 ExprStackLimit          *       exprSTRACC + &100
 ExprStackStart          *       ScratchSpace + ScratchSpaceSize
+  ]
 
-
-; Tutu needs some for argument substitution + expansion for run/load types
-; Only OS call during xform is XOS_SubstituteArgs and XOS_Heap(Claim,SysHeap)
-
-                        ^       0 ; Offset from ScratchSpace
-rav_substituted         #       256
-rav_arglist             #       256
-
-TopOfPageZero           #       0
-
-                        ^       &8000 ; The actual top of Page Zero
-EconetDebugSpace        |#|     &20 * 4 ; Thirty two words (&7F80)
-
-                ASSERT  @ > TopOfPageZero ; Make sure we don't clash
 
 ; *****************************************************************************
 ; ***            Cursor, Sound DMA, SWI, and OSCLI workspace.               ***
+ [ :LNOT: HAL32
 ; ***        Sits in the 32K above 31M, ie. &01F000000..&01F07FFF           ***
 ; ***        Has the physical address &02078000, ie. 32M + 512K - 32K       ***
+ ]
 ; *****************************************************************************
 
-TopOfDMAPhysRAM         *       &80000            ; OFFSET in physram
 TopOfDMAWorkSpace       *       CursorChunkAddress + 32*1024
-OffsetLogicalToPhysical *       TopOfDMAPhysRAM - TopOfDMAWorkSpace
 
                         ^       TopOfDMAWorkSpace ; Note we will be going down
 
@@ -1511,27 +1808,38 @@ Export_SoundWorkSpace          |#|     SoundWorkSpaceSize + SoundEvtSize
         ASSERT ?Export_SoundWorkSpace = ?SoundWorkSpace
 
 ; Cursor
+; mjs Sep 2000, Kernel/HAL split
+; Note that cursor data memory is expected to be uncacheable, since HAL may use it
+; directly for h/w DMA. This may not be true since RO 3.7, but should be sorted
+; eventually for next generation RO
+;
+; Currently (Jan 2013) only the sound DMA buffers are mapped in uncacheable.
+; This means CursorData is mapped in cacheable, despite the OS treating it as
+; uncacheable.
 
-CursorDataSize          *       &800
+CursorDataSize          *       &600            ; four defined shapes, plus 2 holding shapes
 CursorData              |#|     CursorDataSize
 CursorSoundRAM          *       CursorData
-CursorSoundPhysRAM      *       CursorSoundRAM + OffsetLogicalToPhysical
+
+SPARE_oldCursorSpace    |#|     &200            ; padding to avoid changing exported addresses for now
 
 ; SWI despatcher
 
-Export_BranchToSWIExit         |#|     4
-        ASSERT  Export_BranchToSWIExit =  BranchToSWIExit
-        ASSERT ?Export_BranchToSWIExit = ?BranchToSWIExit
+BranchToSWIExit         |#|     4
 
-Export_SvcTable                |#|     &400
-        ASSERT  Export_SvcTable =  SvcTable
-        ASSERT ?Export_SvcTable = ?SvcTable
+SvcTable                |#|     &400
 
+ [ :LNOT: HAL32
  ASSERT SvcTable = &01F033FC ; Required for SVC table pokers, 1.20 compatible
- [ No26bitCode
-SWIDespatch_Size        *       33*4
+ ]
+ [ SupportARMT
+   [ ZeroPage = 0
+SWIDespatch_Size        *       41*4
+   |
+SWIDespatch_Size        *       42*4
+   ]
  |
-SWIDespatch_Size        *       31*4    ; can save 2 instructions if 26-bit (no Thumb)
+SWIDespatch_Size        *       39*4    ; can save 2 instructions if no Thumb
  ]
 SWIDespatch             |#|     SWIDespatch_Size
 
@@ -1559,52 +1867,99 @@ Sound3Buff              |#|     Sound3BuffSize
 SpeechBuff              |#|     SpeechBuffSize
 MouseBuff               |#|     MouseBuffSize
 
-; Oscli buffering
+; IRQ despatch
 
-OscliBuffSize           *       &100
-OscliNoBuffs            *       16
-OscliCircBuffLimit      |#|     0
-OscliCircBuffStart      |#|     OscliBuffSize * OscliNoBuffs
-RedirectBuff            |#|     OscliBuffSize
+MaxInterrupts           *       192     ; 192 needed by OMAP5. Increase in future if necessary.
+DefIRQ1Vspace           *       12*MaxInterrupts+128
 
-; Default IRQ despatch moved here as a result of IOMD having an extra
-; 6 interrupts for I/O and sound DMA (this is really IOMD specific, not
-; ARM600/700 specific but for the moment it is assumed that they are
-; used on the same machines).
- [ MorrisSupport
-DefIRQ1Vspace           *       12*4+12*23+2*256+64 + 7*4+12*16+32+256 ;Morris adds 2 more IRQ registers
- |
-DefIRQ1Vspace           *       12*4+12*23+2*256+64     ; for size checking in MOS
- ]
 DefaultIRQ1V            |#|     DefIRQ1Vspace
 
- [ AssemblingArthur
- ! 0, "Aligning IRQ stack from ":CC::STR:@
- ]
- [ @-7*4 :AND: 15 <> 0
-                        |#|     (@-7*4):AND:15
- ]
-IRQSTK                  #       0       ; Overflow will give abort
- [ AssemblingArthur
- ! 0, "IRQ stack size ":CC::STR:(IRQSTK-CursorChunkAddress)
+ [ AssemblingArthur :LAND: :DEF: ShowWS
+ ! 0, "CursorChunkAddress free ":CC::STR:(@-CursorChunkAddress)
  ]
 
- ASSERT @ > ( CursorChunkAddress + &1000 ) ; Check minimum stack
+ ASSERT @ >= CursorChunkAddress
 
 ; *****************************************************************************
 ;                        High system workspace
 ; *****************************************************************************
 
+ [ HAL32
+                ^       SVCStackAddress
+ |
                 ^       SysHeapChunkAddress
+ ]
 
                        #       SVCStackSize    ; svcstk size. Overflow will give abort
-Export_SVCSTK          #       0
-        ASSERT  Export_SVCSTK =  SVCSTK
-        ASSERT ?Export_SVCSTK = ?SVCSTK
+SVCSTK                 #       0
 
-Export_SysHeapStart    #       0
-        ASSERT  Export_SysHeapStart =  SysHeapStart
-        ASSERT ?Export_SysHeapStart = ?SysHeapStart
+ [ HAL32
+SysHeapStart           *       SysHeapAddress
+ |
+SysHeapStart           #       0
+ ]
+
+
+; *****************************************************************************
+
+  [ LongCommandLines
+
+    ASSERT            LongCLISize >= 256+4     ;minimum size of GeneralMOSBuffer
+
+;Kernel buffers area
+
+                      ^  KbuffsBaseAddress
+
+GeneralMOSBuffer      #  LongCLISize
+
+EnvString             #  LongCLISize
+
+AliasExpansionBuffer  #  LongCLISize
+ArgumentBuffer        *  AliasExpansionBuffer
+
+ExprBuff              #  LongCLISize
+exprSTRACC            #  LongCLISize
+
+OscliBuffSize         *  LongCLISize
+OscliNoBuffs          *  16
+RedirectBuff          #  OscliBuffSize
+OscliCircBuffStart    #  OscliBuffSize * OscliNoBuffs
+OscliCircBuffLimit    #  0
+
+ [ GSWorkspaceInKernelBuffers
+GSVarWSpace           #  GSVarWSpace_Size
+
+SysVarWorkSpace	      #  40		; used by the sys$* variables for reading the current time into
+ ]
+
+ROMBuildDate          #  128
+ [ UseNewFX0Error
+NewFX0Error           #  64
+ ]
+
+HeapBackgroundError   #  256 ; For storing errors generated in the background by the forced completion of a foreground heap op
+
+KbuffsEnd             #  0
+KbuffsSize            *  KbuffsEnd - KbuffsBaseAddress  ;size of Kernel buffers area
+
+    ASSERT            ((KbuffsSize + &FFF) :AND: &FFFFF000) <= KbuffsMaxSize
+
+      ! 0, "Kbuffs                at ":CC::STR:(KbuffsBaseAddress)
+      ! 0, "Kbuffs Size           is ":CC::STR:(KbuffsSize)
+
+    [ {FALSE}
+      ! 0, "GeneralMOSBuffer      at ":CC::STR:(GeneralMOSBuffer)
+      ! 0, "EnvString             at ":CC::STR:(EnvString)
+      ! 0, "AliasExpansionBuffer  at ":CC::STR:(AliasExpansionBuffer)
+      ! 0, "ArgumentBuffer        at ":CC::STR:(ArgumentBuffer)
+      ! 0, "ExprBuff              at ":CC::STR:(ExprBuff)
+      ! 0, "exprSTRACC            at ":CC::STR:(exprSTRACC)
+      ! 0, "RedirectBuff          at ":CC::STR:(RedirectBuff)
+      ! 0, "OscliCircBuffStart    at ":CC::STR:(OscliCircBuffStart)
+    ]
+
+  ] ;LongCommandLines
+
 
         OPT     OldOpt
         END

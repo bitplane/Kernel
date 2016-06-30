@@ -14,9 +14,8 @@
 ;
         SUBT    => NewReset
 
-DuffEntry *     31*1024*1024+32*1024    ; Never any memory at this address
-
-SoftReset       * 0                     ; Reset types
+; Reset types
+SoftReset       * 0
 PowerOnReset    * 1
 ControlReset    * 2
 
@@ -25,6 +24,11 @@ CMOSLimit       * &F0
 
 ; Keyboard flags
                 ^ 1
+ [ HAL
+KbdScanActive   # 1
+                # 2
+KbdFlags        # 4
+ |
 CTRL_Down_Flag  # 1
 SHIFT_Down_Flag # 1
 KB_There_Flag   # 1
@@ -40,34 +44,12 @@ Port2Present    # 1      ; note that these 4 form one word!!
 Port3Present    # 1
 KeyState        # 1
 KeyMSB          # 1
+ ]
 
-; On ARM600, InitKbdWs is in zero page - check it's big enough
+; On ARM600, InitIRQWs is in zero page - check it's big enough
 
-        ASSERT  @ <= ?InitKbdWs
+        ASSERT  @ <= ?InitIRQWs
 
-
-;       AddCamEntries
-;
-; in:   r0 -> appropriate part of CAM map
-;       r1 = ap (+ CB bits in new world)
-;       r2 = log address
-;       r7 = amount of cam map to do
-;       r8 = PageSize
-;
-; out:  r0, r3-r12 preserved
-;       r1 corrupted
-;       r2 updated by relevant amount
-
-AddCamEntries ROUT
-        Push    "r0, lr"
-        MOV     lr, r1                  ; access privs (PPL)
-        MOV     r1, r7
-01
-        STMIA   r0!, {r2, lr}           ; store logaddr, PPL
-        ADD     r2, r2, r8              ; increment address by 1 page
-        SUBS    r1, r1, #8              ; decrement count of how much to do
-        BNE     %BT01
-        Pull    "r0, pc"
 
 ; GetConfiguredSize - convert CMOS address into amount of memory
 ; in:   r0 = CMOS address
@@ -76,8 +58,8 @@ AddCamEntries ROUT
 
 ; NB this routine doesn't do screen size mangling (yet!)
 
-GetConfiguredSize ENTRY "r1"
-        MOV     r1, #0
+GetConfiguredSize Entry "r1"
+        LDR     r1, =ZeroPage
         LDR     r1, [r1, #Page_Size]
         ADRL    lr, PageShifts-1
         LDRB    r1, [lr, r1, LSR #12]   ; r1 = log2 pagesize
@@ -92,115 +74,57 @@ GetConfiguredSize ENTRY "r1"
         MOV     r2, r2, LSL r1          ; and shifted up accordingly
         EXIT
 
+; FudgeConfigureRMA - move pages from free pool to somewhere
+; r0 = number of pages to attempt to move
+; r1 = where to store number of bytes moved
+; r3 = base address of where to put memory
+; r11 = ap + CB
 FudgeConfigureRMA
-        Push   lr
-        B      ConfigureRMA
-
-ReadCMOSAndConfigure ROUT
-; R0 = index into CMOS RAM of byte with size in
-; R1 = place to save amount moved
-; R2 = CAM entry number to start at: updated
-; R3 = LogRam Address to move memory to
-; r11  PPL
-; Check for memory left, move as much as poss
         Push    lr
-        BL      Read                    ; CMOS byte -> R0
-
- [ :LNOT: NewStyle_FontArea
-        CMP     r3, #FontCacheAddress
-        MOVEQ   r0, r0, LSL #12         ; *4K
-        BEQ     NotScreen
- ]
-
-        AND     R0, R0, #127            ; mask to same bitfield as status
-ConfigureRMA
-        MOV     R10, #0
+        LDR     R10, =ZeroPage
         LDR     R10, [R10, #Page_Size]
         MUL     R0, R10, R0             ; get size in bytes
-        CMP     R3, #ScreenEndAdr       ; screen?
-        BNE     NotScreen
-
-; quick pokery for sensible screensize
-
-        BL      MassageScreenSize
-        SUB     R3, R3, R0              ; step back.
-NotScreen
         MOV     R5, #0                  ; amount moved
         CMP     R0, #0
         BEQ     NoMoreMemory
 
- [ GetPagesFromFreePool
-
-; r0 = amount of memory to move
-; r1 = address to store size in
-; (r2 = page number to start at, ignored in our method)
-; r3 = address of where to put memory
-; r10 = page size
-; r11 = ap + CB
-
-        MOV     r6, r11                         ; r6 = ap + CB
-        MOV     r4, #FreePoolDANode
-        LDR     r7, [r4, #DANode_Base]
-        LDR     r8, [r4, #DANode_Size]
-        ADD     r7, r7, r8                      ; r7 -> end of free pool +1
+        LDR     r4, =ZeroPage+FreePoolDANode
+        LDR     r7, [r4, #DANode_PMP]
+        LDR     r8, [r4, #DANode_PMPSize]
 10
-        CMP     r8, r10                         ; if no free memory left
-        BCC     %FT20                           ; then tidy up
-        SUB     r7, r7, r10                     ; move free pool pointer backwards
-        Push    "r0, r1"
-        MOV     r0, r7
-        MOV     r1, r3
-        BL      MovePageAtR0ToR1WithAccessR6
-        Pull    "r0, r1"
+        CMP     r8, #0                          ; if no free memory left
+        BEQ     %FT20                           ; then tidy up
+        SUB     r8, r8, #1                      ; move free pool pointer backwards
+        MOV     lr, #-1
+        LDR     r2, [r7, r8, LSL #2]
+        STR     lr, [r7, r8, LSL #2]
+        BL      Call_CAM_Mapping
         ADD     r3, r3, r10                     ; advance "to" pointer
-        SUB     r8, r8, r10                     ; one less page of free memory
         ADD     r5, r5, r10                     ; one more page done
         SUBS    r0, r0, r10
         BNE     %BT10
 20
-        STR     r8, [r4, #DANode_Size]
- |
-        LDR     R8, [R5, #RAMLIMIT]
-
-; now set R6 = first entry not to use
-;         R7 = end of gap   "   "  "
-;         R8 = last entry we can use
-
-        MOV     r7, #0
-        LDR     r6, [r7, #VideoSize]            ; find out how many pages in video area
-        MOV     r6, r6, LSR #12                 ; = page number of start of skipped bit
-        ASSERT  SoftCamMapSize = L2PTSize +4
-        MOV     r7, #L2PTSize
-        LDMIA   r7, {r7, lr}                    ; r7 = L2PTSize, lr = SoftCamMapSize
-        ADD     r7, r7, lr                      ; add sizes together
-        ADD     r7, r7, #StaticPagesSize + UndStackSize ; + number of bytes used for other static bits
-        ADD     r7, r6, r7, LSR #12             ; r7 = page number after static bit
-        MOV     r8, r8, LSR #12                 ; make r8 into highest page number+1
-
-CAMZapLoop
-        CMP     R2, R6                  ; if at gap, skip
-        MOVEQ   R2, R7
-        CMP     R2, R8                  ; if no more memory, give in
-        BEQ     NoMoreMemory
-        ADD     R5, R5, R10
-        Push    "R0, R1, R6"
-        BL      BangCamUpdate
-        Pull    "R0, R1, R6"
-        ADD     R2, R2, #1
-        ADD     R3, R3, R10
-        SUBS    R0, R0, R10
-        BGT     CAMZapLoop
- ]
+        STR     r8, [r4, #DANode_PMPSize]
 NoMoreMemory
         STR     R5, [R1]
         Pull    "PC"
 
-; MassageScreenSize - called from ReadCMOSAndConfigure (above) and also from
-; ReadSysInfo
+; MassageScreenSize - called from screen DA creation and ReadSysInfo
 
 MassageScreenSize ROUT
+        Push    lr
+        LDR     lr, =ZeroPage
+        LDR     lr, [lr, #VideoSizeFlags]
+        TST     lr, #OSAddRAM_VRAMNotForGeneralUse
+        MOVNE   r0, lr, LSR #12
+        MOVNE   r0, r0, LSL #12
+        Pull    pc, NE
+
         CMP     r0, #0
         BNE     CmosScreenWillDo
+      [ ZeroPage <> 0
+        LDR     r0, =ZeroPage
+      ]
         LDR     r0, [r0, #RAMLIMIT]
         CMP     r0, #512*1024
         MOVEQ   r0, #80*1024
@@ -211,15 +135,26 @@ CmosScreenWillDo
         BCC     CmosScreenWillDo
         CMP     r0, #ScreenMaxSize
         MOVHI   r0, #ScreenMaxSize
-        MOV     pc, lr
+        Pull    pc
 
         LTORG
+
+  [ HAL
+    ! 0, "*** DUMMY CONT_Break, soft breaks/resets will not work yet with HAL"
+CONT_Break
+        AddressHAL
+        MOV     a1, #1
+        LDR     a2, =L1PT
+        CallHAL HAL_Reset
+  ]
+
+
+  [ :LNOT: HAL
 
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ; Data tables: VIDC := mode 0, all palette black
 
 VIDCTAB
- [ VIDC_Type = "VIDC20"
 
 ; Program Control Register first, to clear power-down bit
 ; Now depending upon the VIDCClockSource flag, re-program the clock source.
@@ -262,15 +197,7 @@ VIDCTAB
         & &91000002     ; VSWR = 3
         & &92000015     ; VBSR = 3 + 19
         & &93000025     ; VDSR = 3 + 19 + 16
- [ MEMC_Type = "IOMD"
-  [ Simulator
-        & &94000025     ; No displayed lines, so we don't get video FIFO u/flow when simulating
-  | ;Simulator
         & &94000125     ; VDER = 3 + 19 + 16 + 256
-  ] ;Simulator
- | ;MEMC_Type <> "IOMD"
-        & &94000125     ; VDER = 3 + 19 + 16 + 256
- ] ;MEMC_Tupe = "IOMD"
         & &95000135     ; VBER = 3 + 19 + 16 + 256 + 16
         & &96000025     ; VCSR = VDSR
         & &97000025     ; VCER = VDSR
@@ -285,54 +212,10 @@ VIDCTAB
    ]
         & &F0013000     ; DCR: bus D[31:0], Hdisc       ;RCM 29/9/94: changed from &F0012000 at PSwindells request
         & &FFFFFFFF     ; That's the lot
- | ;VIDC_Type<>"VIDC20"
-        & &00000000
-        & &04000000
-        & &08000000
-        & &0C000000
-        & &10000000
-        & &14000000
-        & &18000000
-        & &1C000000
-        & &20000000
-        & &24000000
-        & &28000000
-        & &2C000000
-        & &30000000
-        & &34000000
-        & &38000000
-        & &3C000000
-        & &40000000
-        & &44000000     ; Cursor -> black
-        & &48000000
-        & &4C000000     ; Palette programmed (avoid messy screen on reset)
-
-        & &807FC000     ; HCR  Get a stable display up so we get stable signals
-        & &8408C000     ; HSWR
-        & &881B0000     ; HBSR
-        & &94770000     ; HBER
-        & &A04E0000     ; VCR
-        & &A4024000     ; VSWR
-        & &A8050000     ; VBSR
-        & &B44E0000     ; VBER
-        & &C0000100     ; SFR  NB. TEST BIT !!! - also DFlynn requested value
-        & &E00000B2     ; CR   Set 640*256, 1 bit per pixel, rate of 12MHz
-                        ; change bottom byte to 22 for Linear Microvitecs (CS)
-                        ;                       B2 for Monochrome/Philips (SS)
-        & &8C208000     ; HDSR
-        & &90708000     ; HDER
-        & &98258000     ; HCSR
-        & &9C400000     ; HIR
-        & &AC098000     ; VDSR
-        & &B0498000     ; VDER
-        & &B8098000     ; VCSR
-        & &BC498000     ; VCER
-; don't mess with the stereo image registers: sound code will set them.
-        & &FFFFFFFF     ; That's the lot
- ] ;VIDC_Type = "VIDC20"
 
 
 VIDCPhys        *       &03400000       ; used to address VIDC when MMU is off
+
 
 ; Entered here after RESET (or BREAK)
 
@@ -423,6 +306,7 @@ vcofix_notMorris
 
         BL      MemSize                 ; out: r0 = page size, r1 = memory size, r2 = MEMC CR value, r3-r14 corrupt
 
+MemSized
         MOV     R8, R0                  ; R8 = page size in bytes
         MOV     R13, R1                 ; R13 is now the RAM size
         MOV     R9, R2                  ; need this to set soft copy right
@@ -457,10 +341,10 @@ SetUpKbdReturn
 ; set up reset interrupt handler (reads, discards keys, setting flags if CTRL or R)
 ; NB on ARM600 we need to go into 32-bit mode, so we can safely overwrite vectors
 
-        mrs     AL, r0, CPSR            ; switch into IRQ32, still IRQs disabled
+        MRS     r0, CPSR                ; switch into IRQ32, still IRQs disabled
         BIC     r0, r0, #&1F
         ORR     r1, r0, #IRQ32_mode
-        msr     AL, CPSR_c, r1
+        MSR     CPSR_c, r1
 
         LDR     sp_irq, =IRQSTK         ; set up sp_irq
 
@@ -470,7 +354,7 @@ SetUpKbdReturn
         STR     R2, [R3, #&18]          ; but hopefully by the same value!
 
         ADDR    R2, IRQ_Test_CTRL_or_R_Pressed ; (could use ADRL, but ADDR macro is nicer)
-        STR     R2, [R3, #InitKbdHandler] ; instruction is now a LDR PC,InitKbdHandler
+        STR     R2, [R3, #InitIRQHandler] ; instruction is now a LDR PC,InitKbdHandler
 
         ORR     r0, r0, #SVC32_mode     ; switch into SVC32
 
@@ -490,13 +374,10 @@ SetUpKbdReturn
         ARMA_drain_WB
         ARMA_flush_IC
 vectorpoke_notSA_1
-    [ ARM810support
-        ARM8_branchpredict_flush  ;IMB on ARM810, and harmless on other ARMs
-    ]
  ]
 
         BIC     r0, r0, #I32_bit        ; and enable IRQs
-        msr     AL, CPSR_c, r0
+        MSR     CPSR_c, r0
 
  ; in SVC32 from now until we've finished poking around with vectors
 
@@ -532,6 +413,11 @@ vectorpoke_notSA_1
         BL      Processor_Type          ; Determines the processor type & stores it in page 0.
  ]
 
+
+  ]    ; :LNOT: HAL
+
+Continue_after_HALInit
+
 ;StrongARM: OK, there is quite a bit of code poking below, to various addresses. We'll
 ;           defer IMB consideration till the poking's done, then do a full IMB (full
 ;           data cache clean). This avoids various little IMB's and removes chance of leaving
@@ -547,7 +433,7 @@ vectorpoke_notSA_1
         ASSERT  DefaultPreVeneers = DefaultProcVecs+ProcVec_End-ProcVec_Start
 
         ADRL    R0, DefaultProcVecs
-        LDR     R1, =ProcVec_Start
+        LDR     R1, =ZeroPage+ProcVec_Start
         MOV     R2, #ProcVec_End-ProcVec_Start+ProcVecPreVeneersSize
 39
         LDR     R3, [R0], #4
@@ -559,39 +445,41 @@ vectorpoke_notSA_1
 ; copy handler addresses
         ADRL    R1, MOSROMVecs+4        ; don't copy to 0: key stuff is using
                                         ; it as workspace!
-        MOV     R0, #4
+        LDR     R0, =ZeroPage+4
+        LDR     R3, =ZeroPage+EndMOSROMVecs-MOSROMVecs
 
 40
         LDR     R2, [R1], #4            ; N.B. IRQ handler better be same as the one in there
         STR     R2, [R0], #4
-        TEQ     R0, #EndFiq-MOSROMVecs
+        TEQ     R0, R3
         BNE     %BT40
+
+        ChangedProcVecs r0
 
  [ :LNOT: No26bitCode
 ; Now we have set up the hardware vectors we can drop back to SVC26 mode
 
-        mrs     AL, r0, CPSR
+        MRS     r0, CPSR
         BIC     r0, r0, #&1F
         ORR     r0, r0, #SVC26_mode
-        msr     AL, CPSR_c, r0
+        MSR     CPSR_c, r0
  ]
 
-
-; Ensure any CMOS operation aborted
-
-        MOV     R1,#16                          ; Two bytes in case RTC transmitting
-35
-        BL      Start                           ; Start/clock edge
-        BL      Stop
-        SUBS    R1,R1,#1
-        BNE     %BT35
-
  [ CacheCMOSRAM
+        DebugTX "InitCMOSCache entry"
         BL      InitCMOSCache           ; initialise cache of CMOS RAM
+        DebugTX "InitCMOSCache done"
+        TEQ     R0, #0                  ; returns zero on failure
+      [ ZeroPage <> 0
+        LDREQ   R0, =ZeroPage
+      ]
+        LDREQ   R1, [R0, #HAL_StartFlags]
+        ORREQ   R1, R1, #OSStartFlag_NoCMOS
+        STREQ   R1, [R0, #HAL_StartFlags]
  ]
 
 ; Now copy the initialised data
-        MOV     R0, #IRQ1V
+        LDR     R0, =ZeroPage+IRQ1V
 
 ; first save IOC soft copy so can restore it
 
@@ -601,20 +489,19 @@ vectorpoke_notSA_1
         Push    "R2"
 
         ADRL    r1, StartData
+        LDR     R3, =ZeroPage+(EndData-StartData+IRQ1V)
 DatCopy
         LDR     R2, [R1], #4
         STR     R2, [R0], #4
-        TEQ     R0, #(EndData-StartData+IRQ1V)
+        TEQ     R0, R3
         BNE     DatCopy
 
- [ ResetIndirected
         ADR     r2, CONT_Break
-        MOV     r0, #0
+        LDR     r0, =ZeroPage
         STR     r2, [r0, #ResetIndirection]
- ]
 
-        MOV     r0, #0                  ; initialise abort list
-        STR     r0, [r0, #AbortIndirection]
+        MOV     r3, #0                  ; initialise abort list
+        STR     r3, [r0, #AbortIndirection]
 
 ; Now the SWI despatch + low part of SWI table
         ADRL    R3, DirtyBranch
@@ -637,167 +524,164 @@ PadSVCTable
         LDR     R1, [R1]
         STR     R1, [R0]
 
-; now the time/date conversions
-
+; conversion SWIs all go through same despatch point
         LDR     R0, =SvcTable
-        ADRL    R1, ConvertStandardDateAndTime
-        STR     R1, [R0, #OS_ConvertStandardDateAndTime*4]
-        ADD     R1, R1, #ConvertDateAndTime - ConvertStandardDateAndTime ; SKS
-        STR     R1, [R0, #OS_ConvertDateAndTime*4]
-
-; other conversion SWIs, all go through same entry point
-
         ADRL    R1, despatchConvert
+        STR     R1, [R0, #OS_ConvertStandardDateAndTime * 4]
+        STR     R1, [R0, #OS_ConvertDateAndTime * 4]
+
         MOV     R2, #OS_ConvertHex1
 conversionSWIfill
         STR     R1, [R0, R2, LSL #2]
         ADD     R2, R2, #1
-        CMP     R2, #OS_ConvertFileSize+1
-        BNE     conversionSWIfill
+        CMP     R2, #OS_ConvertVariform
+        BLS     conversionSWIfill
 
-;StrongARM: OK, that completes the poking around, some of which is code. Now let's
-;           do a full IMB type thing, to be safe (if we're running on StrongARM)
-  [ StrongARM
-        ARM_read_ID R0
-        AND     R0,R0,#&F000
-        CMP     R0,#&A000
-        BNE     afterpokingaround_notSA
-        MOV     R1,#0
-        STRB    R1,[R1,#SyncCodeA_sema]    ;initialise semaphore to 0
-        MOV     R1,#ARMA_Cleaner_flipflop
-        LDR     R0,=ARMA_Cleaners_address  ;note: we are initialising ARMA_Cleaner_flipflop here
-        STR     R0,[R1]
-        ARMA_clean_DC R0,R1,R2
-        ARMA_drain_WB
-        ARMA_flush_IC
-afterpokingaround_notSA
-    [ ARM810support
-        ARM8_branchpredict_flush  ;IMB on ARM810, and harmless on other ARMs
-    ]
-  ]
+; OK, that completes the poking around, some of which is code. Now let's
+; do a full IMB type thing, to be safe
+;
+        LDR     r0, =ZeroPage
+        ARMop   IMB_Full,,,r0
+        DebugTX "IMB_Full done"
 
 ; Initialise CAO ptr to none.
 
-        MOV     R0, #0
-        MOV     R1, #32*1024*1024       ; nothing will be here!!
+        LDR     R0, =ZeroPage
+        LDR     R1, =DuffEntry          ; nothing will be here!!
         STR     R1, [R0, #Curr_Active_Object]
 
 KeyWait * 200000                 ; 1/5 sec wait (in microseconds)
+ [ HAL
+us      * 1
+ |
+us      * 2
+ ]
 
+ [ HAL
+        AddressHAL
+        MOV     r6, #25                 ; Check for keyboard 25 times (5 secs max).
+        LDR     r4, =ZeroPage+InitIRQWs
+
+kbdwait
+        CallHAL HAL_KbdScan
+        STR     r0, [r4, #KbdFlags]
+
+        TST     r0, #KbdFlag_Done
+        BNE     kbddone
+
+      [ EmulatorSupport
+        ARM_on_emulator r0
+        MOVEQ   r0, #us
+        LDRNE   r0, =KeyWait*us         ; Wait 1/5 second (give keys down a chance to come in).
+      |
+        LDR     r0, =KeyWait*us         ; Wait 1/5 second (give keys down a chance to come in).
+      ]
+        CallHAL HAL_CounterDelay
+        SUBS    r6, r6, #1              ; else wait a maximum of 5 seconds.
+        BNE     kbdwait
+kbddone
+        MSR     CPSR_c, #I32_bit+SVC32_mode
+        CallHAL HAL_KbdScanFinish
+        LDR     r1, =ZeroPage+InitIRQWs
+        MOV     r0, #0
+        STRB    r0, [r1, #KbdScanActive]
+        MSR     CPSR_c, #SVC32_mode
+        DebugTX "Keyboard scan complete"
+ |
     [ KeyWait <> 0
 ; Check for keyboard there every 1/5 sec. but give up after 2 secs.
         MOV     r2, #IOC
-        MOV     r3, #10                 ; Check for keyboard 10 times (2 secs max).
+        MOV     r6, #10                 ; Check for keyboard 10 times (2 secs max).
         MOV     r4, #InitKbdWs
 kbdwait
         LDRB    r5, [r4, #KB_There_Flag]
       [ EmulatorSupport
         ARM_on_emulator r0
-        MOVEQ   r0, #2
-        LDRNE   r0, =KeyWait*2          ; Wait 1/5 second (give keys down a chance to come in).
+        MOVEQ   r0, #us
+        LDRNE   r0, =KeyWait*us         ; Wait 1/5 second (give keys down a chance to come in).
       |
-        LDR     r0, =KeyWait*2          ; Wait 1/5 second (give keys down a chance to come in).
+        LDR     r0, =KeyWait*us         ; Wait 1/5 second (give keys down a chance to come in).
       ]
         BL      DoMicroDelay
         TEQ     r5, #0                  ; If keyboard was there 1/5 second ago then
         BNE     kbdthere                ;   continue reset
-        SUBS    r3, r3, #1              ; else wait a maximum of 2 seconds.
+        SUBS    r6, r6, #1              ; else wait a maximum of 2 seconds.
         BNE     kbdwait
 kbdthere
     ]
+ ]
 
+ [ ValidateCMOS
+; Do a POR if some super-critical values are shagged or if checksum is invalid.
+        MOV     R3, #-1                 ; do all RAM if we do any
+        BL      ValChecksum             ; Always check the checksum
+        BNE     cmos_reset
+ ]
 
  [ ValidateCMOS :LAND: STB
-; Do a POR if some super-critical values are shagged or if checksum is invalid.
-        MOV	R3, #-1                 ; do all RAM if we do any
-        BL      ValChecksum             ; Always check the checksum
-        BNE	cmos_reset
 
 ; ScreenSizeCMOS, RAMDiscCMOS, SysHeapCMOS, RMASizeCMOS and SpriteSizeCMOS
 ; should be 0. Happily they are at consecutive addresses so we can loop through
 ; them.
-	MOV	R1, #ScreenSizeCMOS
+        MOV     R1, #ScreenSizeCMOS
 reset_loop
-	MOV	R0, R1
-	BL	Read
-	TEQ	R0, #0
-	BNE	cmos_reset
-	INC	R1
-	TEQ	R1, #SpriteSizeCMOS
-	BHI	reset_loop
+        MOV     R0, R1
+        BL      Read
+        TEQ     R0, #0
+        BNE     cmos_reset
+        INC     R1
+        TEQ     R1, #SpriteSizeCMOS
+        BHI     reset_loop
 
- [ {FALSE}
-; FontCMOS should be <= 32 (128K)
-; What on earth was this about? Why would anyone require FontSize to
-; be less than 128K?
-	MOV	R0, #FontCMOS
-	BL	Read
-	CMP	R0, #32
-	BHI	cmos_reset
- ]
+; Year should be >=1995, <=2037 (when 32 bit signed Unix time breaks)
+        MOV     R0, #YearCMOS+1
+        BL      Read
+        MOV     R1, R0
+        MOV     R0, #YearCMOS+0
+        BL      Read
+        MOV     R2, #100
+        MLA     R0, R2, R1, R0
+        LDR     R1, =1995
+        SUB     R0, R0, R1
+        CMP     R0, #2037 - 1995
+        BHI     cmos_reset
 
- [ {FALSE}
- ; Oh, just leave it be
-	MOV	R0, #VduCMOS
-	BL	Read
- [ IOMD_C_MonitorType = 0 :LAND: IOMD_C_PALNTSCType = 0
-; Force TV if we don't have a MonitorType auto-detect bit
-	TEQ	R0, #(Sync_Separate :OR: MonitorType0)
- |
-; Force auto-detect of monitor stuff if we have a MonitorType auto-detect bit
-	TEQ	R0, #(Sync_Auto :OR: MonitorTypeAuto)
- ]
-	BNE	cmos_reset
- ]
-
-; Year should be >=1995, <=2020
-; (2020 is arbitrary, but everything breaks soon after that)
-	MOV	R0, #YearCMOS+1
-	BL	Read
-	TEQ	R0, #19
-	BNE	check20
-
-; 20th century: year should be 95 to 99
-	MOV	R0, #YearCMOS
-	BL	Read
-	CMP	r0,#95
-	BLT	cmos_reset
-	CMP	r0,#99
-	BHI	cmos_reset
-	B	checkboot
-
-check20
-	TEQ	R0, #20
-	BNE	cmos_reset
-
-; 21st century: year should <= 20
-	MOV	R0, #YearCMOS
-	BL	Read
-	CMP	R0, #20
-	BHI	cmos_reset
-
-checkboot
 ; Bit 4 of DBTBCMOS should be 1 (Boot)
-	MOV	R0, #DBTBCMOS
-	BL	Read
-	TEQ	R0, #(1:SHL:4)
-	BNE	cmos_reset
+        MOV     R0, #DBTBCMOS
+        BL      Read
+        TST     R0, #(1:SHL:4)
+        BEQ     cmos_reset
  ]
 
 
-; IF power-on bit set in IOC AND R/T/Del/Copy pressed THEN reset CMOS RAM
+; IF power-on bit set AND R/T/Del/Copy pressed THEN reset CMOS RAM
 ; note that memory cleared if POR, so key info has had plenty of time!
+
+ [ HAL
+        LDR     R0, =ZeroPage+HAL_StartFlags
+        LDR     R1, [R0]
+        TST     R1, #OSStartFlag_NoCMOS ; If no CMOS, reset for sensible cache
+        BNE     cmos_reset
+        TST     R1, #OSStartFlag_POR
+        BEQ     no_cmos_reset           ; not a power on reset
+        DebugTX "POR detected"
+      [ CheckProtectionLink
+        TST     R1, #OSStartFlag_NoCMOSReset
+        BNE     no_cmos_reset
+      ]
+        TST     R1, #OSStartFlag_CMOSReset
+        BNE     cmos_reset
+ |
         MOV     R0, #IOC
         LDRB    R1, [R0, #IOCIRQSTAA]
         ANDS    R1, R1, #por_bit
         BEQ     no_cmos_reset
 
- [ CheckProtectionLink
+      [ CheckProtectionLink
         LDR     r0, =IOMD_MonitorType
 
-; on Issue A's the protection bit is only weakly pulled up,
-; so force it high, then read it back
-
+        ; on Issue A's the protection bit is only weakly pulled up,
+        ; so force it high, then read it back
         LDRB    r1, [r0]
         ORR     r1, r1, #IOMD_ProtectionLinkBit
         STRB    r1, [r0]
@@ -805,310 +689,96 @@ checkboot
         LDRB    r1, [r0]
         TST     r1, #IOMD_ProtectionLinkBit
         BEQ     no_cmos_reset           ; if zero then CMOS is protected
- ]
+      ]
 
- [ STB :LAND: IOMD_C_FrontPanelButton <> 0
-  [ FrontPanelButtClearsCMOS
+    [ STB :LAND: IOMD_C_FrontPanelButton <> 0
+      [ FrontPanelButtClearsCMOS
         MOV     r0, #IOMD_Base          ; if front panel button pressed then CMOS reset
         LDRB    r0, [r0, #IOMD_CLINES]
         TST     r0, #IOMD_C_FrontPanelButton
         BEQ     cmos_reset
-  ]
+      ]
+    ]
+
  ]
 
-        MOV     R0, #InitKbdWs
-        LDR     R7, [R0, #R_Down_Flag]
+        LDR     R0, =ZeroPage+InitIRQWs
+ [ HAL
+        LDR     R7, [R0, #KbdFlags]
+        TST     R7, #KbdFlag_R:OR:KbdFlag_T:OR:KbdFlag_Delete:OR:KbdFlag_Copy
+ |
+        LDR     R7, [R0, #R_Down_Flag]  ; Picks up R/T/Del/Copy flags all in one
         CMP     R7, #0
+ ]
+        LDRNE   R3, =ZeroPage
+        MOVNE   R14, #1
+        STRNEB  R14, [R3, #MentionCMOSReset]
         BEQ     no_cmos_reset           ; power on bit checked again there
 
-        [ :LNOT: STB
-        ADD     sp, sp, #4              ; junk CannotReset flag from stack
-        ]
-
 ; CMOS reset detectified.
-; **************************************************************************
-; Note: if this CMOS reset code ever needs changing again, it's probably
-; better to rewrite it. The Compact apparently has a table of default
-; CMOS values; R-p.o. just writes the table, DEL-p.o. zeroes all, then
-; writes the table. With skipping of the time CMOS, and post-prodding of
-; the sync, that would probably be a better algorithm.
-; **************************************************************************
+; Wipe it, then squirt in the MOS's table of default values
 
-     SetBorder  R0, R1, 15, 0, 0        ; flash the border as warning!
-
+ [ HAL
+        TST     R7, #KbdFlag_Copy:OR:KbdFlag_Delete
+ |
+        ASSERT  (Del_Down_Flag - R_Down_Flag) = 2
+        ASSERT  (Copy_Down_Flag - Del_Down_Flag) = 1
         MOVS    R3, R7, LSR #16         ; full reset or just system?
+ ]
         MOVNE   R3, #-1                 ; Del or Copy does all RAM
         MOVEQ   R3, #UserCMOS           ; R or T just system
     [ ChecksumCMOS
         BL      ValChecksum             ; unless the CMOS ram's corrupt ..
         MOVNE   R3, #-1                 ; .. then blast it anyway.
- [ STB
+    ]
 cmos_reset
+        DebugTX "Reset CMOS"
         ADD     sp, sp, #4              ; junk CannotReset flag from stack
- ]
-        MOVNE   R0, #0                  ; even the econet station number
-        MOVEQ   R0, #1
-    |
-        MOV     R0, #1                  ; leave the econet station number
-    ]
-        MOV     R1, #0                  ; zero it first
-cmrlp   BL      Write                   ; CMOS(R0) := R1
-        ADD     R0, R0, #1
-        CMP     R0, R3
-        MOVEQ   R0, #&80                ; skip user cmos
-        CMP     r0, #YearCMOS
-        ADDEQ   r0, r0, #2
-        CMP     r3, #UserCMOS           ; system only?
-        BNE     skipskipforTC
-        CMP     r0, #NewADFSCMOS
-        CMPNE   r0, #CountryCMOS        ; skip these if so
-        ADDEQ   r0, r0, #1
-skipskipforTC
-        CMP     R0, #CMOSLimit
-        BNE     cmrlp
-    [ ChecksumCMOS
-        BL      MakeChecksum            ; create a valid checksum
-    ]
-; now put nice values in where necessary
-; first full reset defaults
-        CMP     r3, #-1
-        BNE     not_full_reset
 
- [ STB :LAND: IOMD_C_PALNTSCType <> 0
-        MOV     r4, #IOMD_Base          ; configure territory, country and timezone based on PAL/NTSC bit
-        LDRB    r4, [r4, #IOMD_CLINES]
-        MOV     r0, #TerritoryCMOS
-        TST     r4, #IOMD_C_PALNTSCType
-        MOVEQ   r1, #0                  ; PAL = territory UK
-        MOVNE   r1, #49                 ; NTSC = territory USA
-        BL      Write
-        MOV     r0, #CountryCMOS
-        TST     r4, #IOMD_C_PALNTSCType
-        MOVEQ   r1, #1                  ; PAL = country UK
-        MOVNE   r1, #48                 ; NTSC = country USA
-        BL      Write
-        MOV     r0, #TimeZoneCMOS
-        TST     r4, #IOMD_C_PALNTSCType
-        MOVEQ   r1, #0                  ; PAL = 0 from UTC (GMT)
-        MOVNE   r1, #&E0                ; NTSC = -8 hours from UTC (USA Pacific)
-        BL      Write
-   [ STB :LAND: :DEF: ObsoleteNC1CMOS
-        MOV     r0, #MiscellaneousNCCMOS
-        TST     r4, #IOMD_C_PALNTSCType
-        MOVEQ   r1, #0                  ; PAL = A4 paper size
-        MOVNE   r1, #1                  ; NTSC = US letter paper size
-        BL      Write
-   ]
- |
-        MOV     r0, #CountryCMOS
-        MOV     r1, #1                  ; country UK
-        BL      Write
- ]
-
- [ :LNOT: STB
-        MOV     r0, #NewADFSCMOS
-        MOV     r1, #&41                ; floppies=1, ST506=0, IDE=1 (changed 01-Sep-93)
-        BL      Write
- ]
-
-not_full_reset
+        MOV     R4, #0
+cmrlp
+        CMP     R3, #-1
+        BEQ     cmrall                  ; ignore system-only wipe checks
+        CMP     R4, #UserCMOS
+        MOVEQ   R4, #&50                ; skip User (30-45) & 3rd party (46-59) & high podules (60-79)
+        BEQ     cmrall
+        CMP     R4, #PoduleCMOS
+        MOVEQ   R4, #&80                ; skip low podules (112-127)
+        BEQ     cmrall
+        TEQ     R4, #NewADFSCMOS        ; documented in 'Troubleshooting' in
+        TEQNE   R4, #CountryCMOS        ; the RISC OS 3.7 user guide as preserved
+        BEQ     cmrskip
+cmrall
+        MOV     R1, R4
+        BL      NVMemory_ResetValue     ; get the reset value
+        MOVS    R1, R2                  ; when -ve, leave alone
+        MOVPL   R0, R4
+        BLPL    Write                   ; CMOS(R0) := R1
+cmrskip
+        ADD     R4, R4, #1
+        CMP     R4, #CMOSLimit
+        BCC     cmrlp
 
 ; IF R or Delete pressed THEN set sync 0 ELSE set sync Auto
-        MOV     R0, #InitKbdWs
+        LDR     R0, =ZeroPage+InitIRQWs
+ [ HAL
+        LDR     R1, [R0, #KbdFlags]
+        TST     R1, #KbdFlag_R:OR:KbdFlag_Delete
+ |
         LDRB    R1, [R0, #R_Down_Flag]
         CMP     R1, #0
         LDREQB  R1, [R0, #Del_Down_Flag]
         CMPEQ   R1, #0
+ ]
         MOV     R0, #VduCMOS
         MOVNE   R1, #MonitorTypeAuto :OR: Sync_Auto     ; if R or Del
         MOVEQ   R1, #MonitorTypeAuto :OR: Sync_Separate ; if T or Copy
         BL      Write
 
- [ MorrisSupport
-        MOV     R8, #IOMD_Base
-	LDRB	r0, [r8, #IOMD_ID0]
-	LDRB	r1, [r8, #IOMD_ID1]
-	ORR	r0, r0, r1, LSL #8
-	LDR	r1, =IOMD_Original
-	TEQ	r0, r1
-	BEQ	dont_program_mousetype
-;
-; Morris based machines use PS2 mice/tracker balls
-;
-        MOV     R0, #MouseCMOS
-        MOV     R1, #PointerDevice_PS2Mouse     ;type 3
-        BL      Write
-
-  [ Select16BitSound
-; set print and sound CMOS (16bit sound)
-        B       Config16BitSound
-  ]
-dont_program_mousetype
- ]
-
- [ Select16BitSound
-        LDR     r0, =IOMD_MonitorType
-
-; on Issue A's the protection bit is only weakly pulled up,
-; so force it high, then read it back
-
-        LDR     r1, [r0]
-        ORR     r1, r1, #IOMD_SoundsystemLinkBit
-        STR     r1, [r0]
-
-        LDR     r1, [r0]
-        TST     r1, #IOMD_SoundsystemLinkBit
-        BEQ     Config16BitSound                ; if zero, must be Rimmer, so assume 16bit sound hardware present
-
-; set print and sound CMOS (8bit sound)
-        MOV     R0, #TutuCMOS
-        MOV     R1, #2_0100  ; tbs chars valid, ctrlchars '|x'
-        BL      Write
-        B       ConfigSoundDone
-
-Config16BitSound
-; set print and sound CMOS (16bit sound)
-        MOV     R0, #TutuCMOS
-        MOV     R1, #2_10100100  ; tbs chars valid, ctrlchars '|x'
-        BL      Write
-
-ConfigSoundDone
- ]
-
-        ADR     R8, DefaultCMOSTable
-50
-        LDRB    R0, [R8], #1
-        CMP     R0, #&FF
-        BEQ     hard_reset              ; power on bit musta bin set
-        LDRB    R1, [R8], #1
-        BL      Write
-        B       %BT50
-
-        LTORG
-
- [ ValidateCMOS :LAND: STB
-DefaultCMOSTable ; list of non-zero options wanted :
-; byte pairs of offset, value
-; terminated by offset &FF
-        =       KeyDelCMOS,             32
-        =       KeyRepCMOS,             8
-        =       MODETVCMOS,             &10                                     ; TV 0,1
-        =       StartCMOS,	        (2:SHL:3)				; NOCAPS
-        =       DBTBCMOS,	        (1:SHL:4)				; Boot
-        =       YearCMOS,               00
-        =       YearCMOS+1,             20
-  [ IOMD_C_MonitorType = 0 :LAND: IOMD_C_PALNTSCType = 0
-; TV if we don't have a MonitorType auto-detect bit
-	=	VduCMOS,	        Sync_Separate :OR: MonitorType0
-  |
-; auto-detect if we have a MonitorType auto-detect bit
-	=	VduCMOS,	        Sync_Auto :OR: MonitorTypeAuto
-  ]
-        =       MouseStepCMOS,          2
-        =       SystemSpeedCMOS,	(1:SHL:2):OR:(1:SHL:4):OR:(0:SHL:5)
-                                      ; Delete-etc reset
-                                      ;              WimpMode auto
-                                      ;                           Cache on
- | ;ValidateCMOS
-DefaultCMOSTable ; list of non-zero options wanted :
-; byte pairs of offset, value
-; terminated by offset &FF
-        =       KeyDelCMOS,     32
-        =       FileLangCMOS,   8
-        =       FontCMOS,       16      ; TMD 15-Dec-93: Changed to 64K from 32K - fixes MED-01774
-        =       PigCMOS,        10
-        =       KeyRepCMOS,     8
-        =       RMASizeCMOS,    0
-        =       SpriteSizeCMOS, 0
-        =       MODETVCMOS,     &10     ; TV 0,1
-        =       NetFSIDCMOS,    254
-        =       NetPSIDCMOS,    235
-        =       PSITCMOS,      (3:SHL:2) :OR: (1:SHL:5)
-                              ; Baud 3
-                              ;                print 1
-
-        =       DBTBCMOS,      (1:SHL:4) :OR: (4:SHL:5)
-                              ; Boot (changed from NoBoot 01-Sept-93)
-                              ;                Data 4
-
-        =       StartCMOS,     (4:SHL:0) :OR: (2:SHL:3) :OR: (1:SHL:6)
-                              ; Drive 4 (changed from Drive 0 01-Sept-93)
-                              ;                NOCAPS (changed from CAPS 02-May-91)
-                              ;                               NODIR
-
-     [ NewClockChip                     ; only on A1's!
-        =       NewADFSCMOS+1,  &FF     ; step 3 for each drive
-     ]
-
-        =       NewADFSCMOS+2,  1       ; ADFSBuffers 1
-        =       SoundCMOS,      &F0     ; speaker on, volume 7, channel 1
-
-        =       LanguageCMOS,   ConfiguredLang
-        =       YearCMOS,       00
-        =       YearCMOS+1,     20
- [ :LNOT: Select16BitSound
-        =       TutuCMOS,       2_0100  ; tbs chars valid, ctrlchars '|x'
- ]
-        =       NetFilerCMOS,  (0:SHL:0) :OR: (1:SHL:1) :OR: (0:SHL:2)
-                              ; FS list order by name
-                              ;                Use $.Arthurlib
-                              ;                               Large icons
-
-     ;  =       Mode2CMOS,      WimpModeAutoBit :OR: CMOSResetBit ;AKA SystemSpeedCMOS - removed by RManby and SCormie 8/3/95
-        =       DesktopCMOS,    2_01000000      ; verbose ON
-        =       WimpFlagsCMOS,  2_01101111      ; instant effects, drags off screen
-        =       ProtectionCMOS, 2_01110110      ; allow only peek and user RPC
-        =       MouseStepCMOS,  2
-        =       FileSwitchCMOS,(1:SHL:0) :OR: (1:SHL:1) :OR: (0:SHL:2) :OR: (0:SHL:3) :OR: (0:SHL:6)
-                              ; truncate names
-                              ;                Use DragASprite (changed 01-Sept-93)
-                              ;                               Interactive file copying
-                              ;                                              Wimp dither colours off
-                              ;                                                             last shutdown ordinary
-
-        =       DesktopFeaturesCMOS,(1:SHL:0) :OR: (8:SHL:1) :OR: (0:SHL:7)
-                              ;      3D look
-                              ;                     Homerton.Medium
-                              ;                                    tiled window background
-
-        [ STB
-        =       SystemSpeedCMOS,(1:SHL:0):OR:(0:SHL:1):OR:(1:SHL:2):OR:(0:SHL:3):OR:(1:SHL:4):OR:(0:SHL:5):OR:(1:SHL:6):OR:(0:SHL:7)
-                              ;  AUN ROMBoot Enabled
-                              ;               AUN auto-station numbering off
-                              ;                            Delete-etc reset
-                              ;                                         power saving off
-                              ;                                                      WimpMode auto
-                              ;                                                                  Cache on
-                              ;                                                                               Broadcast loader disabled
-                              ;                                                                                            broadcast loader colours off
-        |
-        =       SystemSpeedCMOS,(0:SHL:0):OR:(0:SHL:1):OR:(1:SHL:2):OR:(0:SHL:3):OR:(1:SHL:4):OR:(0:SHL:5):OR:(1:SHL:6):OR:(0:SHL:7)
-                              ;  AUN BootNet Disabled
-                              ;               AUN auto-station numbering off
-                              ;                            Delete-etc reset
-                              ;                                         power saving off
-                              ;                                                      WimpMode auto
-                              ;                                                                  Cache on
-                              ;                                                                               Broadcast loader disabled
-                              ;                                                                                            broadcast loader colours off
-        ]
-
-        [ :LNOT: STB
-        =       FontMaxCMOS,    64      ; 256k
-        =       FontMax2CMOS,   &28     ; 36 point
-        =       FontMax3CMOS,   &3C     ; 36 point
-        |
-        ;       yes, omitting FontMaxCMOS is deliberate!
-        =       FontMax2CMOS,   &2C     ; 32 point
-        =       FontMax3CMOS,   &38     ; 32 point
-        ]
-        =       AlarmAndTimeCMOS,2_00010000 ; !Alarm autosave on
-        =       FSLockCMOS+5,   &EA     ; Checksum for no password
-        =       CDROMFSCMOS,    &60     ; drives = 0, buffer size = 32K
-  ]
-        =       &FF
-        ALIGN
-
+    [ ChecksumCMOS
+        BL      MakeChecksum            ; create a valid checksum
+    ]
+        B       hard_reset              ; CMOS reset only checked on power on, so was hard
 
 no_cmos_reset                           ; R1 has por_bit set if power on
         Push    "r1"
@@ -1120,412 +790,25 @@ no_cmos_reset                           ; R1 has por_bit set if power on
         Pull    "r1"
 
         Pull    r0                      ; always pull CannotReset flag
- [ SoftResets
-        TST     r1, #por_bit
-        BNE     hard_reset              ; it was a power-on, so it's a hard reset
-        CMP     r0, #0
- [ DebugForcedReset
-        MOVNE   r2, #Reset_CannotResetFlag
- ]
-        BNE     hard_reset_forced
-
-; IF control pressed OR memory implausible (Check SysHpd, CAM map sensible) THEN hard reset
-
-        LDR     R0, =SysHeapStart
-        LDR     R8, [R0, #:INDEX: hpdmagic]
-        LDR     R2, =magic_heap_descriptor
-        CMP     R8, R2                  ; check sysheap initialised
- [ DebugForcedReset
-        MOVNE   r2, #Reset_SysHeapCorrupt
- ]
-        BNE     hard_reset_forced
-
-; also check CAM map sensible
-
-        MOV     R5, #0
-        LDR     R4, [R5, #Page_Size]    ; R4 = page size
-        ADRL    R3, PageShifts-1
-        LDRB    R4, [R3, R4, LSR #12]   ; R4 = log2(pagesize)
-        LDR     R3, [R5, #RAMLIMIT]     ; R3 = total RAM size
-        MOV     R2, R3, LSR R4          ; number of pages=total memory / pagesize
-        CMP     R2, #256                ; but if fewer than 128 (eg 64 on A305) (NB if <256 then <=128)
-        MOVCC   R2, #128                ; then use 128 (all MEMC1's pages need initialising,
-                                        ; even if half of them are not in use)
-        SUB     R2, R2, #1
-        LDR     R3, =CamEntriesForVicky
-
-        LDR     R4, [R5, #MaxCamEntry]  ; get highest CAM entry
-        LDR     R5, [R5, #CamEntriesPointer] ; and pointer to CAM soft copy
-
-        CMP     R5, R3                  ; if not the same
- [ DebugForcedReset
-        MOVNE   r2, #Reset_WrongCamMapAddress
-        BNE     hard_reset_forced
- ]
-        CMPEQ   R4, R2                  ; or number of pages not the same
- [ DebugForcedReset
-        MOVNE   r2, #Reset_WrongNumberOfPages
- ]
-        BNE     hard_reset_forced       ; then do a hard reset
-
-; now check all cam contains sensible values
-
-        MOV     R4, #0
-        LDR     R4, [R4, #Page_Size]
-        SUB     R4, R4, #1
-        ORR     R4, R4, #&F0000000      ; can have addresses above 64M
-CamCheck
-        LDR     R3, [R5, R2, LSL #2]
-        BIC     r3, r3, #&F0000000      ; remove PPL
-        TST     R3, R4
- [ DebugForcedReset
-        MOVNE   r2, #Reset_CamMapCorrupt
- ]
-        BNE     hard_reset_forced       ; wally entry: not pagesize multiple, or >= 32M
-        SUBS    R2, R2, #1
-        BPL     CamCheck
-
-; leave CTRL test till last, so the keyboard's had as much time to
-; wiggle the wet string as we can give it
-        MOV     R0, #InitKbdWs
-        LDRB    R1, [R0, #CTRL_Down_Flag]
-        CMP     R1, #0
-        BNE     hard_reset
-
-soft_reset
-; clear out 4K of scratchspace, to use as a reverse CAM soft copy;
-; set bytes to indicate page mapped to that address. Can then recalculate
-; end of memory.
-
-; This code doesn't currently work on ARM600 versions -
-; 4K of workspace isn't enough to do this with a 4K page size
-; We'd probably want to do it differently anyway, using the L2PT
-; But since we're removing soft resets it's not worth the effort
-
-        ASSERT  MEMM_Type <> "ARM600"
-
-        MOV     R5, #ScratchSpace
-        MOV     R1, #4*1024
-        MOV     R2, #0
-clrscratch
-        SUBS    R1, R1, #4
-        STRPL   R2, [R5, R1]
-        BPL     clrscratch
-
-        LDR     R2, [R2, #Page_Size]
-        ADRL    R8, PageShifts-1
-        LDRB    R8, [R8, R2, LSR #12]
-
-        MOV     r7, #0
-        LDR     r2, [r7, #RAMLIMIT]
-        MOV     r2, r2, LSR r8          ; last valid page
-        SUB     r2, r2, #1
-
-        LDR     R7, [R7, #CamEntriesPointer]
-        LDR     R12, =DuffEntry
-
-restoreCAMloop
-        LDR    R3, [R7, R2, LSL #2]
-        MOV    r11, r3, LSR #28
-        BIC    r3, r3, #&F0000000
-
-        MOV    R0, R3, LSR R8              ; logram page number
-        LDRB   R4, [R5, R0]
-        CMP    r4, #0                      ; check for doubly mapped pages
-        BEQ    rclon
-
-        ORR    r3, r12, #&30000000         ; force to invalid place if so.
-        STR    r3, [R7, R2, LSL #2]
-        MOV    r3, r12
-        MOV    r11, #3                     ; protected
-        MOV    R0, R3, LSR R8
-        LDRB   R4, [R5, R0]
-rclon
-        CMP    r3, #16*1024*1024           ; in application space?
-        MOVLT  r11, #0                     ; noprot if so
-        STRLT  r3, [R7, R2, LSL #2]
-        ADD    R4, R4, #1
-        STRB   R4, [R5, R0]                ; sema for interesting pages
-        BL     BangCam
-        SUBS   R2, R2, #1
-        BPL    restoreCAMloop
-
-; now do post-scan to see if we need to do more CAM bashing to get pages back.
-; any entries that aren't validateable should be remapped.
-
-        MOV     R7, #0
-        MOV     R12, #ScratchSpace
-        LDR     R2, [R7, #Page_Size]
-findapplend
-        LDRB    R3, [R12], #1
-        CMP     R3, #0
-        ADDNE   R7, R7, R2
-        BNE     findapplend
-        MOV     R1, #0
-        STR     R7, [R1, #AplWorkSize]  ; verified value
-        LDR     R3, [R1, #RAMLIMIT]     ; calc last valid page:
-        MOV     R3, R3, LSR R8          ; RAMLIMIT >> R8
-        MOV     R11, #0                 ; no PPL
-        LDR     R4, [R11, #CamEntriesPointer]
-testforremap
-        SUBS    R3, R3, #1
-        BMI     finishedremap
-        LDR     R0, [R4, R3, LSL #2]
-        BIC     r0, r0, #&F0000000      ; remove PPL
-        ADD     R1, R0, R2
-        SWI     XOS_ValidateAddress
-        BCC     testforremap
-
-        Push    "R2-R4"
-        MOV     R0, R0, LSR R8          ; curr logram page number
-        LDRB    R4, [R5, R0]
-        SUB     R4, R4, #1
-        STRB    R4, [R5, R0]            ; dec sema
-        MOV     R2, R3                  ; entry no
-        MOV     R3, R7                  ; addr to set to
-        BL      BangCamUpdate
-        Pull    "R2-R4"
-holefilled
-        ADD     R7, R7, R2
-        LDRB    R0, [R12], #1           ; reinspect our reverse map
-        CMP     R0, #0
-        BNE     holefilled
-        MOV     R0, #0
-        STR     R7, [R0, #AplWorkSize]
-        B       testforremap
-
-finishedremap
-        MOV     R12, #NVECTORS-1
-        LDR     R11, =VecPtrTab
-freenextvec
-        LDR     R2, [R11, R12, LSL #2]
-loseveclink
-        LDR     R3, [R2, #TailPtr]
-        BL      FreeSysHeapNode
-        MOVVC   R2, R3
-        BVC     loseveclink
-        CMP     R3, #0                  ; were we at the end of the chain?
- [ DebugForcedReset
-        MOVNE   r2, #Reset_VectorChainCorrupt
- ]
-        BNE     hard_reset_forced
-        SUBS    R12, R12, #1
-        BPL     freenextvec
-; so that's the code for restore default vectors, basically
-        BL      InitVectors
-        MOV     R0, #0
-        LDR     R1, [R0, #AplWorkSize]
-        STR     R1, [R0, #MemLimit]
-
-        LDR     R3, =TickNodeChain
-        LDR     R2, [R3]
-
-loseticknodes
-        CMP     R2, #0
-        BEQ     ticknodesallgone
-
-        LDR     R3, [R2]
-        BL      FreeSysHeapNode
- [ DebugForcedReset
-        MOVVS   r2, #Reset_TickNodesCorrupt
- ]
-        BVS     hard_reset_forced
-        MOV     R2, R3
-        B       loseticknodes
-
-ticknodesallgone
-; and now it's time to free the IRQ structures
-
-        MOV     R12, #(NoInterrupt-1)*12+8      ; last device link offset
-        LDR     R11, =DefaultIRQ1V-DefaultIRQ1Vcode+Devices
-freenextdev
-        LDR     R2, [R11, R12]
-losedevlink
-        CMP     R2, #0
-        BEQ     stepdevice
-
-        LDR     R3, [R2, #8]
-        BL      FreeSysHeapNode
- [ DebugForcedReset
-        MOVVS   r2, #Reset_DeviceVectorCorrupt
- ]
-        BVS     hard_reset_forced
-        MOV     R2, R3
-        B       losedevlink
-stepdevice
-        SUBS    R12, R12, #12
-        BPL     freenextdev
-
-; now the PIRQ structures and CallBack_Vector
-        LDR     R11, =PIRQ_Chain
-        MOV     r4, #PodDesp_Link
-losepirqchain
-        LDR     R2, [R11]
-        CMP     r2, #0                  ; for CallBack_Vector
-        BEQ     doobry
-losepirqlink
-        LDR     R3, [R2, r4]
-        BL      FreeSysHeapNode
-        MOVVC   R2, R3
-        BVC     losepirqlink
-        CMP     R3, #0                  ; were we at the end of the chain?
- [ DebugForcedReset
-        MOVNE   r2, #Reset_PoduleOrCallBackCorrupt
- ]
-        BNE     hard_reset_forced
-        LDR     R2, =PIRQ_Chain
-        CMP     R11, R2
-        LDR     R2, =PFIQasIRQ_Chain
-        MOVEQ   R11, R2
-        CMPNE   r11, r2
-        LDREQ   r11, =CallBack_Vector
-    [ PodDesp_Link <> 0
-        MOVEQ   r4, #0
-    ]
-        BEQ     losepirqchain
-
-
-doobry  Pull    "R1"                    ; IOCControl restoration
-        MOV     R0, #0
-        STRB    R1, [R0, #IOCControlSoftCopy]
-        MOV     R0, #IOC                ; and bash the hardware
-        STRB    R1, [R0, #IOCControl]
-
-        MOV     R0, #SoftReset
-        B       ResetPart1Done
-
- |
-
-; if soft resets are disabled, drop thru into hard reset code
-
- ] ; end of code to do with soft resets
 
 hard_reset
  [ DebugForcedReset
         MOV     r2, #0                  ; indicate normal hard reset
  ]
 hard_reset_forced
+        LDR     r8, =ZeroPage
  [ DebugForcedReset
-        STR     r2, [r0, -r0]           ; store to logical address zero
+        STR     r2, [r8]                ; store to logical address zero
  ]
 
         Pull    "R2"                    ; discard old IOC state
 
-; fill in relevant CamMap entries, so can soft start.
-
-        MOV     R8, #0
-        LDR     R8, [R8, #Page_Size]
-        ADRL    R1, PageShifts-1
-        LDRB    R1, [R1, R8, LSR #12]
-
-        MOV     r2, #0
-        LDR     r0, [r2, #VideoSize]    ; offset from start of physical pages to static part
-        MOV     r0, r0, LSR r1          ; r0 := cam entry number
-        MOV     r0, r0, LSL #3          ; r0 := offset into CAM map for start of static part
-
-        MOV     R7, #32*1024*8
-        MOV     R7, R7, LSR R1          ; r7 := cam entry offset for 32K
-
-        LDR     R12, [R2, #RAMLIMIT]    ; R12 = total RAM size
-
-                                        ; new code which allows for MEMC2's small pages
-        MOV     R1, R12, LSR R1         ; R1 = number of pages
-        CMP     R1, #256                ; but if fewer than 128 (eg 64 on A305) (NB if <256 then <=128)
-        MOVCC   R1, #128                ; then use 128 (all MEMC1's pages need initialising,
-                                        ; even if half of them are not in use)
-
-        SUB     R3, R1, #1
-        STR     R3, [R2, #MaxCamEntry]
-
-        LDR     R1, =CamEntriesForVicky
-        STR     R1, [R2, #CamEntriesPointer]
-
-
-; On ARM600 we must zap all the soft CAM map before adding any entries,
-; since the old contents are used in BangCamUpdate
-
-        Push    "r0"
-        ADD     r2, r1, r3, LSL #3      ; r2 -> last entry to do
-        LDR     r0, =DuffEntry
-        MOV     lr, #AP_Duff            ; PPL = no access
-WallopDuffOnes
-        STMDA   r2!, {r0, lr}           ; store address, PPL
-        CMP     r2, r1
-        BCS     WallopDuffOnes
-        Pull    "r0"
-        ADD     R0, R0, R1
-
-        MOV     R2, #CursorChunkAddress
-        LDR     r1, =AP_CursorChunk
-        BL      AddCamEntries
-
-        CMP     R12, #512*1024
-        SUBEQ   R0, R0, R7              ; previous entries
-        ADDNE   R0, R0, R7              ; next entries
-        MOV     R2, #0
-        MOV     r1, #AP_PageZero
-        BL      AddCamEntries
-
-        CMP     R12, #512*1024
-        SUBEQ   R0, R0, R7              ; previous entries
-        ADDNE   R0, R0, R7              ; next entries
-        MOV     R2, #SysHeapChunkAddress
-        MOV     r1, #AP_SysHeap :OR: PageFlags_Unavailable
-        BL      AddCamEntries
-
-        ADD     R0, R0, R7              ; next entries (ignore 512K machines)
-        MOV     r7, #0
-        LDR     r7, [r7, #L2PTSize]
-        MOV     r7, r7, LSR #12-3       ; number of pages * 8
-        LDR     R2, =L2PT
-        LDR     r1, =AP_L2PT :OR: PageFlags_Unavailable
-        BL      AddCamEntries
-
-        ADD     r2, r0, #((L1PT-L2PT):SHR:(12-3)) + 4   ; point at PPL for 1st L1 page
-        LDR     r1, =AP_L1PT
-        STR     r1, [r2], #8            ; store 4 CAM entries for 4 x 4K = 16K of L1
-        STR     r1, [r2], #8            ; mark them as unavailable for removal
-        STR     r1, [r2], #8
-        STR     r1, [r2], #8
-
-        ADD     R0, R0, R7              ; add on enough pages for L2PT
-
-        MOV     r7, #0
-        LDR     r7, [r7, #SoftCamMapSize] ; number of bytes in soft cam map
-        ADD     r7, r7, #UndStackSize
-        MOV     r7, r7, LSR #12-3       ; number of bytes of cam map for this
-        LDR     R2, =UndStackSoftCamChunk
-        MOV     r1, #AP_UndStackSoftCam
-        BL      AddCamEntries
+        DebugTX "InitDynamicAreas"
 
 ; let's boogie with the CMOS for a bit
 ; read info and move as much memory as we can
 
         BL      InitDynamicAreas
-
-; Screen
-        Push    "r0-r12"
-        MOV     r0, #ScreenSizeCMOS
-        BL      Read
-
-        MOV     r5, #0
-        LDR     r10, [r5, #Page_Size]   ; needed by MassageScreenSize
-        MUL     r0, r10, r0             ; convert to bytes
-        LDR     r5, [r5, #VideoSize]    ; maximum size
-        BL      MassageScreenSize
-
-        MOV     r1, #ChangeDyn_Screen   ; area number
-        MOV     r2, r0                  ; initial size
-        MOV     r3, #ScreenEndAdr       ; base address (start of 2nd copy)
-        LDR     r4, =AP_Screen          ; area flags
-        ADRL    r6, DynAreaHandler_Screen ; handler
-        VDWS    r7                      ; workspace pointer
-        MOV     r8, #0
-        STR     r8, [r7, #CursorFlags]  ; put zero in CursorFlags as an indication that VDU not yet inited
-        STR     r2, [r7, #TotalScreenSize]
-        ADRL    r8, AreaName_Screen     ; area name
-        BL      DynArea_Create
-        Pull    "r0-r12"
 
 ; RMA
         Push    "r0-r12"
@@ -1541,10 +824,58 @@ WallopDuffOnes
         BL      DynArea_Create          ; ignore any error, we're stuffed if we get one!
         Pull    "r0-r12"
 
+; Screen
+        Push    "r0-r12"
+        MOV     r0, #ScreenSizeCMOS
+        BL      Read
+
+        LDR     r5, =ZeroPage
+        LDR     r10, [r5, #Page_Size]   ; needed by MassageScreenSize
+        MUL     r0, r10, r0             ; convert to bytes
+        LDR     r5, [r5, #VideoSizeFlags] ; maximum size
+        MOV     r5, r5, LSR #12
+        MOV     r5, r5, LSL #12
+        BL      MassageScreenSize
+
+        MOV     r1, #ChangeDyn_Screen   ; area number
+        MOV     r2, r0                  ; initial size
+        MOV     r3, #-1                 ; Base address dynamic
+        LDR     r4, =AP_Screen          ; area flags
+        ADRL    r6, DynAreaHandler_Screen ; handler
+        VDWS    r7                      ; workspace pointer
+        MOV     r8, #0
+        STR     r8, [r7, #CursorFlags]  ; put zero in CursorFlags as an indication that VDU not yet inited
+        STR     r2, [r7, #TotalScreenSize]
+        ADRL    r8, AreaName_Screen     ; area name
+        BL      DynArea_Create
+        STR     r3, [r7, #ScreenEndAddr]
+        Pull    "r0-r12"
+
+  [ LongCommandLines :LAND: (:LNOT: HAL)
+        ;sort out the Kernel buffers dynamic area
+        Push    "r0-r12"
+        MOV     r1, #ChangeDyn_Kbuffs   ; Area number
+        MOV     r2, #KbuffsSize         ; Initial (and in fact permanent) size
+        LDR     r3, =KbuffsBaseAddress  ; Base address
+        MOV     r4, #AP_Kbuffs          ; Area flags
+        MOV     r5, #KbuffsMaxSize      ; Maximum size
+        MOV     r6, #0                  ; no handler
+        MOV     r7, #0
+        ADRL    r8, AreaName_Kbuffs     ; Title string - node will have to be reallocated
+                                        ; after module init, to internationalise it
+        BL      DynArea_Create          ; ignore any error, we're stuffed if we get one!
+        Pull    "r0-r12"
+  ]
+
 ; SpriteArea
         Push    "r0-r12"
         MOV     r0, #0                  ; initialise SpriteSize to zero
+      [ ZeroPage = 0
         STR     r0, [r0, #SpriteSize]   ; (fixes bug MED-00811)
+      |
+        LDR     r1, =ZeroPage
+        STR     r0, [r1, #SpriteSize]   ; (fixes bug MED-00811)
+      ]
 
         MOV     r0, #SpriteSizeCMOS     ; find out how much spritesize configured
         BL      GetConfiguredSize       ; in: r0 = CMOS address, out: r2 = size
@@ -1552,7 +883,7 @@ WallopDuffOnes
         MOV     r1, #ChangeDyn_SpriteArea ; Area number
         MOV     r3, #-1                 ; Base address dynamic
         MOV     r4, #AP_Sprites         ; Area flags
-        MOV     r5, #-1                 ; Maximum size
+        MOV     r5, #16*1024*1024       ; Maximum size (changed from -1, address space preservation)
         ADRL    r6, DynAreaHandler_Sprites ; Pointer to handler
         MOV     r7, #-1                 ; Use base address as workspace ptr
         ADRL    r8, AreaName_SpriteArea ; Title string - node will have to be reallocated
@@ -1562,18 +893,38 @@ WallopDuffOnes
 
 ; RAMDisc
         Push    "r0-r12"
-        MOV     r0, #RAMDiscCMOS        ; find out how much RAM disc configured
-        BL      GetConfiguredSize       ; in: r0 = CMOS address, out: r2 = size
 
         MOV     r1, #ChangeDyn_RamFS    ; Area number
         MOV     r3, #-1                 ; Base address dynamic
-        MOV     r4, #AP_RAMDisc         ; Area flags
-        MOV     r5, #16*1024*1024       ; Limit maximum size to 16MB until JSR fixes FileCore
+        ARM_read_ID r4
+        AND     r4, r4, #&F000
+        CMP     r4, #&A000
+        MOVEQ   r4, #AP_RAMDisc_SA      ; Area flags, if StrongARM  (introduced for Ursula)
+        MOVNE   r4, #AP_RAMDisc         ; Area flags
+      [ PMPRAMFS
+        MOV     r5, #PMPRAMFS_Size*4096
+        ORR     r4, r4, #DynAreaFlags_PMP
+        MOV     r2, #0
+        ORR     r4, r4, #DynAreaFlags_NeedsSpecificPages
+        MOV     r9, #0
+      |
+        MOV     r0, #RAMDiscCMOS        ; find out how much RAM disc configured
+        BL      GetConfiguredSize       ; in: r0 = CMOS address, out: r2 = size
+        MOV     r5, #MaxRAMFS_Size*1024*1024      ; A trade off between nice big disc and complete waste of address space
+      ]
         ADRL    r6, DynAreaHandler_RAMDisc ; Pointer to handler
         MOV     r7, #-1                 ; Use base address as workspace ptr
         ADRL    r8, AreaName_RAMDisc    ; Title string - node will have to be reallocated
                                         ; after module init, to internationalise it
         BL      DynArea_Create          ; ignore any error, we're stuffed if we get one!
+      [ PMPRAMFS
+        ; Currently, physical memory pools must be created with 0 size, then resized afterwards
+        MOV     r0, #RAMDiscCMOS        ; find out how much RAM disc configured
+        BL      GetConfiguredSize       ; in: r0 = CMOS address, out: r2 = size
+        MOVS    r1, r2
+        MOV     r0, #ChangeDyn_RamFS
+        SWINE   XOS_ChangeDynamicArea
+      ]
         Pull    "r0-r12"
 
 ; FontArea
@@ -1584,7 +935,8 @@ WallopDuffOnes
         MOV     r1, #ChangeDyn_FontArea ; Area number
         MOV     r3, #-1                 ; Base address dynamic
         MOV     r4, #AP_FontArea        ; Area flags
-        MOV     r5, #-1                 ; Maximum size
+        MOV     r5, #32*1024*1024       ; Maximum size changed from -1 for Ursula (limit address
+                                        ; space usage on large memory machines)
         ADRL    r6, DynAreaHandler_FontArea ; Pointer to handler
         MOV     r7, #-1                 ; Use base address as workspace ptr
         ADRL    r8, AreaName_FontArea   ; Title string - node will have to be reallocated
@@ -1592,48 +944,60 @@ WallopDuffOnes
         BL      DynArea_Create          ; ignore any error, we're stuffed if we get one!
         Pull    "r0-r12"
 
-; get here with R2 = highest CAM entry used (in old model)
-
-        LDR     R0, =(AplWorkMaxSize-32*1024):SHR:12    ; maximum number of pages in aplspace
+        LDR     R0, =(1024*1024):SHR:12 ; 1MB of RAM in aplspace should be plenty for ROM init. Theoretically we don't need any at all, but having some there should make it easier to debug any ROM init failures.
         MOV     R3, #32*1024            ; aplwork start
-        LDR     R1, =AplWorkSize        ; aplwork size
+        LDR     R1, =ZeroPage+AplWorkSize ; aplwork size
         MOV     r11, #AP_AppSpace
-        BL      FudgeConfigureRMA       ; put as much as possible in aplspace
+        BL      FudgeConfigureRMA       ; put some memory in aplspace
 
-        MOV     R0, #0
+        LDR     R0, =ZeroPage
         LDR     R1, [R0, #AplWorkSize]
         ADD     R1, R1, #32*1024
         STR     R1, [R0, #AplWorkSize]
         STR     R1, [R0, #MemLimit]
 
+        DebugTX "InitVectors"
         BL      InitVectors               ; ready for OsByte to read mode
 
-        LDR     R1, =ModuleSWI_HashTab
-        MOV     R2, #ModuleSHT_Entries-1
+        LDR     R1, =ZeroPage+ModuleSWI_HashTab
+        MOV     R2, #ModuleSHT_Entries
+      [ ZeroPage <> 0
+        MOV     R0, #0
+      ]
 clearmswis
-        STR     R0, [R1, R2, LSL #2]
         SUBS    R2, R2, #1
-        BGE     clearmswis
+        STR     R0, [R1, R2, LSL #2]
+        BGT     clearmswis
+
+      [ ZeroPage <> 0
+        LDR     R2, =ZeroPage
+      ]
 
      [  International
         MOV     R1, #-1                                 ; We don't have a message file yet !
-        STRB    R1, [R0, #ErrorSemaphore]               ; Don't translate errors.
-        STR     R0, [R0, #KernelMessagesBlock]          ; No message file open.
+        STRB    R1, [R2, #ErrorSemaphore]               ; Don't translate errors.
+        STR     R0, [R2, #KernelMessagesBlock]          ; No message file open.
       [ CacheCommonErrors
-        STR     R0, [R0, #CachedErrorBlocks]            ; No cached errors
+        STR     R0, [R2, #CachedErrorBlocks]            ; No cached errors
       ]
      ]
 
+  [ HAL
+        LDR     R0, =ZeroPage+HAL_StartFlags
+        LDR     R1, [R0]
+        TST     R1, #OSStartFlag_POR
+  |
         MOV     R0, #IOC
         LDRB    R1, [R0, #IOCIRQSTAA]
         ANDS    R1, R1, #por_bit
         STRNEB  R1, [R0, #IOCIRQCLRA]   ; clear POR if set
+  ]
 
 
         ; Make the choice between PowerOn and Hard reset based purely on
         ; the state of the POR bit and NOT on whether memory was cleared.
  [ {FALSE}
-        LDREQ   R0, =OsbyteVars + :INDEX: LastBREAK
+        LDREQ   R0, =ZeroPage+OsbyteVars + :INDEX: LastBREAK
         LDREQB  R0, [R0]
         TSTEQ   R0, #&80                ; tbs set if memory cleared
  ]
@@ -1643,45 +1007,52 @@ clearmswis
 
 ResetPart1Done                          ; R0 is reset type
         WritePSRc SVC_mode + I_bit, r1  ; interrupts off since kbd bash done
-        LDR     R1, =OsbyteVars + :INDEX: LastBREAK
+        LDR     R1, =ZeroPage+OsbyteVars + :INDEX: LastBREAK
         STRB    R0, [R1]
 
-        MOV     R1, #InitKbdWs
+        LDR     R1, =ZeroPage+InitIRQWs
+ [ HAL
+        LDR     R0, [R1, #KbdFlags]
+        AND     R1, R0, #KbdFlag_Shift
+        AND     R0, R0, #KbdFlag_Present
+ |
         LDRB    R0, [R1, #KB_There_Flag]
         LDRB    R1, [R1, #SHIFT_Down_Flag]
+ ]
         Push    "R0, R1"                ; save until after MOSInit
 
-; copy IRQ handler: not done with rest of copying
-; because soft break needs the info to free any claimed blocks.
+        DebugTX "InitIRQ1"
+        BL      InitialiseIRQ1Vtable
 
-        LDR     R0, =DefaultIRQ1V
-        ADRL    R1, DefaultIRQ1Vcode
-        ADRL    R2, DefaultIRQ1Vcode_end
-CopyDefaultIRQ1V
-        LDR     R3, [R1], #4
-        STR     R3, [R0], #4
-        CMP     R1, R2
-        BNE     CopyDefaultIRQ1V
-
-        LDR     R0, =PIRQ_Chain
+        LDR     R3, =ZeroPage
         ADRL    R1, Default_PIRQHandler_Node
-        STR     R1, [R0]
-        STR     R1, [R0, #PFIQasIRQ_Chain-PIRQ_Chain]
+        STR     R1, [R3, #PIRQ_Chain]
+        STR     R1, [R3, #PFIQasIRQ_Chain]
  ASSERT Default_PFIQasIRQHandler_Node = Default_PIRQHandler_Node
 
         MOV     R0, #0                  ; put in IRQ handler, word at 0
-        STRB    r0, [r0, #FIQclaim_interlock]
-        STRB    r0, [r0, #CallBack_Flag]
-        STR     r0, [r0, #CallBack_Vector]
+        STRB    r0, [r3, #FIQclaim_interlock]
+        STRB    r0, [r3, #CallBack_Flag]
+        STR     r0, [r3, #CallBack_Vector]
+
+; Create the Branch Through 0 Trampoline in the system heap
+        MOV     R3, #Branch0_Trampoline_Size
+        BL      ClaimSysHeapNode
+        ADRVCL  R0, Branch0_Trampoline
+        ASSERT  Branch0_Trampoline_Init = 20
+        LDMVCIA R0, {R1,R3,R4,R5,R14}
+        STMVCIA R2, {R1,R3,R4,R5,R14}
+        LDRVC   R0, =ZeroPage
+        STRVC   R2, [R0, #ProcVec_Branch0]
 
  [ :LNOT: No26bitCode
 
 ; we're poking locations 0 and &18 here, so we'd best go back to SVC32
 
-        mrs     AL, r2, CPSR
+        MRS     r2, CPSR
         BIC     r3, r2, #&1F
         ORR     r3, r3, #SVC32_mode
-        msr     AL, CPSR_c, r3
+        MSR     CPSR_c, r3
  ]
 
  [ DebugForcedReset
@@ -1696,58 +1067,75 @@ CopyDefaultIRQ1V
         LDR     R1, RealIRQHandler
         STR     R1, [R0, #&18]
 
- [ StrongARM
-   ;for StrongARM, we need to do an IMB type thing for modifying code in vector area, and
-   ;for copying irq handler code
-        ARM_read_ID r1
-        AND     r1,r1,#&F000
-        CMP     r1,#&A000
-        BNE     furtherpoke_notSA
-   ;first, we clean one cache entry, 0..1F, = vector area
-        MOV     r1,#0
-        ARMA_clean_DCentry r1
-   ;next, we clean DefaultIRQ1V code area
-        LDR     r0,=DefaultIRQ1V
-        ADD     r1,r0,#(DefaultIRQ1Vcode_end - DefaultIRQ1Vcode)
-        ARMA_clean_DCrange r0,r1
-   ;and then we synch IC
-        ARMA_drain_WB
-        ARMA_flush_IC
-        MOV     r0,#0    ;restore r0 as zero base
-furtherpoke_notSA
-    [ ARM810support
-        ARM8_branchpredict_flush  ;IMB on ARM810, and harmless on other ARMs
-    ]
- ]
+        LDR     R2, =ZeroPage+InitIRQWs                 ; clear temp ws
+        MOV     R3, #0
+        MOV     R4, #0
+        STMIA   R2!, {R3,R4}
+        STMIA   R2!, {R3,R4}
+        DebugTX "IMB_Full"
+
+   ;we need to do an IMB type thing for modifying code in vector area,
+   ;and for copying irq handler code
+   ;
+        ARMop   IMB_Full,,,r0
+        ChangedProcVecs r0
+        LDR     r0,=ZeroPage
+
 
  [ :LNOT:No26bitCode
 
 ; now back to SVC26
 
-        msr     AL, CPSR_c, r2
+        MSR     CPSR_c, r2
  ]
+
         MOV     R1, #&100
         STR     R1, [R0, #RCLimit]
-        STR     R0, [R0, #ReturnCode]
-        STR     R0, [R0, #TickNodeChain]
+        MOV     R1, #0
+        STR     R1, [R0, #ReturnCode]
+        STR     R1, [R0, #TickNodeChain]
+
+; clear the keyboard workspace (tidy!)
+        ADD     R0, R0, #&1C
+        MOV     R2, #InitWsEnd - &1C
+        BL      memset
 
 ;now put in error handler and escape handler
         BL      DEFHAN
         BL      DEFHN2
         MOV     R0, #ExceptionDumpArea
-        LDR     R1, =DUMPER
+        LDR     R1, =ZeroPage+DUMPER
         SWI     XOS_ChangeEnvironment
 
         VDWS    WsPtr                   ; main MOS initialisation
+        DebugTX "VduInit"
         BL      VduInit
+        DebugTX "ExecuteInit"
         BL      ExecuteInit
+        DebugTX "KeyInit"
         BL      KeyInit
+        DebugTX "MouseInit"
         BL      MouseInit
+        DebugTX "OscliInit"
         BL      OscliInit               ; before initialising modules
 
+        DebugTX "Enabling IRQs"
         WritePSRc SVC_mode, R14         ; enable IRQs
+        DebugTX "IRQs on"
 
-        [ DoInitialiseMode :LOR: :LNOT: STB
+ [ DebugTerminal
+        MOV     R0, #RdchV
+        ADRL    R1, DebugTerminal_Rdch
+        LDR     R2, =ZeroPage
+        LDR     R2, [R2, #HAL_Workspace]
+        SWI     XOS_Claim
+        MOV     R0, #WrchV
+        ADRL    R1, DebugTerminal_Wrch
+        SWI     XOS_Claim
+        DebugTX "Debug terminal on"
+ ]
+
+        [ DoInitialiseMode :LOR: :LNOT: Embedded_UI
         BL      InitialiseMode          ; select correct screen mode, in case any
                                         ; module prints anything in initialisation
         ]
@@ -1760,9 +1148,28 @@ furtherpoke_notSA
         BEQ     SkipHardResetPart2
 
 ; HardResetPart2
+ [ HAL
+        DebugTX "HAL_InitDevices"
+        AddressHAL
+        MOV     R0, #0
+      [ ZeroPage = 0
+        STR     R0, [R0, #DeviceCount]
+        STR     R0, [R0, #DeviceTable]
+      |
+        LDR     R1, =ZeroPage
+        STR     R0, [R1, #DeviceCount]
+        STR     R0, [R1, #DeviceTable]
+      ]
+        CallHAL HAL_InitDevices         ; get HAL to register any devices it has
+        BL      LookForHALCacheController
+ |
         BL      L1L2PTenhancements      ; little tricks on cacheability etc for performance
+ ]
+        DebugTX "InitVariables"
         BL      InitVariables
+        DebugTX "AMBControl_Init"
         BL      AMBControl_Init         ; initialise AMBControl section
+        DebugTX "ModuleInit"
         BL      ModuleInit              ; initialise modules
                                         ; scan podules, copy modules.
 
@@ -1773,9 +1180,9 @@ furtherpoke_notSA
         MOV     R1, #SysHeapCMOS
         SWI     XOS_Byte
         AND     R2, R2, #2_111111       ; mask to same size as status
-        MOV     R0, #0
+        LDR     R0, =ZeroPage
         LDR     R0, [R0, #Page_Size]
-        MULTIPLY R3, R0, R2             ; size spare wanted
+        MUL     R3, R0, R2              ; size spare wanted
         BL      ClaimSysHeapNode
         MOV     R0, #HeapReason_Free
         SWI     XOS_Heap
@@ -1787,6 +1194,24 @@ furtherpoke_notSA
         MOV     R0, #FSControl_SelectFS ; set configured filing system
         SWI     XOS_FSControl
 
+        ; Update RTC now all the modules are running
+        SWI     XOS_ResyncTime
+
+        ; OS_ReadSysInfo 9,2 now relies on the Territory module, which may
+        ; enable IRQs. But the PRMs say OS_ReadSysInfo shouldn't alter the IRQ
+        ; state. So call it once here just to initialise the string which it
+        ; uses the Territory module to generate.
+        ; This won't account for any modules using it during ModuleInit, but
+        ; that should be pretty rare (or at least rare from within IRQ-sensitive
+        ; code)
+        MOV     R0, #9
+        MOV     R1, #2
+        SWI     XOS_ReadSysInfo
+
+  [ UseNewFX0Error
+        ; Also, *FX 0
+        BL      InitNewFX0Error
+  ]
   [ DebugROMInit
         SWI     XOS_WriteS
         =       "Service_PostInit",0
@@ -1796,55 +1221,84 @@ furtherpoke_notSA
         BL      Issue_Service
 
 ; New code added here by TMD 01-Apr-92
-; Go into user mode, issue a dummy SWI, then go back into SVC mode
+; Changed to use OS_LeaveOS 16-Oct-02
 
   [ DebugROMInit
         SWI     XOS_WriteS
         =       "callbacks",0
         SWI     XOS_NewLine
   ]
-        WritePSRc 0, R14                ; enter USR mode (IRQs, FIQs enabled)
-        NOP                             ; wait for it to take effect
-        SWI     XOS_WriteI+0            ; I hope it doesn't generate an error
-                                        ; otherwise the callback will get deferred!
-  [ DebugROMInit
-        SWI     XOS_WriteS
-        =       "EnterOS!",0
-        SWI     XOS_NewLine
-  ]
+        SWI     XOS_LeaveOS
         SWI     XOS_EnterOS             ; switch back to SVC mode (IRQs, FIQs enabled)
-  [ RO371Timings
+  [ :LNOT: HAL :LAND: RO371Timings
         BL      finalmemoryspeed
   ]
 ; end of added code
 
-      [ International                   ; Open the kernel messages file.
-        ADR     r0, KernelMessagesBlock+4
+     [ International                    ; Open the kernel messages file.
+        LDR     r0, =ZeroPage+KernelMessagesBlock+4
         ADR     r1, MessageFileName
         MOV     r2, #0                  ; Use file directly.
         SWI     XMessageTrans_OpenFile
         MOVVC   r0, #-1
+      [ ZeroPage = 0
         STRVC   r0, [r0, #KernelMessagesBlock+1]  ; Message file is now open.
+      |
+        LDR     lr, =ZeroPage
+        STRVC   r0, [lr, #KernelMessagesBlock]  ; Message file is now open.
       ]
+     ]
 
 SkipHardResetPart2                      ; code executed on all types of reset
       [ International
-        MOV     r0, #0
+        LDR     r0, =ZeroPage
         LDR     r1, [r0, #KernelMessagesBlock] ; if we've managed to open message file
         TEQ     r1, #0
+        ASSERT  (ZeroPage :AND: 255) = 0
         STRNEB  r0, [r0, #ErrorSemaphore] ; then allow errors to be translated
       ]
 
-    [ DoInitialiseMode :LOR: :LNOT: STB
+      [ DoInitialiseMode :LOR: :LNOT: Embedded_UI
         BL      InitialiseMode
-     [ :LNOT: STB                      ; don't print stuff on STB type products
+      ]
+    [ :LNOT: Embedded_UI
+        LDR     R0, =ZeroPage
+        LDRB    R14, [R0, #MentionCMOSReset]
+        TEQ     R14, #0
+        BEQ     %FT12
+      [ International
+        SWI     XOS_WriteI+10
+        BVS     %FT09
+        BL      WriteS_Translated
+        =       "CmosRst:CMOS RAM reset, press ESCAPE to continue",0
+        ALIGN
+09
+      |
+        SWI     XOS_WriteS
+        =       10,"CMOS RAM reset, press ESCAPE to continue",0
+        ALIGN
+      ]
+10
+        SWI     XOS_ReadEscapeState
+        BCC     %BT10
+        MOV     R0, #124
+        SWI     XOS_Byte                ; Clear the condition
+        SWI     XOS_WriteI+12           ; Clear the screen
+12
         SWI     XOS_WriteS
         =       10, "$SystemName ", 0   ; now RISC OS (no +) again
         ALIGN
 
-        MOV     R0, #0
+        MOV     R0, #8
+        ORR     R0, R0, #&500
+        SWI     XOS_Memory              ; returns amount of soft ROM (pages) in r1
+        MOVVS   R1, #0
+
+        LDR     R0, =ZeroPage
         LDR     R0, [R0, #RAMLIMIT]
-        MOV     R0, R0, LSR #20         ; /(1024*1024)
+        MLA     R0, R1, R2, R0          ; convert pages to bytes and add in
+
+        MOV     R0, R0, LSR #20         ; /(1024*1024) down to megabytes
         LDR     R1, =GeneralMOSBuffer
         MOV     R2, #?GeneralMOSBuffer
         SWI     XOS_ConvertInteger4
@@ -1852,33 +1306,19 @@ SkipHardResetPart2                      ; code executed on all types of reset
         SWI     XOS_WriteS
         =       "MB", 10,13, 10, 0      ; title complete
         ALIGN
-     ]
+
+        BL      ARM_PrintProcessorType
+    |
+        ! 0,    "Banner & printing of processor type disabled"
     ]
 
- [ StrongARM
-  [ STB
-   ! 0,"Printing of processor type disabled"
-  |
-        ;Print the processor type
-        MOV     r0, #0
-        LDRB    r0, [r0, #ProcessorType]
-        TEQ     r0, #255
-        BEQ     %FT01
-        ADR     r1, processor_names
-      [ International
-        ADD     r0, r1, r0, LSL #3
-	BL	Write0_Translated
-	SWI	XOS_NewLine
-	SWI	XOS_NewLine
-      |
-        ADD     r0, r1, r0, LSL #5
-        SWI     XOS_Write0
-      ]
-   ]
- ]
-
-01      MOV     r0, #0                  ; Set DomainId to 0 every reset
+        MOV     r0, #0                  ; Set DomainId to 0 every reset
+      [ ZeroPage = 0
         STR     r0, [r0, #DomainId]     ; before calling anyone
+      |
+        LDR     r1, =ZeroPage
+        STR     r0, [r1, #DomainId]     ; before calling anyone
+      ]
 
 ; issue reset service call
 
@@ -1893,12 +1333,6 @@ SkipHardResetPart2                      ; code executed on all types of reset
         MOV     R1, #Service_ReleaseFIQ
         SWI     XOS_ServiceCall
 
- [ SoftResets :LAND: STB
-        ! 0, "!!!! SoftReset is true => resets close all open files !!!!"
-        MOV     R0, #FSControl_Shut     ; Open files get closed at reset
-        SWI     XOS_FSControl
- ]
-
         BL      PostInit
 
         MOV     r0, #&FD                ; read last reset type (again!)
@@ -1908,14 +1342,42 @@ SkipHardResetPart2                      ; code executed on all types of reset
         CMP     r1, #SoftReset          ; a softie?
         SWINE   XOS_WriteI+7            ; go beep! Yaay!
 
+; Now that ROM modules have mostly finished allocating memory, move a large
+; chunk of the free memory from the free pool into application space so that
+; the boot sequence and configured language have something to play around with
+; (particularly if booting into BASIC!)
+; However be careful not to move everything, otherwise anything which locks
+; application space during boot could cripple important background processes
+; like USB
+        Push    "r1"
+        LDR     r0, =ZeroPage
+        LDR     r1, [r0, #AplWorkSize]
+        LDR     r0, [r0, #FreePoolDANode+DANode_PMPSize]
+        CMP     r0, #DynArea_PMP_BigPageCount
+        MOVLO   r0, r0, LSL #12
+        LDRHS   r0, =DynArea_PMP_BigByteCount
+        SUB     r1, r1, #32*1024
+        SUB     r1, r1, r0
+        MOV     r1, r1, ASR #1          ; 50% each sounds fair
+        MOV     r0, #ChangeDyn_FreePool
+        SWI     XOS_ChangeDynamicArea
+        Pull    "r1"
+
         CMP     r1, #PowerOnReset
         BNE     %FT75
 
- [ CheckProtectionLink
+ [ HAL :LAND: CheckProtectionLink
+        LDR     r1, =ZeroPage+HAL_StartFlags
+        LDR     r1, [r1]
+        TST     r1, #OSStartFlag_NoCMOSReset
+        BNE     %FT75
+ |
+      [ CheckProtectionLink
         LDR     r1, =IOMD_MonitorType   ; check link bit again
         LDRB    r1, [r1]                ; no need to preload bus, since should
         TST     r1, #IOMD_ProtectionLinkBit ; be still there from earlier
         BEQ     %FT75                   ; zero => protected
+      ]
  ]
 
 
@@ -1923,7 +1385,7 @@ SkipHardResetPart2                      ; code executed on all types of reset
 ; till keys get a chance to come in again after being reset for the umpteenth
 ; time by yet another keyboard handler! SKS 07-Jun-88
 
-        MOV     r3, #0
+        LDR     r3, =ZeroPage
         LDR     r3, [r3, #MetroGnome]
  [ EmulatorSupport
         ARM_on_emulator r0
@@ -1971,17 +1433,19 @@ HorologicalDelayLoop1
         BL      WriteMultiField
 
 64
-    [ DoInitialiseMode :LOR: :LNOT: STB
+    [ DoInitialiseMode :LOR: :LNOT: Embedded_UI
         BL      InitialiseMode
 
       [ International
         SWI     XOS_WriteI+10
-        BLVC    WriteS_Translated
-        =       "MonType:Monitor type reconfigured.",10,13,10,0
+        BVS     %FT65
+        BL      WriteS_Translated
+        =       "MonType:Monitor type reconfigured",10,13,10,0
         ALIGN
+65
       |
         SWI     XOS_WriteS
-        =       10,"Monitor type reconfigured.",10,13,10,0
+        =       10,"Monitor type reconfigured",10,13,10,0
         ALIGN
       ]
     ]
@@ -1991,8 +1455,10 @@ BranchThroughZeroInstruction2
  [ ProcessorVectors
         LDR     PC, .+ProcVec_Branch0
  |
-        B       .+(RESET1-0)
+        B       .+Branch0_Trampoline
  ]
+
+        LTORG
 
 MonitorKeypadTable      ; internal key number, CMOS bits
         =       106, MonitorType0
@@ -2009,72 +1475,23 @@ MonitorKeypadTable      ; internal key number, CMOS bits
         =       &FF
         ALIGN 32
 
- [ StrongARM
-  [ STB
-   ! 0,"Disabling Processor ID display"
-  |
-processor_names
-   [ International
-        =	"600", 0
-	ALIGN	8
-	=	"610", 0
-	ALIGN	8
-	=	"700", 0
-	ALIGN	8
-	=	"710", 0
-	ALIGN	8
-	=	"810", 0
-	ALIGN	8
-	=	"SA110", 0
-	ALIGN	8
-	=	"7500", 0
-	ALIGN	8
-	=	"7500FE", 0
-	ALIGN	8
-   |
-        DCB     "ARM 600 Processor",10,13,10,0
-        ALIGN 32
-        DCB     "ARM 610 Processor",10,13,10,0
-        ALIGN 32
-        DCB     "ARM 700 Processor",10,13,10,0
-        ALIGN 32
-        DCB     "ARM 710 Processor",10,13,10,0
-        ALIGN 32
-        DCB     "ARM 810 Processor",10,13,10,0
-        ALIGN 32
-        DCB     "StrongARM Processor",10,13,10,0
-        ALIGN 32
-        DCB     "ARM 7500 Processor",10,13,10,0
-        ALIGN 32
-        DCB     "ARM 7500FE Processor",10,13,10,0
-        ALIGN 32
-   ]
-        ; type, internal type, features
-  ]
+      [ International
+MessageFileName DCB     "Resources:$.Resources.Kernel.Messages",0
+        ALIGN
+      ]
+
+ [ StrongARM :LAND: :LNOT: HAL
 cputable
         DCD &6000,0,0
         DCD &6100,1,0
         DCD &7000,2,0
         DCD &7100,3,0
         DCD &8100,4,2_11101
- [ {TRUE}
-   ;corrected for 3.71 (SA does not abort for vector reads in 26-bit mode)
-        DCD &a100,5,2_11011
- |
-   ;value for 3.70
-        DCD &a100,5,2_11111
- ]
+        DCD &a100,5,2_11011 ;corrected for 3.71 (SA does not abort for vector reads in 26-bit mode)
         DCD &7500,6,0
         DCD &7501,7,0
         DCD -1
- ]
 
-      [ International
-MessageFileName DCB     "Resources:$.Resources.Kernel.Messages",0
-        ALIGN
-      ]
-
- [ StrongARM
 Processor_Type
         MOV     r0,#IOMD_Base
         LDRB    r1,[r0,#IOMD_ID0]
@@ -2101,7 +1518,7 @@ PT_lookup
         LDR     R2,[R1],#4
         TEQ     R2,#0
         MOVMI   R0,#0
-        STRMIB  R2,[R0,#ProcessorType]
+        STRMI   R2,[R0,#ProcessorType]
         MOVMI   PC,LR
         TEQ     R2,R0
         ADDNE   R1,R1,#8
@@ -2109,12 +1526,12 @@ PT_lookup
         LDMIA   R1,{R0,R2}
         MOV     R1,#0
         STRB    R0,[R1,#ProcessorType]
-        STRB    R2,[R1,#ProcessorFlags]
+        STR     R2,[R1,#ProcessorFlags]
         MOV     PC,LR
  ]
 
 70
-        MOV     r14, #0
+        LDR     r14, =ZeroPage
         LDR     r14, [r14, #MetroGnome]
         CMP     r14, r3
         BLO     HorologicalDelayLoop1
@@ -2162,7 +1579,7 @@ Hortoculture_Kicking
 ; till keys get a chance to come in again after being reset for the umpteenth
 ; time by yet another keyboard handler! SKS 01-Jun-88
 
-        MOV     r3, #0
+        LDR     r3, =ZeroPage
         LDR     r3, [r3, #MetroGnome]
  [ EmulatorSupport
         ARM_on_emulator r1
@@ -2177,7 +1594,7 @@ HorologicalDelayLoop2
         BL      IsKeyPressedAtReset
         BEQ     DoStartSuper            ; EQ -> start up supervisor
 
-        MOV     r0, #0
+        LDR     r0, =ZeroPage
         LDR     r0, [r0, #MetroGnome]
         CMP     r0, r3
         BLO     HorologicalDelayLoop2
@@ -2206,17 +1623,19 @@ DoStartSuper
         B       DoStartSuper            ; -> force Super entry
 
 
-str_booterror   DCB     "Boot$Error",0
+str_booterror   DCB     "Boot$$Error",0
                 ALIGN
 
 
 AutoBootCosNoKbd
-    [ :LNOT: STB
+    [ :LNOT: Embedded_UI
       [ International
         SWI     XOS_WriteI+7
-        BLVC    WriteS_Translated
+        BVS     %FT81
+        BL      WriteS_Translated
         =       "NoKbd:No keyboard present - autobooting", 10,13,0
         ALIGN
+81
       |
         SWI     XOS_WriteS
         =       7, "No keyboard present - autobooting", 10,13,0
@@ -2239,7 +1658,7 @@ RealIRQHandler
 ; Out   EQ: key pressed
 ;       NE: key not pressed
 
-IsKeyPressedAtReset ENTRY "r0-r2"
+IsKeyPressedAtReset Entry "r0-r2"
 
         MOV     r0, #129
         MOV     r2, #&FF
@@ -2247,33 +1666,5 @@ IsKeyPressedAtReset ENTRY "r0-r2"
         TEQ     r1, #&FF
         TEQEQ   r2, #&FF
         EXIT
-
-; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    [ AddTubeBashers
-TubeDumpR0     ROUT
-        EntryS  "R1, R2"
-        ADR   lr, HexTable
-        TubeChar r0, r1, "MOV r1, #"" """
-        MOV    R1, #7
-01      MOV    R0, R0, ROR #28
-        AND    R2, R0, #&F
-        TubeChar R0, R1, "LDRB R1, [lr, R2]"
-        SUBS   R1, R1, #1
-        BPL    %BT01
-        TubeChar r0, r1, "MOV r1, #"" """
-        EXITS
-
-TubeNewl
-        EntryS
-        TubeChar R0, R1, "MOV R1, #10"
-        TubeChar R0, R1, "MOV R1, #13"
-        EXITS
-
-HexTable = "0123456789ABCDEF"
-
-    ]
-
-; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
         END

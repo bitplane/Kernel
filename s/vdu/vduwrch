@@ -113,7 +113,7 @@ spare2  RN      11
 
 VDU20   ROUT
         LDR     R0, [WsPtr, #DisplayModeFlags]  ; if display mode is
-        TST     R0, #Flag_Teletext              ; not teletext, then restore
+        TST     R0, #ModeFlag_Teletext          ; not teletext, then restore
         BNE     %FT10                           ; default palette
 
         Push    R14
@@ -139,12 +139,12 @@ DefaultColours ROUT
         ASSERT  TBackCol = TForeCol +4
         ASSERT  back > fore
 
-        MOV     R0, #0                          ; foreground action := store
-        MOV     R1, #0                          ; background action := store
+        MOV     R0, #0                  ; foreground action := store
+        MOV     R1, #0                  ; background action := store
         LDR     R2, [WsPtr, #NColour]   ; GCOL(0,(NColour AND 7)) except
         TST     R2, #&F0                ; for 256 colour modes
         ANDEQ   R2, R2, #7              ; when we use colour 63 (=NColour)
-        MOV     R3, #0                          ; background colour := black
+        MOV     R3, #0                  ; background colour := black
         ADD     R4, WsPtr, #GPLFMD      ; store GPLFMD, GPLBMD, GFCOL, GBCOL
         STMIA   R4, {R0-R3}
 
@@ -153,22 +153,46 @@ DefaultColours ROUT
         ADD     R4, WsPtr, #TFTint
         STMIA   R4, {R0-R3}
 
-        BL      SetColour                       ; Update FgEcf & BgEcf
+        BL      SetColour               ; Update FgEcf & BgEcf
 
         LDR     bpp, [WsPtr, #BitsPerPix]
-        LDR     fore, [WsPtr, #NColour]         ; Number of colours allowed -1
-        TEQ     fore, #63                       ; are we in bodgy 256 colour mode?
-        MOVEQ   fore, #255                      ; then use colour 255 (cringe!)
-        TEQ     fore, #15                       ; 16 colour mode
-        MOVEQ   fore, #7                        ; Default is 7 for this depth of mode
-
- [ {TRUE} ; TMD 25-Jun-93 - change default text colour in 16bpp to &7FFF, and 32bpp to &00FFFFFF
-        LDR     r14, =&FFFF
-        CMP     fore, r14
-        BICEQ   fore, fore, #&8000              ;     &FFFF     ->      &7FFF
-        BICHI   fore, fore, #&FF000000          ; &FFFFFFFF     ->  &00FFFFFF
- ]
+        LDR     fore, [WsPtr, #NColour] ; Number of colours allowed -1
+        LDR     R8, [WsPtr, #ModeFlags]
+        TEQ     fore, #63               ; are we in bodgy 256 colour mode?
+        MOVEQ   fore, #255              ; then use colour 255 (cringe!)
+        TEQ     fore, #15               ; 16 colour mode
+        TSTEQ   R8, #ModeFlag_GreyscalePalette
+        MOVEQ   fore, #7                ; Default is 7 for this depth of mode
+        CMP     fore, #255
         MOV     back, #0
+        BLS     %FT10
+        ; Deal with true colour modes
+        ; Default foreground is white, background is black
+        ; Alpha/supremacy is taken from mode flags
+        MOV     r14, fore
+        MOV     fore, #-1
+        CMP     r14, #-1                ; 32bpp?
+        BIC     fore, fore, #&FF000000
+        MOVEQ   back, #&FF000000        ; top byte is alpha/supremacy
+        TEQNE   r14, fore               ; 24bpp packed?
+        BEQ     %FT09
+        BIC     fore, fore, #&FF0000
+        TEQ     r14, fore, LSR #4       ; 4k?
+        MOVEQ   fore, fore, LSR #4
+        MOVEQ   back, #&F000
+        BEQ     %FT09
+        ; Not 32bpp, 24bpp or 4k, so must be 32k or 64k
+        TST     R8, #ModeFlag_64k
+        BICEQ   fore, fore, #&8000      ; is 32k
+        MOVEQ   back, #&8000
+09
+        ; Arrive here with fore = foreground, back = alpha/supremacy mask
+        TST     R8, #ModeFlag_DataFormatSub_Alpha
+        ORRNE   fore, fore, back        ; Is alpha blended mode, so set full alpha
+        MOVEQ   back, #0                ; Transparency/supremacy mode, clear transfer channel
+
+
+10
         ADD     R14, WsPtr, #TForeCol
         STMIA   R14, {fore, back}               ; save fgd + bgd text colours
         Pull    R14
@@ -178,10 +202,14 @@ DefaultColours ROUT
 SetColours ROUT
         Push    R14
 
-        MOV     R8, back, ROR bpp               ; move bits to top of word
-        MOV     R9, fore, ROR bpp
+        CMP     bpp, #16
+
+        MOVLS   R8, back, ROR bpp               ; move bits to top of word
+        MOVLS   R9, fore, ROR bpp
 
         LDR     bpp, [WsPtr, #BytesPerChar]     ; fudge some more bits
+
+        BHI     %FT20                           ; can't fudge anything over 16bpp
         ORR     back, R8, back, ROR bpp
         ORR     fore, R9, fore, ROR bpp
 
@@ -193,6 +221,7 @@ SetColours ROUT
         MOVNE   LR, LR, LSL #1                  ; double the shift ready for the next pass
         BNE     %BT10                           ;   and loop again!
 
+20
         STR     fore, [WsPtr, #TextFgColour]
         STR     back, [WsPtr, #TextBgColour]    ; store bit expanded fore / background colour
 
@@ -203,43 +232,34 @@ SetColours ROUT
         TEQ     bpp, #16
         BEQ     Colour16Bit     ; can't optimise
 
-      [ VIDC_Type = "VIDC20"
         TEQ     bpp, #32
         BEQ     Colour32Bit     ; cannie optimise captin!
-      ]
 
         EOR     fore, fore, back                ; so we can AND and EOR
-      [ VIDC_Type = "VIDC20"
         LDR     loaddr, [WsPtr, #TextExpandArea]
-      |
-        ADD     loaddr, WsPtr, #TextExpand
-      ]
         ADD     dest, loaddr, bpp, LSL #8       ; end+1 destination addr
         MOV     hiaddr, dest                    ; TextPlain now moves around,
                                                 ; depending on bytes-per-char
-10
+30
         LDR     cbyte, [hiaddr], #4
         AND     cbyte, cbyte, fore
         EOR     cbyte, cbyte, back
         STR     cbyte, [loaddr], #4
         TEQ     loaddr, dest
-        BNE     %BT10
+        BNE     %BT30
 
         Pull    PC
         LTORG
 
 ; *****************************************************************************
 ;
-;       Colour16Bit - Set up colour table for MODE 10
+;       Colour16Bit - Set up colour table for 16 bits per pixel
 ;       Entered with R14 already pushed
 ;
 
 Colour16Bit
-      [ VIDC_Type = "VIDC20"
         LDR     tabaddr, [WsPtr, #TextExpandArea]
-      |
-        ADD     tabaddr, WsPtr, #TextExpandArea
-      ]
+
 
         ADR     hiaddr, C16BTab
         ADD     R10, hiaddr, #128
@@ -286,11 +306,9 @@ C16BTab
         &       &FFFFFFFF, &0000FFFF
         &       &FFFFFFFF, &FFFFFFFF
 
-      [ VIDC_Type = "VIDC20"
-
 ; *****************************************************************************
 ;
-;       Colour32Bit - Set up colour table for MODE 48 (32 bit per pixel)
+;       Colour32Bit - Set up colour table for 32 bits per pixel
 ;       Entered with R14 already pushed
 ;
 
@@ -299,7 +317,7 @@ Colour32Bit
         MOV     dest, #0
 C32B20
 
-; Expand the value in in 'hiaddr' so that each bit is stored as a word
+; Expand the value in 'dest' so that each bit is stored as a word
 ; zero bits are stored in the background and non-zero bits are stored in
 ; foreground.  This is indexed when expanding the 1BPP VDU font out to
 ; the current depth.
@@ -335,8 +353,6 @@ C32B20
 
         Pull    "PC"
 
-      ]
-
 ; *****************************************************************************
 ;
 ;       Fast CLS used when no text window defined
@@ -352,7 +368,38 @@ FastCLS ROUT
 
         BL      TTXFastCLS                      ; else clear teletext map
         MOV     R0, #0                          ; and clear to zero
+        B       %FT15
 10
+        BL      CheckAcceleration
+        BNE     %FT15
+        MOV     R11, R13                        ; try to do an accelerated
+        BIC     R13, R13, #63                   ; rectangle fill - need an
+        MOV     R1, #&FFFFFFFF                  ; alignedOraEor block
+        MVN     R2, R0
+        MOV     R3, R1
+        MOV     R4, R2
+        Push    "R1-R4"
+        Push    "R1-R4"
+        Push    "R1-R4"
+        Push    "R1-R4"
+        MOV     R0, #0                          ; left
+        LDR     R1, [WsPtr, #YWindLimit]        ; top
+        LDR     R2, [WsPtr, #XWindLimit]        ; right (okay because checked BPC=BPP)
+        MOV     R3, #0                          ; bottom
+        MOV     R4, R13                         ; colour block
+        Push    "R0-R4"
+        MOV     R0, #GVRender_Sync
+        MOV     R1, #GVRender_FillRectangle
+        MOV     R2, R13
+        LDR     R4, [WsPtr, #CurrentGraphicsVDriver]
+        MOV     R4, R4, LSL #24
+        ORR     R4, R4, #GraphicsV_Render
+        BL      CallGraphicsV
+        MOV     R13, R11
+        TEQ     R4, #GraphicsV_Complete
+        Pull    PC, EQ
+        LDR     R0, [WsPtr, #TextBgColour]
+15
         LDR     R8, [WsPtr, #ScreenStart]
         MOV     R1, R0
         MOV     R2, R0
@@ -376,7 +423,7 @@ FastCLS ROUT
         ADDCC   R9, R9, #256                    ; add back the last 256
 30
         SUBS    R9, R9, #4
-        STMCSIA R8!, {R0}
+        STRCS   R0, [R8], #4
         BHI     %BT30
 
         Pull    PC
@@ -425,7 +472,7 @@ AddressR0R1     ROUT
         LDR     R3, [WsPtr, #Log2BPC]
       [ HiResTTX
         LDR     R2, [WsPtr, #ModeFlags]
-        TST     R2, #Flag_Teletext
+        TST     R2, #ModeFlag_Teletext
         ADDNE   R3, R3, #1
       ]
         LDR     R2, [WsPtr, #ScreenStart] ; start address of top of screen
@@ -467,11 +514,7 @@ TimWrch ROUT
         Push    R14, EQ
         ADREQ   R14, %FT15
         LDREQ   screen, [WsPtr, #CursorAddr]
-      [ VIDC_Type = "VIDC20"
         LDREQ   bigfont, [WsPtr, #TextExpandArea]
-      |
-        ADDEQ   bigfont, WsPtr, #TextExpand
-      ]
         LDREQ   linelen, [WsPtr, #LineLength]
         LDREQ   PC, [WsPtr, #WrchNbit]
 
@@ -607,8 +650,8 @@ Wrch1bit
 
         [ 1=0 ; *** No 1 bpc non-BBC gap modes at present ***
         LDR     R0, [WsPtr, #ModeFlags]         ; now test for non-BBC gap mode
-        AND     R0, R0, #(Flag_GapMode :OR: Flag_BBCGapMode) ; we want R0=0 iff
-        EORS    R0, R0, #Flag_GapMode           ; (gapmode AND NOT bbcgapmode)
+        AND     R0, R0, #(ModeFlag_GapMode :OR: ModeFlag_BBCGapMode) ; we want R0=0 iff
+        EORS    R0, R0, #ModeFlag_GapMode       ; (gapmode AND NOT bbcgapmode)
         MOVNE   PC, R14
         LDRB    scrbyte, [bigfont]              ; store backgd in next 2
         STRB    scrbyte, [screen], linelen
@@ -692,8 +735,8 @@ Wrch1bitDouble
 
         [ 1=0 ; *** No 1 bpc non-BBC gap modes at present ***
         LDR     R0, [WsPtr, #ModeFlags]         ; now test for non-BBC gap mode
-        AND     R0, R0, #(Flag_GapMode :OR: Flag_BBCGapMode) ; we want R0=0 iff
-        EORS    R0, R0, #Flag_GapMode           ; (gapmode AND NOT bbcgapmode)
+        AND     R0, R0, #(ModeFlag_GapMode :OR: ModeFlag_BBCGapMode) ; we want R0=0 iff
+        EORS    R0, R0, #ModeFlag_GapMode       ; (gapmode AND NOT bbcgapmode)
         MOVNE   PC, R14
         LDRB    scrbyte, [bigfont]              ; store backgd in next 2
         STRB    scrbyte, [screen], linelen
@@ -838,8 +881,8 @@ Wrch2bit
 ; *****End of change made by DJS
 
         LDR     R0, [WsPtr, #ModeFlags]         ; now test for non-BBC gap mode
-        AND     R0, R0, #(Flag_GapMode :OR: Flag_BBCGapMode) ; we want R0=0 iff
-        EORS    R0, R0, #Flag_GapMode           ; (gapmode AND NOT bbcgapmode)
+        AND     R0, R0, #(ModeFlag_GapMode :OR: ModeFlag_BBCGapMode) ; we want R0=0 iff
+        EORS    R0, R0, #ModeFlag_GapMode       ; (gapmode AND NOT bbcgapmode)
         MOVNE   PC, R14
         LDRB    scrbyte, [bigfont]              ; store backgd in next 2
         STRB    scrbyte, [screen], #1
@@ -851,8 +894,8 @@ Wrch2bit
 Wrch4bit
         MOV     R10, #0                         ; extra rows are 0 if not TTX
         LDR     R0, [WsPtr, #ModeFlags]         ; now test for non-BBC gap mode
-        AND     R0, R0, #(Flag_GapMode :OR: Flag_BBCGapMode) ; we want R0=0 iff
-        EOR     R0, R0, #Flag_GapMode           ; (gapmode AND NOT bbcgapmode)
+        AND     R0, R0, #(ModeFlag_GapMode :OR: ModeFlag_BBCGapMode) ; we want R0=0 iff
+        EOR     R0, R0, #ModeFlag_GapMode       ; (gapmode AND NOT bbcgapmode)
         MOV     mask, #&FF000000                ; don't set mask in Wrch4bitTTX
       [ :LNOT: HiResTTX
 Wrch4bitTTX
@@ -945,8 +988,8 @@ Wrch8bit
 
         [ 1=0 ; *** No 8 bpc non-BBC gap modes at present ***
         LDR     R0, [WsPtr, #ModeFlags]         ; now test for non-BBC gap mode
-        AND     R0, R0, #(Flag_GapMode :OR: Flag_BBCGapMode) ; we want R0=0 iff
-        EORS    R0, R0, #Flag_GapMode           ; (gapmode AND NOT bbcgapmode)
+        AND     R0, R0, #(ModeFlag_GapMode :OR: ModeFlag_BBCGapMode) ; we want R0=0 iff
+        EORS    R0, R0, #ModeFlag_GapMode       ; (gapmode AND NOT bbcgapmode)
         MOVNE   PC, R14
         LDMIA   bigfont, {scrbyte, scrbyte2}    ; store backgd in next 2
         ADD     screen, screen, linelen
@@ -1025,8 +1068,8 @@ Wrch16bit
 
         [ 1=0 ; *** No 16 bpc non-BBC gap modes at present ***
         LDR     R0, [WsPtr, #ModeFlags]         ; now test for non-BBC gap mode
-        AND     R0, R0, #(Flag_GapMode :OR: Flag_BBCGapMode) ; we want R0=0 iff
-        EORS    R0, R0, #Flag_GapMode           ; (gapmode AND NOT bbcgapmode)
+        AND     R0, R0, #(ModeFlag_GapMode :OR: ModeFlag_BBCGapMode) ; we want R0=0 iff
+        EORS    R0, R0, #ModeFlag_GapMode       ; (gapmode AND NOT bbcgapmode)
         MOVNE   PC, R14
         LDMIA   bigfont, {scrbyte, scrbyte2}    ; store backgd in next 2
         ADD     screen, screen, linelen
@@ -1130,7 +1173,7 @@ BS
         STRGE   R2, [WsPtr, #CursorAddr]
         MOVGE   PC, R14
 
-        MOV     R0, #0
+        LDR     R0, =ZeroPage
         LDRB    R1, [R0, #OsbyteVars + :INDEX: PageModeLineCount]
         TEQ     R1, #0
         SUBNE   R1, R1, #1
@@ -1231,7 +1274,7 @@ VT
         TST     R6, #Vdu5Bit
         BNE     Vdu5VT
 
-        MOV     R0, #0
+        LDR     R0, =ZeroPage
         LDRB    R1, [R0, #OsbyteVars + :INDEX: PageModeLineCount]
         TEQ     R1, #0
         SUBNE   R1, R1, #1
@@ -1442,6 +1485,7 @@ FF
         TST     R6, #Vdu5Bit
         BNE     Vdu5FF
 
+        ASSERT  (ZeroPage :AND: 255) = 0
         STROSB  R0, PageModeLineCount, R0       ; zero page mode line count
 
         LDR     R0, [WsPtr, #VduStatus]
@@ -1452,8 +1496,8 @@ FF
         TST     R6, #ClipBoxEnableBit
         BLNE    SetClipBoxToFullScreen
         LDR     R0, [WsPtr, #DriverBankAddr]    ; set driver's screen start
-        STR     R0, [WsPtr, #DisplayScreenStart]
         STR     R0, [WsPtr, #ScreenStart]
+        BL      SetDisplayScreenStart
 
         LDR     R0, [WsPtr, #DisplayBankAddr]
         BL      SetVinit                        ; program Vinit
@@ -1464,7 +1508,7 @@ FF
         Pull    R14
 
         LDR     R0, [WsPtr, #ModeFlags]
-        TST     R0, #Flag_BBCGapMode            ; if not BBC gap mode
+        TST     R0, #ModeFlag_BBCGapMode        ; if not BBC gap mode
         BEQ     FastCLS                         ; then use fast code
 
 SlowCLS
@@ -1503,7 +1547,7 @@ ClearThisBox
 05
         LDR     R8, [WsPtr, #TextBgColour]
         LDRB    R1, [WsPtr, #ModeFlags]
-        TST     R1, #Flag_BBCGapMode    ; is it a BBC gap mode ?
+        TST     R1, #ModeFlag_BBCGapMode ; is it a BBC gap mode ?
         LDRNE   R1, =&AAAAAAAA          ; use colour 2 for gaps if so
         MOVEQ   R1, R8                  ; else use background colour
         EOR     R1, R1, R8              ; EOR toggle for colour
@@ -1605,9 +1649,9 @@ GetBoxInfo
         LDR     R7, [WsPtr, #ModeFlags]
 
         MOV     R6, R8, LSL #3                  ; *8
-        TST     R7, #Flag_GapMode               ; if gap mode
+        TST     R7, #ModeFlag_GapMode           ; if gap mode
         ADDNE   R6, R6, R8, LSL #1              ; (+*2) = *10
-        TST     R7, #Flag_DoubleVertical        ; if double mode
+        TST     R7, #ModeFlag_DoubleVertical    ; if double mode
         ADDNE   R6, R6, R6                      ; then double
 
         LDR     R7, [WsPtr, #LineLength]
@@ -1615,6 +1659,73 @@ GetBoxInfo
         MOV     R1, R3                          ; prepare to address top left
         B       AddressR0R1
 
+;
+;       TextWindowToGraphics - current text window converted to graphics
+;
+;       TextBoxToGraphics - given text box converted to graphics coordinates
+;
+; in:   R0 = left
+;       R1 = bottom
+;       R2 = right
+;       R3 = top
+;
+; out:  R0-R3 converted to internal graphics coordinates
+;       R5 = number of pixels horizontally
+;       R6 = number of pixel rows vertically
+;       R7 = row height in pixels
+;       R8 = number of character rows vertically
+
+ScreenToGraphics
+        MOV     R0, #0
+        LDR     R1, [WsPtr, #ScrBRow]
+        LDR     R2, [WsPtr, #ScrRCol]
+        MOV     R3, #0
+        B       TextBoxToGraphics
+
+TextWindowToGraphics
+        ADD     R0, WsPtr, #TWLCol              ; R0 := TWLCol; R1 := TWBRow
+        LDMIA   R0, {R0-R3}                     ; R2 := TWRCol; R3 := TWTRow
+TextBoxToGraphics
+        SUB     R5, R2, R0
+        ADD     R5, R5, #1                      ; number of chars horiz
+      [ HiResTTX
+        LDR     R6, [WsPtr, #CharWidth]         ; bytes/char (not log2)
+        LDR     R7, [WsPtr, #Log2BPP]           ; log2 bits/pixel
+
+        MUL     R0, R6, R0                      ; number of bytes horiz
+        MUL     R5, R6, R5
+        SUB     R7, R7, #3                      ; log2 bytes/pixel
+      |
+        LDR     R6, [WsPtr, #Log2BPC]           ; should be log2 bytes/char
+        LDR     R7, [WsPtr, #Log2BPP]           ; should be log2 bits/pixel
+        ADD     R6, R6, #3
+
+        MOV     R0, R0, LSL R6                  ; number of bits horiz
+        MOV     R5, R5, LSL R6
+      ]
+        MOV     R0, R0, LSR R7                  ; number of pixels horiz
+        MOV     R5, R5, LSR R7
+        ADD     R2, R0, R5                      ; recalculate right coord
+        SUB     R2, R2, #1
+
+        LDR     R6, [WsPtr, #ModeFlags]
+
+        MOV     R7, #8                          ; 8 pixels high
+        TST     R6, #ModeFlag_GapMode           ; if gap mode
+        MOVNE   R7, #10                         ; then 10 pixels high
+        TST     R6, #ModeFlag_DoubleVertical    ; if double mode
+        ADDNE   R7, R7, R7                      ; then double
+
+        SUB     R8, R1, R3
+        ADD     R8, R8, #1                      ; number of char rows vert
+        MUL     R3, R7, R3                      ; convert top to pixels (from top)
+        MUL     R6, R7, R8                      ; convert height to pixels
+        LDR     R1, [WsPtr, #YWindLimit]
+        SUB     R3, R1, R3                      ; Y-flip coordinate (bottom-left = 0,0)
+        SUB     R1, R3, R6                      ; recalculate bottom coord
+        ADD     R1, R1, #1
+
+        MOV     PC, R14
 
 ; *****************************************************************************
 ;
@@ -1677,25 +1788,27 @@ ScrollUp
         BNE     SoftScrollUp
 HardScrollUp
         LDR     R1, [WsPtr, #ModeFlags]
-        TST     R1, #Flag_HardScrollDisabled
+        TST     R1, #ModeFlag_HardScrollDisabled
         BNE     HardScrollSpriteUp
 
+        Push    R14
         LDR     R1, [WsPtr, #RowLength]
         LDR     R2, [WsPtr, #TotalScreenSize]
+        LDR     R14, [WsPtr, #ScreenEndAddr]
 
         LDR     R0, [WsPtr, #DisplayScreenStart]
         ADD     R0, R0, R1
-        CMP     R0, #ScreenEndAdr
+        CMP     R0, R14
         SUBCS   R0, R0, R2
-        STR     R0, [WsPtr, #DisplayScreenStart]
+        BL      SetDisplayScreenStart
+        LDR     R14, [WsPtr, #ScreenEndAddr]
         STR     R0, [WsPtr, #ScreenStart]
 
         LDR     R0, [WsPtr, #DisplayStart]
         ADD     R0, R0, R1
-        CMP     R0, #ScreenEndAdr
+        CMP     R0, R14
         SUBCS   R0, R0, R2
 
-        Push    R14
         BL      SetVinit                ; program vinit and set DisplayStart
 
         TST     R6, #TeletextMode
@@ -1714,6 +1827,11 @@ ClearBottomScreenLine
 
 HardScrollSpriteUp
         Push    R14
+        TST     R6, #TeletextMode
+        BNE     TTXSoftScrollUp
+        BL      TryCopyScreenUp
+        Pull    R14,EQ
+        BEQ     ClearBottomScreenLine
         BL      GetScreenInfo           ; get box info for whole 'screen'
         LDR     R0, [WsPtr, #RowMult]
         BL      SoftScrollUp2
@@ -1733,6 +1851,9 @@ SoftScrollUp
         TST     R6, #TeletextMode
         BNE     TTXSoftScrollUp
 
+        BL      TryCopyWindowUp
+        Pull    R14, EQ
+        BEQ     ClearBottomLine
         BL      GetWindowInfo
 
 ;       R2 = address of top left
@@ -1807,6 +1928,94 @@ ScrollLineUp
 
 ; *****************************************************************************
 ;
+;       TryCopyScreenUp - use GraphicsV to copy screen up
+;
+; in:   nothing
+; out:  R0-R11 corrupted
+;       Z flag set if successful
+
+TryCopyScreenUp
+        Push    R14
+        BL      CheckAcceleration
+        Pull    PC, NE                  ; return with Z clear (unsuccessful)
+        BL      ScreenToGraphics
+TryCopyUpCommon
+        SUB     R4, R2, R0              ; width-1
+        SUB     R5, R3, R1              ; height-1
+        SUBS    R5, R5, R7              ; less one row
+        Pull    PC,MI                   ; return with Z clear (unsuccessful)
+        MOV     R2, R0                  ; dstL=srcL
+        ADD     R3, R1, R7              ; dstB=srcB +1row
+TryCopyCommon
+        Push    "R0-R5"
+        MOV     R0, #GVRender_Sync
+        MOV     R1, #GVRender_CopyRectangle
+        MOV     R2, R13
+        LDR     R4, [WsPtr, #CurrentGraphicsVDriver]
+        MOV     R4, R4, LSL #24
+        ORR     R4, R4, #GraphicsV_Render
+        BL      CallGraphicsV
+        ADD     R13, R13, #6*4
+        TEQ     R4, #GraphicsV_Complete
+        Pull    PC
+
+; .............................................................................
+;
+;       TryCopyWindowUp - use GraphicsV to copy window up
+;
+; in:   nothing
+; out:  R0-R11 corrupted
+;       Z flag set if successful
+
+TryCopyWindowUp
+        LDR     R0, [WsPtr, #VduSprite]
+        TEQ     R0, #0                  ; don't try it if outputting to sprite
+        MOVNE   PC, R14                 ; return with Z clear (unsuccessful)
+        Push    R14
+        ADR     R14, TryCopyUpCommon
+        B       TextWindowToGraphics
+
+; *****************************************************************************
+;
+;       TryCopyScreenDown - use GraphicsV to copy screen down
+;
+; in:   nothing
+; out:  R0-R11 corrupted
+;       Z flag set if successful
+
+TryCopyScreenDown
+        Push    R14
+        BL      CheckAcceleration
+        Pull    PC, NE                  ; return with Z clear (unsuccessful)
+        BL      ScreenToGraphics
+TryCopyDownCommon
+        SUB     R4, R2, R0              ; width-1
+        SUB     R5, R3, R1              ; height-1
+        SUBS    R5, R5, R7              ; less one row
+        Pull    PC,MI                   ; return with Z clear (unsuccessful)
+        MOV     R2, R0                  ; dstL=srcL
+        MOV     R3, R1                  ; dstB=bot
+        ADD     R1, R1, R7              ; srcB=bot +1row
+        B       TryCopyCommon
+
+; .............................................................................
+;
+;       TryCopyWindowDown - use GraphicsV to copy window down
+;
+; in:   nothing
+; out:  R0-R11 corrupted
+;       Z flag set if successful
+
+TryCopyWindowDown
+        LDR     R0, [WsPtr, #VduSprite]
+        TEQ     R0, #0                  ; don't try it if outputting to sprite
+        MOVNE   PC, R14                 ; return with Z clear (unsuccessful)
+        Push    R14
+        ADR     R14, TryCopyDownCommon
+        B       TextWindowToGraphics
+
+; *****************************************************************************
+;
 ;       ScrollDown - Scroll the current text window down
 ;
 
@@ -1816,27 +2025,29 @@ ScrollDown
         BNE     SoftScrollDown
 HardScrollDown
         LDR     R1, [WsPtr, #ModeFlags]
-        TST     R1, #Flag_HardScrollDisabled
+        TST     R1, #ModeFlag_HardScrollDisabled
         BNE     HardScrollSpriteDown
 
+        Push    R14
         LDR     R1, [WsPtr, #RowLength]
         LDR     R2, [WsPtr, #TotalScreenSize]
+        LDR     R14, [WsPtr, #ScreenEndAddr]
 
         LDR     R0, [WsPtr, #DisplayScreenStart]
         SUB     R0, R0, R1                      ; down one row
         ADD     R3, R0, R2
-        CMP     R3, #ScreenEndAdr               ; if < then need wrap
+        CMP     R3, R14                         ; if < then need wrap
         MOVCC   R0, R3
-        STR     R0, [WsPtr, #DisplayScreenStart]
+        BL      SetDisplayScreenStart
+        LDR     R14, [WsPtr, #ScreenEndAddr]
         STR     R0, [WsPtr, #ScreenStart]
 
         LDR     R0, [WsPtr, #DisplayStart]
         SUB     R0, R0, R1
         ADD     R3, R0, R2
-        CMP     R3, #ScreenEndAdr
+        CMP     R3, R14
         MOVCC   R0, R3
 
-        Push    R14
         BL      SetVinit                ; program vinit and set DisplayStart
 
         TST     R6, #TeletextMode
@@ -1855,6 +2066,11 @@ ClearTopScreenLine
 
 HardScrollSpriteDown
         Push    R14
+        TST     R6, #TeletextMode
+        BNE     TTXSoftScrollDown
+        BL      TryCopyScreenDown
+        Pull    R14, EQ
+        BEQ     ClearTopLine
         BL      GetScreenInfo           ; get box info for whole 'screen'
 
         MOV     R0, #0
@@ -1879,6 +2095,9 @@ SoftScrollDown
         TST     R6, #TeletextMode
         BNE     TTXSoftScrollDown
 
+        BL      TryCopyWindowDown
+        Pull    R14, EQ
+        BEQ     ClearTopLine
         BL      GetWindowInfo
 
 ;       R2 = address of top left
@@ -1961,56 +2180,81 @@ ScrollLineDown
 
 ; *****************************************************************************
 ;
-;       SetVinit  - Program Vinit  with address in R0
-;       SetVstart - Program Vstart --------""--------
-;       SetVend   - Program Vend   --------""--------
+;       SetVinit       - Program Vinit with address in R0
+;       SetVstart      - Program Vstart with address in R0
+;       SetVendDefault - Program Vend with end address for TotalScreenSize
 ;
 ; out:  R0-R2 corrupted
 ;
 
+; mjs Oct 2000 kernel/HAL split
+; these routines now call GraphicsV_SetDMAAddress
+
+; Note that the addresses provided are logical addresses for the software mapping
+; of the display, and this starts at (ScreenEndAddr - TotalScreenSize) for
+; wonderful historical reasons (h/w scroll, two mappings, blah, blah) - see eg. PRM 1-354
+;
+; To get physical address for the HAL, we subtract this software mapping start
+; address and add the physical address of the start of video memory.
+;
+
 SetVstart
-        MOV     R1, #MEMCDAG_VStart
-SetLag
-        SUB     R0, R0, #ScreenEndAdr
-        LDR     R2, [WsPtr, #TotalScreenSize]
-        ADD     R0, R0, R2                      ; make startofscreen 0
-        B       SetDAGOffset                    ; call generic interface
+        LDR     r2, [WsPtr, #ScreenEndAddr]
+        SUB     r1, r0, r2
+        LDR     r2, [WsPtr, #TotalScreenSize]
+        ADD     r1, r1, r2                      ; now we have offset of Vstart in video RAM
+        LDR     r2, [WsPtr, #TrueVideoPhysAddr]
+        ADD     r1, r1, r2                      ; now we have physical address of Vstart
+        MOV     r0, #GVDAG_VStart
+        B       Do_GVDAG
 
 SetVendDefault
- [ MEMC_Type = "IOMD"
-        MOV     R0, #0
-        LDR     R0, [R0, #VRAMWidth]
-        CMP     R0, #1
-        MOVCC   R0, #16                         ; DRAM-only, subtract 16
-        MOVEQ   R0, #SAMLength/2                ; 1 bank of VRAM - 1/2 SAM
-        MOVHI   R0, #SAMLength                  ; 2 banks of VRAM - 1/2 SAM * 2
-        RSB     R0, R0, #ScreenEndAdr
- |
-        MOV     R0, #ScreenEndAdr
-        SUB     R0, R0, #16
- ]
-        MOV     R1, #MEMCDAG_VEnd
-        B       SetLag
+        LDR     r2, [WsPtr, #TrueVideoPhysAddr]
+        LDR     r1, [WsPtr, #TotalScreenSize]
+        ADD     r1, r1, r2                      ; physical address of Vend
+        MOV     r0, #GVDAG_VEnd
+        B       Do_GVDAG
+
+SetDisplayScreenStart
+        Push    "r0-r2,lr"
+        BL      SetVrender
+        Pull    "r0-r2,pc"
+
+SetVrender
+        STR     r0, [WsPtr, #DisplayScreenStart]
+        LDR     r2, [WsPtr, #ScreenEndAddr]
+        SUB     r1, r0, r2
+        LDR     r2, [WsPtr, #TotalScreenSize]
+        ADD     r1, r1, r2                      ; now we have offset of Vrender in video RAM
+        LDR     r0, [WsPtr, #TeletextOffset]
+        ADD     r1, r1, r0                      ; add on teletext bank offset
+        CMP     r1, r2                          ; if out of range
+        SUBCS   r1, r1, r2                      ; then subtract total size
+        LDR     r2, [WsPtr, #TrueVideoPhysAddr] ; now we have physical address
+        ADD     r1, r1, r2
+        MOV     r0, #GVDAG_VRender
+        B       Do_GVDAG
 
 SetVinit
-        STR     R0, [WsPtr, #DisplayStart]
-        SUB     R0, R0, #ScreenEndAdr
-        LDR     R2, [WsPtr, #TotalScreenSize]
-        ADD     R0, R0, R2                      ; make start of screen 0
-        LDR     R1, [WsPtr, #TeletextOffset]
-        ADD     R0, R0, R1                      ; add on teletext bank offset
-        CMP     R0, R2                          ; if out of range
-        SUBCS   R0, R0, R2                      ; then subtract total size
-SetVinitPhys
-        STR     R0, [WsPtr, #VinitCopy]
-        MOV     R1, #MEMCDAG_VInit
-SetDAGOffset
- [ MEMC_Type = "IOMD"
-        MOV     R2, #0
-        LDR     R2, [R2, #VideoPhysAddr]        ; add on physical address of start of video RAM
-        ADD     R0, R0, R2
- ]
-        B       SetDAG                          ; call generic interface
+        STR     r0, [WsPtr, #DisplayStart]
+        LDR     r2, [WsPtr, #ScreenEndAddr]
+        SUB     r1, r0, r2
+        LDR     r2, [WsPtr, #TotalScreenSize]
+        ADD     r1, r1, r2                      ; now we have offset of Vinit in video RAM
+        LDR     r0, [WsPtr, #TeletextOffset]
+        ADD     r1, r1, r0                      ; add on teletext bank offset
+        CMP     r1, r2                          ; if out of range
+        SUBCS   r1, r1, r2                      ; then subtract total size
+        LDR     r2, [WsPtr, #TrueVideoPhysAddr] ; now we have physical address
+        ADD     r1, r1, r2
+        MOV     r0, #GVDAG_VInit
+Do_GVDAG
+        Push    "r4, lr"
+        LDR     r4, [WsPtr, #CurrentGraphicsVDriver]
+        MOV     r4, r4, LSL #24
+        ORR     r4, r4, #GraphicsV_SetDMAAddress
+        BL      CallGraphicsV
+        Pull    "r4, pc"
 
 ; *****************************************************************************
 ;
@@ -2026,7 +2270,8 @@ SetDAGOffset
 ConvertBankToAddress ROUT
         MOV     R4, R2
         LDR     R3, [WsPtr, #TotalScreenSize]
-        RSB     R3, R3, #ScreenEndAdr           ; R3 := start of all screen mem
+        LDR     R5, [WsPtr, #ScreenEndAddr]
+        RSB     R3, R3, R5                      ; R3 := start of all screen mem
         LDR     R5, [WsPtr, #ScreenSize]
 10
         MOVS    R4, R4, LSR #1                  ; add on R4*ScreenSize
@@ -2060,11 +2305,7 @@ Delete  ROUT
         MOV     tophalf, #0                     ; Print with space
         MOV     bottomhalf, #0
         LDR     screen, [WsPtr, #CursorAddr]
-      [ VIDC_Type = "VIDC20"
         LDR     bigfont, [WsPtr, #TextExpandArea]
-      |
-        ADD     bigfont, WsPtr, #TextExpand
-      ]
         LDR     linelen, [WsPtr, #LineLength]
         LDR     PC, [WsPtr, #WrchNbit]
 
@@ -2134,16 +2375,8 @@ PlainBit ROUT
 
         LDR     bpp, [WsPtr, #BytesPerChar]
         MOV     R1, #1
-
-; *****Change made by DJS
-; Original code was:
-;        MOV     R1, R1, LSL bpp         ; first form mask for leftmost pixel
-;        SUB     R1, R1, #1              ; = (2^BytesPerChar)-1
-
         RSB     R1, R1, R1, LSL bpp      ; first form mask for leftmost pixel
                                          ; = (2^BytesPerChar)-1
-
-; *****End of change made by DJS
 
         ADD     R3, WsPtr, #RAMMaskTb
 10
@@ -2160,14 +2393,10 @@ PlainBit ROUT
 ; drops out if the bpp >= 16.
 ;
         CMP     bpp, #16
-        MOVGT   PC, R14     ; nothing to do on a mode change in this mode
+        MOVGE   PC, R14     ; nothing to do on a mode change in this mode
         Push    R14
 
-      [ VIDC_Type = "VIDC20"
         LDR     tabaddr, [WsPtr, #TextExpandArea]
-      |
-        ADD     tabaddr, WsPtr, #TextExpand
-      ]
         ADD     tabaddr, tabaddr, bpp, LSL #8   ; TextPlain now dynamic
 
         MOV     dest, #&80000000
@@ -2359,7 +2588,7 @@ ReadCharacter
         LDR     R8, [WsPtr, #LineLength]
 
         LDR     R1, [WsPtr, #ModeFlags]
-        TST     R1, #Flag_DoubleVertical
+        TST     R1, #ModeFlag_DoubleVertical
         BNE     RdCh1BitDouble
 
         LDR     R1, [WsPtr, #Log2BPC]
@@ -2369,7 +2598,7 @@ ReadCharacter
         CMP     R1, #3
         BCC     RdCh4Bit
         BEQ     RdCh8Bit
-      [ VIDC_Type = "VIDC20"
+
         CMP     R1, #4
         BEQ     RdCh16Bit
 
@@ -2422,8 +2651,6 @@ RdCh32Bit_Loop
         BCC     RdCh32Bit_Loop
 
         MOV     PC,LR
-
-      ]
 
 RdCh16Bit
         ADD     R2, R2, #12
@@ -2742,6 +2969,9 @@ CSWaitLoop
         BLMI    Page_ProcessCallbacksIdle
         BMI     CSWaitLoop              ; and wait for change (NB C=1 now)
 Page18
+ [ {FALSE}
+        BL      LEDsOff                 ; put LEDs back to normal
+ ]
         BL      PreWrchCursor           ; get rid of cursor again
 
 ; CTRL and SHIFT are not both down
@@ -2771,6 +3001,8 @@ Page35
 ; CTRL not down, test for page mode
 
 Page40
+; If we're using the debug terminal, never use paged mode, because serial input doesn't work too well when you need to detect shift being pressed!
+ [ :LNOT: DebugTerminal
         EOR     R0, R6, #PageMode
         TST     R0, #(PageMode :OR: CursorsSplit)
         Pull    PC, NE                  ; cursors split or not in page mode
@@ -2790,6 +3022,7 @@ Page40
 IncLinesExit
         ADD     R3, R3, #1
         STROSB  R3, PageModeLineCount, R0
+ ]
         Pull    PC
 
 Page50                                  ; NB C=0 on entry from above
@@ -2830,7 +3063,13 @@ BotRowCheck
         MOV     PC, R14
 
 CtrlShiftTest ROUT
-        MOV     R0, #0
+        BCC     %FT05
+ [ {FALSE}
+        Push    R14
+        BL      LEDsOn
+        Pull    R14
+ ]
+05      LDR     R0, =ZeroPage
         LDRB    R0, [R0, #ESC_Status]
         TST     R0, #&40                ; escape condition ?
         LDROSB  R0, KeyBdStatus         ; (preserves PSR)
@@ -2855,7 +3094,7 @@ CtrlShiftTest ROUT
 Page_ProcessCallbacks
         Entry
         ; See if there are any pending callbacks
-        MOV     R0, #0
+        LDR     R0, =ZeroPage
         LDRB    R14, [R0, #CallBack_Flag]
         TST     R14, #CBack_VectorReq
         BLNE    process_callback_chain
@@ -2864,13 +3103,13 @@ Page_ProcessCallbacks
 Page_ProcessCallbacksIdle
         EntryS                          ; routine must preserve flags
         ; See if there are any pending callbacks
-        MOV     R0, #0
+        LDR     R0, =ZeroPage
         LDRB    R14, [R0, #CallBack_Flag]
         TST     R14, #CBack_VectorReq
         BLNE    process_callback_chain
         ; Now they're dealt with, we have nothing else to do, so call Idle
       [ StorkPowerSave
-        LDR     R14, [r0, #PortableFlags]
+        LDRB    R14, [r0, #PortableFlags]
         TST     R14, #PortableFeature_Idle
         SWINE   XPortable_Idle
       ]
@@ -2884,7 +3123,8 @@ Page_ProcessCallbacksIdle
 ;
 
 SO
-        MOV     R0, #0
+        LDR     R0, =ZeroPage
+        ASSERT  (ZeroPage :AND: 255) = 0
         STRB    R0, [R0, #OsbyteVars + :INDEX: PageModeLineCount]
 
         ORR     R6, R6, #PageMode
@@ -2948,6 +3188,7 @@ DoReadFont
         ADDCC   R0, R0, #(Ecf1-2*8)
         LDMIA   R0, {R2,R3}
 
+      [ NoARMv6 :LOR: NoUnaligned
         STRB    R2, [R1, #1]
         MOV     R2, R2, LSR #8
         STRB    R2, [R1, #2]
@@ -2963,6 +3204,11 @@ DoReadFont
         STRB    R3, [R1, #7]
         MOV     R3, R3, LSR #8
         STRB    R3, [R1, #8]
+      |
+        ; Use unaligned store from ARMv6
+        STR     R2, [R1], #4
+        STR     R3, [R1]
+      ]
 
         MOV     PC, R14
 
@@ -3143,7 +3389,7 @@ ConvertGCOLToColourNumber ROUT
         AND     R1, R0, #4_0300 :SHL: 14        ; finally extract the blue component
         ORR     R2, R2, R1, LSL #12
         ORR     R2, R2, LR, LSL #22             ; combine in the tint and blue
-        ORR     R0, R2, R2, LSR #4              ; ensure physcial colour yeilds pure-white!
+        ORR     R0, R2, R2, LSR #4              ; ensure physcial colour yields pure-white!
 
         SWI     XColourTrans_ReturnColourNumber
 

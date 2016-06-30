@@ -41,7 +41,7 @@
 ;       Allows a module to attach itself to one of the processor vectors.
 ;
 ClaimProcVecSWI ROUT
-        ENTRY   "r3-r5"
+        Entry   "r3-r5"
 
         AND     r3, r0, #&FF            ; Get vector number.
         CMP     r3, #(ProcVec_End-ProcVec_Start):SHR:2
@@ -49,7 +49,7 @@ ClaimProcVecSWI ROUT
         BCS     %FT30
 
         MOV     r4, r1                  ; r4 = replacement value
-        LDR     r5, =ProcVec_Start
+        LDR     r5, =ZeroPage+ProcVec_Start
         PHPSEI                          ; Disable IRQs while we mess around with vectors.
 
         TST     r0, #1:SHL:8

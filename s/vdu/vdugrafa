@@ -147,6 +147,44 @@ RectFillA
 RectFillB
         SortT   R0, R2, R11             ; ensure R0 holds the lesser X value
         SortT   R3, R1, R11             ; ensure R1 holds the higher Y value
+
+        BL      CheckAcceleration
+        BNE     RectFillC
+
+; try calling GraphicsV for some acceleration
+
+; R0 = left, R1 = top, R2 = right, R3 = bottom
+
+        ADD     R4, WsPtr, #GWLCol
+        LDMIA   R4, {R4-R7}             ; GWLCol,GWBRow,GWRCol,GWTRow
+
+        CMP     R6, R0                  ; Test xcoords against window
+        CMPGE   R2, R4
+        CMPGE   R7, R3                  ; Test ycoords against window
+        CMPGE   R1, R5
+        MOVLT   PC, R14                 ; Quit if above,below,left or right
+
+        Greatest R0, R0, R4             ; Clip all coords to window
+        Greatest R3, R3, R5
+        Least   R2, R2, R6
+        Least   R1, R1, R7
+
+        LDR     R4, [WsPtr, #GColAdr]
+        Push    "R0-R4"
+        MOV     R0, #GVRender_Sync
+        MOV     R1, #GVRender_FillRectangle
+        MOV     R2, R13
+        LDR     R4, [WsPtr, #CurrentGraphicsVDriver]
+        MOV     R4, R4, LSL #24
+        ORR     R4, R4, #GraphicsV_Render
+        BL      CallGraphicsV
+        TEQ     R4, #GraphicsV_Complete
+        Pull    "R0-R4"
+        Pull    PC, EQ
+
+; if it didn't claim, we proceed with the pre-clipped coordinates
+
+RectFillC
         MOV     R11, R3                 ; place end Y out of harm's way
 10
         BL      NewHLine

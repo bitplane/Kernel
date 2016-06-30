@@ -17,19 +17,43 @@
 ;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ;  SubstituteArgs
 ;    in:  R0 -> arglist (space delimited args, terminated by 10,13,0)
+ [ :LNOT:No26bitCode
 ;               top bit set => don't append unused part of line
+ ]
 ;         R1 -> buffer
 ;         R2 =  bufflen
 ;         R3 -> string to mangle
 ;         R4 =  no of chars in $R3
 ;    out: R2 =  no of chars in buffer
 
-XOS_SubstituteArgs_code ROUT
+XOS_SubstituteArgs_code
+        Push    "r5,lr"
+ [ No26bitCode
+        MOV     r5, #0
+ |
+        BIC     r0, r0, #&80000000
+        AND     r5, r0, #&80000000
+ ]
+        SWI     XOS_SubstituteArgs32
+        Pull    "r5,lr"
+        B       SLVK_TestV
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+;  SubstituteArgs32
+;    in:  R0 -> arglist (space delimited args, terminated by 10,13,0)
+;         R1 -> buffer
+;         R2 =  bufflen
+;         R3 -> string to mangle
+;         R4 =  no of chars in $R3
+;         R5 = flags
+;               top bit set => don't append unused part of line
+;    out: R2 =  no of chars in buffer
+
+XOS_SubstituteArgs32_code ROUT
 
       WritePSRc SVC_mode, R12   ; enable IRQs
-
+      NOP
       Push   "R0-R8, lr"
-      BIC     r0, r0, #&80000000
       ADD     R8, R4, R3
 
 ; try and get parameter positions.
@@ -140,7 +164,7 @@ PCStarTerminates
 41    CMP    r7, #11
       LDREQ  r12, [r4, #10*4]        ; no more to copy
       BEQ    %FT42
-      LDR    r0, [stack]
+      LDR    r0, [stack, #4*5]
       CMP    r0, #0
       LDRPL  R12, [R12, R7, LSL #2]  ; ptr to rest of command line : copy
       LDRMI  r12, [r4, #10*4]        ; caller wants no appending.
@@ -358,7 +382,8 @@ ReadVduVarForSam
         MOV     R0, sp
         MOV     R1, sp
         SWI     XOS_ReadVduVariables
-        Pull   "R0, R14, PC"
+        LDR     R0, [sp], #8
+        LDR     pc, [sp], #4
 
 ;*****************************************************************************
 ; R0 -> envstring, R1 -> 5 byte time
@@ -376,7 +401,7 @@ WriteEnv_SWICode ROUT ; for debugger use
 
 01      CMP     R1, #0
         ExitSWIHandler EQ
-        LDR     R10, =EnvTime
+        LDR     R10, =ZeroPage+EnvTime
         MOV     R11, #4
 03      LDRB    R12, [R1, R11]
         STRB    R12, [R10, R11]
@@ -400,8 +425,9 @@ KFlag       *  1:SHL:9
 SFlag       *  1:SHL:10
 EFlag       *  1:SHL:11
 GFlag       *  1:SHL:12
-UnsetFlag   *  1:SHL:31
-PresentFlag * -1 :AND::NOT:UnsetFlag
+UnsetBase   *  &FF000000   ; only if all bits set (cannot be RAM address)
+
+PresentFlag *  &7FFFFFFF
 AbsentFlag  *  0
 
 ; Type flags
@@ -418,7 +444,7 @@ RdArgs_SWICode ROUT
       Push   "R4, R8, R9, lr"
       MOV     R10, R2             ; R10 points at next available word
       MOV     R12, R0
-01    MOV     R11, #UnsetFlag
+01    MOV     R11, #UnsetBase
       SUBS    R3, R3, #4
       BMI     %FT99               ; insufficient space
       STR     R11, [R10], #4
@@ -472,8 +498,8 @@ RdArgs_SWICode ROUT
 20    CMP     R11, R8
       BEQ     %FT98               ; no more positional args
       LDR     R12, [R11], #4
-      TST     R12, #UnsetFlag
-      BEQ     %BT20
+      CMP     R12, #UnsetBase
+      BLO     %BT20
       TST     R12, #KFlag :OR: SFlag
       BNE     %BT20
       SUB     R11, R11, #4
@@ -489,8 +515,8 @@ RdArgs_SWICode ROUT
 30    CMP     R12, R8
       BEQ     %FT31
       LDR     R11, [R12], #4
-      TST     R11, #UnsetFlag
-      BEQ     %BT30
+      CMP     R11, #UnsetBase
+      BLO     %BT30
       TST     R11, #AFlag
       BNE     %FT98          ; bum args error
       MOV     R11, #AbsentFlag
@@ -548,17 +574,18 @@ RdItem    ROUT
       LDRVS  R1, [stack]
       BVS    %FT02          ; not recognised - boring item
       STR    R1, [stack]    ; new restore value.
-      mrs   ,R12, CPSR
+      MRS    R12, CPSR
       Push   R12            ; save EQ/NE
       LDR    R12, [R2, R4, LSL #2]
-      TST    R12, #UnsetFlag
-      BNE    %FT34
+      CMP    R12, #UnsetBase
+      BHS    %FT34
       ADR    R0, ErrorBlock_ArgRepeated
     [ International
       BL     TranslateError
+    |
+      SETV
     ]
       ADD    stack, stack, #4 ; discard PSR
-      SETV
       Pull  "R1, R7, R8, PC"
 34
       ANDS   R12, R12, #SFlag
@@ -590,8 +617,9 @@ RdItem    ROUT
       ADR    R0, ErrorBlock_BadParameters
     [ International
       BL     TranslateError
-    ]
+    |
       SETV
+    ]
       Pull  "R1, R7, R8, PC"
 39
    ; copy arg until <" "
@@ -611,8 +639,9 @@ RdItem    ROUT
       ADRL   R0, ErrorBlock_BuffOverflow
     [ International
       BL     TranslateError
-    ]
+    |
       SETV
+    ]
       Pull  "R1, R7, R8, PC"
 
 04    CMP    R7, #""""
@@ -639,8 +668,9 @@ ohnoitsquotedargumentsagain
 08    ADRL   R0, ErrorBlock_BadString
     [ International
       BL     TranslateError
-    ]
+    |
       SETV
+    ]
       Pull  "R1, R7, R8, PC"
 
 ;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -743,7 +773,8 @@ SetKeyword    ROUT
       ADD     R2, R5, #11         ; round up to nearest word, then 1
       BIC     R2, R2, #3
 
-      STR     stack, [stack, -R2]! ; reserve stack frame
+      MOV     R6, stack            ; STR stack, [stack, -R2]! is unpredictable
+      STR     R6, [stack, -R2]!    ; reserve stack frame
 
       ADD     R2, stack, #4        ; input value ptr
 03    LDRB    R6, [R4, R5]
@@ -828,8 +859,13 @@ ReadRAMFSLimits_Code ROUT
 TerminateAndSodOff ROUT
 
         Push    "r0-r2"
-        MOV     r10, #0
+        LDR     r10, =ZeroPage
+      [ ZeroPage = 0
         STR     r10, [r10, #Curr_Active_Object]
+      |
+        MOV     r14, #0
+        STR     r14, [r10, #Curr_Active_Object]
+      ]
         MOV     r1, r3
         MOV     r0, #ModHandReason_Delete
         SWI     XOS_Module
@@ -846,7 +882,7 @@ AddCallBack_Code  ROUT
       Push   "r0-r3, lr"
   [ ChocolateSysHeap
       ASSERT  ChocolateCBBlocks = ChocolateBlockArrays + 0
-      MOV     r3,#ChocolateBlockArrays
+      LDR     r3,=ZeroPage+ChocolateBlockArrays
       LDR     r3,[r3,#0]
       BL      ClaimChocolateBlock
       MOVVS   r3, #12
@@ -857,10 +893,10 @@ AddCallBack_Code  ROUT
   ]
       BVS     %FT99
       Pull   "r0, r1"
-      MOV     r10, #0
+      LDR     r10, =ZeroPage
       WritePSRc SVC_mode+I_bit, r3      ; IRQs off while holding context.
       LDR     r3, [r10, #CallBack_Vector]
- [ True
+ [ {TRUE}
       STR     r3, [r2, #0]
       STMIB   r2, {r0, r1}
       STR     r2, [r10, #CallBack_Vector]
@@ -899,7 +935,7 @@ RemoveCallBack ROUT
         SavePSR r10                     ; save old I bit
 10
         WritePSRc SVC_mode+I_bit, r11   ; disable IRQs while looking at list
-        MOV     r11, #0
+        LDR     r11, =ZeroPage
         LDR     r2, [r11, #CallBack_Vector]! ; r11 -> prev, r2 -> this
 20
         TEQ     r2, #0
@@ -919,7 +955,7 @@ RemoveCallBack ROUT
         Push    "r0, r1, lr"            ; now free this node
   [ ChocolateSysHeap
         ASSERT  ChocolateCBBlocks = ChocolateBlockArrays + 0
-        MOV     r1,#ChocolateBlockArrays
+        LDR     r1,=ZeroPage+ChocolateBlockArrays
         LDR     r1,[r1,#0]
         BL      FreeChocolateBlock
         BLVS    FreeSysHeapNode
@@ -1018,7 +1054,7 @@ Confirm_Code ROUT
         MOV     r1, #0
         MOV     r2, #255
         SWI     XOS_Byte                ; read current repeat rate.
-        MOV     r0, #0
+        LDR     r0, =ZeroPage
         LDR     r0, [r0, #MetroGnome]
         ADD     r11, r1, r0             ; time to wait for
 

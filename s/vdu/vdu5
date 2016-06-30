@@ -95,8 +95,8 @@ Vdu5DoChar10
         ADREQL  charptr, HardFont-32*8          ; Hard if character is DELETE
         ADD     charptr, charptr, charbyte, LSL #3      ;Point at char def
 
-        MOVCS   charptr, charptr, LSL #1        ; Double address if SizeY = 16
-                                                ;   (tricky code, originally
+        MOVCS   charptr, charptr, ASL #1        ; Double address if SizeY = 16
+        SUBCS   charptr, charptr, #1            ;   (tricky code, originally
                                                 ;   designed by TMD)
 
         SUB     cyb, cyt, sizey
@@ -133,15 +133,15 @@ Vdu5DoChar10
         ADD     charptr, charptr, cyt           ; adjust charptr to point at
         SUB     charptr, charptr, cyt2          ;   first used row of character
 
-        TEQ     sizey, #16                      ; If double height, signal this
-        RSBEQ   charptr, charptr, #0            ;   by making fontptr negative
-
         MOV     charmsk, #&FF                   ; Produce mask to do left/right
         SUB     R14, cxl2, cxl                  ;   clipping
         MOV     charmsk, charmsk, LSR R14
         SUB     R14, cxr2, cxl2
         ADD     R14, R14, #1
         BIC     charmsk, charmsk, charmsk, LSR R14
+
+        TEQ     sizey, #16                      ; If double height, signal this
+        ORREQ   charmsk, charmsk, #1:SHL:31     ;   by making charmsk negative
 
         ASSERT  llength > scr
         ASSERT  LineLength = YWindLimit+4
@@ -168,21 +168,20 @@ Vdu5NextLine
         TST     ecfptr, #63                     ;  ecf pointer, wrapping if
         SUBEQ   ecfptr, ecfptr, #64             ;  necessary
 
-        MVNS    charbyte, charptr               ;Pick up character definition
-        LDRPLB  charbyte, [charbyte, -charbyte, LSR #1] ;  byte, using tricky
-        SUBPL   charptr, charptr, #1            ;  code for double height (and
-        LDRMIB  charbyte, [charptr], #1         ;  simple code for single!)
+        ASSERT  HardFont < &40000000 :LOR: HardFont >= &C0000000
+        ASSERT  WsPtr < &40000000 :LOR: WsPtr >= &C0000000
+        TEQ     charmsk, #0                     ; Double height? (MI=yes)
+        LDRMIB  charbyte, [charptr, -charptr, ASR #1] ; Use ASR, as font will be at
+        LDRPLB  charbyte, [charptr]             ; top or bottom of memory (zero page,
+        ADD     charptr, charptr, #1            ; system heap or ROM)
 
         ANDS    charbyte, charbyte, charmsk     ;Clip left & right; skip loop
         BEQ     Vdu5TryNextLine                 ;  body if nothing to plot
 
         Push    "ecfptr,scrend,charmsk,llength,charptr"
 
-      [ VIDC_Type = "VIDC20"
         LDR     R14, [WsPtr, #TextExpandArea]   ;Address correct expansion
-      |
-        ADD     R14, WsPtr, #TextExpand         ;Address correct expansion
-      ]
+
         ADD     charptr, charbyte, #&100        ;  table entry, assuming that
         ADD     charptr, R14, charptr, LSL lgBPC        ;  this is not mode 10 or greater
 
@@ -198,29 +197,26 @@ Vdu5NextLine
         BHI     Vdu5Mode10                      ;  4 words if lgBPC = 4
         LDMIA   charptr, {cword0, cword1}       ;  2 words if lgBPC = 3
         MOVS    cword2, cword1, LSR invcharshf
+
+        MACRO
+$l      DoVdu5Word $c, $reg, $off
+$l
+        LDR$c   chartmp, [scr, #$off]
+        AND$c   R14, ormask, $reg
+        ORR$c   chartmp, chartmp, R14
+        AND$c   R14, eormask, $reg
+        EOR$c   chartmp, chartmp, R14
+        STR$c   chartmp, [scr, #$off]
+        MEND
+
 Vdu5DoTwoWords
-        LDRNE   chartmp, [scr, #8]
-        ANDNE   R14, ormask, cword2
-        ORRNE   chartmp, chartmp, R14
-        ANDNE   R14, eormask, cword2
-        EORNE   chartmp, chartmp, R14
-        STRNE   chartmp, [scr, #8]
+        DoVdu5Word NE, cword2, 8
         MOV     cword1, cword1, LSL charshf
 Vdu5DoOneWord
         ORRS    cword1, cword1, cword0, LSR invcharshf
-        LDRNE   chartmp, [scr, #4]
-        ANDNE   R14, ormask, cword1
-        ORRNE   chartmp, chartmp, R14
-        ANDNE   R14, eormask, cword1
-        EORNE   chartmp, chartmp, R14
-        STRNE   chartmp, [scr, #4]
+        DoVdu5Word NE, cword1, 4
         MOVS    cword0, cword0, LSL charshf
-        LDRNE   chartmp, [scr]
-        ANDNE   R14, ormask, cword0
-        ORRNE   chartmp, chartmp, R14
-        ANDNE   R14, eormask, cword0
-        EORNE   chartmp, chartmp, R14
-        STRNE   chartmp, [scr]
+        DoVdu5Word NE, cword0, 0
 
 Vdu5LinePainted
         Pull    "ecfptr,scrend,charmsk,llength,charptr"
@@ -235,10 +231,8 @@ Vdu5TryNextLine
 ; This is mode 10 (or similar) - we must do bit expansion on the fly
 
 Vdu5Mode10
-      [ VIDC_Type = "VIDC20"
         CMP     lgBPC, #5                       ; is this a 32 bit per pixel mode, if so then ignore the
         BEQ     Vdu5Mode32                      ; existing code and use a newer function
-      ]
 
         ADRL    charptr, C16BTab
         AND     R14, charbyte, #&0F
@@ -246,20 +240,10 @@ Vdu5Mode10
         LDMIA   R14, {cword0, cword1}
 
         MOVS    cword2, cword1, LSR invcharshf
-        LDRNE   chartmp, [scr, #16]
-        ANDNE   R14, ormask, cword2
-        ORRNE   chartmp, chartmp, R14
-        ANDNE   R14, eormask, cword2
-        EORNE   chartmp, chartmp, R14
-        STRNE   chartmp, [scr, #16]
+        DoVdu5Word NE, cword2, 16
         MOV     cword1, cword1, LSL charshf
         ORRS    cword1, cword1, cword0, LSR invcharshf
-        LDRNE   chartmp, [scr, #12]
-        ANDNE   R14, ormask, cword1
-        ORRNE   chartmp, chartmp, R14
-        ANDNE   R14, eormask, cword1
-        EORNE   chartmp, chartmp, R14
-        STRNE   chartmp, [scr, #12]
+        DoVdu5Word NE, cword1, 12
         MOVS    cword2, cword0, LSL charshf
 
         AND     R14, charbyte, #&F0
@@ -269,8 +253,6 @@ Vdu5Mode10
         B       Vdu5DoTwoWords
 
 ; Expand the character data out to 32 bit per pixel (mode 48 or similar)
-
-      [ VIDC_Type = "VIDC20"
 
         MACRO
 $l      PixMunge32 $reg, $mask, $offset
@@ -282,12 +264,37 @@ $l
         STRNE   chartmp, [scr, #$offset]
         MEND
 
+        MACRO
+$l      PixSolid32 $reg, $mask, $offset
+$l
+        TST     $reg, #$mask
+        STRNE   chartmp, [scr, #$offset]
+        MEND
+
 ; Perform bit expansion on the fly, this is a word based operation, no need to
 ; extract sub-pixels from the ORR / EOR masks, simply perform the bit test and
 ; then write the character data to the screen!
 
 Vdu5Mode32
 
+ [ AvoidScreenReads
+        CMP     ormask, #&FFFFFFFF
+        BNE     Vdu5Mode32_NotSolid
+
+        MVN     chartmp, eormask
+        PixSolid32 charbyte, 1<<7, 0
+        PixSolid32 charbyte, 1<<6, 4
+        PixSolid32 charbyte, 1<<5, 8
+        PixSolid32 charbyte, 1<<4, 12
+        PixSolid32 charbyte, 1<<3, 16
+        PixSolid32 charbyte, 1<<2, 20
+        PixSolid32 charbyte, 1<<1, 24
+        PixSolid32 charbyte, 1<<0, 28
+
+        B       Vdu5LinePainted
+
+Vdu5Mode32_NotSolid
+ ]
         PixMunge32 charbyte, 1<<7, 0
         PixMunge32 charbyte, 1<<6, 4
         PixMunge32 charbyte, 1<<5, 8
@@ -299,7 +306,6 @@ Vdu5Mode32
 
         B       Vdu5LinePainted                 ; flow down and try the next line
 
-      ]
 
 ; *****************************************************************************
 ;
@@ -373,14 +379,8 @@ SlowVdu5 ROUT
 ;       VDU 5 - Start printing text at graphics cursor
 
 ENQ
-      [ {TRUE}
         GraphicsMode R0
         MOVNE   PC, R14
-      |
-        LDR     R0, [WsPtr, #NPix]              ; Graphics mode ?
-        TEQ     R0, #0
-        MOVEQ   PC, R14                         ; no, then return
-      ]
 
         MOV     R1, #0
         BSR     CursorOnOff                     ; turn cursor off without
@@ -395,14 +395,8 @@ ENQ
 ;       VDU 4 - Return to printing text at text cursor
 
 EOT
-      [ {TRUE}
         GraphicsMode R0
         MOVNE   PC,LR
-      |
-        LDR     R0, [WsPtr, #NPix]              ; Graphics mode ?
-        TEQ     R0, #0
-        MOVEQ   PC, R14                         ; no, then return
-      ]
 
         MOV     R1, #1
         BSR     CursorOnOff                     ; restore cursor from copy

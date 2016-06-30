@@ -223,7 +223,9 @@ SprWriteNColour # 4     ; the sprite is in               |
 SprBytesPerChar # 4     ;                                |
 SprXShftFactor  # 4     ;                                |
 SprNPix         # 4     ;                                |
-SprLog2BPC      # 4     ;                              --
+SprLog2BPC      # 4     ;                                |
+SprLog2BPP      # 4     ;                                |
+SprModeFlags    # 4     ;                              --
 
 NameBuf   # 16          ; 12 char name + gap for good measure
 
@@ -268,7 +270,7 @@ ScrLoaAreaCB   # SpriteAreaCBsize
 
 SPltAction # 4                          ; Plot action used (0 => store)
 
-SloadModeSel # 48                       ; Mode selector for screenloading new sprites
+SloadModeSel # 56                       ; Mode selector for screenloading new sprites
 
         ASSERT @ < EndGraphicWs
 

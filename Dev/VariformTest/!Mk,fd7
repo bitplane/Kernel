@@ -1,4 +1,4 @@
-| Copyright 1997 Acorn Computers Ltd
+| Copyright 2011 Castle Technology Ltd
 |
 | Licensed under the Apache License, Version 2.0 (the "License");
 | you may not use this file except in compliance with the License.
@@ -13,8 +13,4 @@
 | limitations under the License.
 |
 Dir <Obey$Dir>
-time
-amu_machine rom
-time
-amu_machine install_rom INSTDIR=<install$dir>.<Build>.RISC_OS
-time
+amu_machine test

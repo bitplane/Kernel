@@ -22,10 +22,12 @@
 ;
 ; exit:
 ;     R1 = no. of pages actually allocated
-;     R2 = handle for allocation
+;     R2 = handle for allocation, 0 if pages were requested but none could be claimed
 
 allocate
         Push    "R0,R3,R4,LR"
+
+;  Debug AMB,"allocate ",r0,r1
 
         MOV     R3,#AbsMaxAppSize
         SUB     R3,R3,#ApplicationStart
@@ -40,44 +42,16 @@ allocate
         CMP     R4,#0            ;any handles available?
         BNE     %FT01
 
-  [ {TRUE} ; give up
+  ; give up
         Pull    "R0,R3,R4,LR"
         ADR     R0,err_nomorehandles
         B       SLVK_SetV
-  ]
-
-  [ {FALSE} ; oh no we don't, we're not a module now
-;try to extend handles array
-        MOV     R2,R0
-        MOV     R0,#ModHandReason_ExtendBlock
-        MOV     R3,#(GrowMaxNodes:SHL:2)
-        SWI     XOS_Module
-        BVS     alloc_done
-        MOV     R0,R2
-        STR     R0,AMBNodeHandles   ;in case block has moved
-        LDR     R3,AMBNhandles
-        STR     R3,[R0]             ;first free handle now
-        ADD     LR,R3,#GrowMaxNodes
-        STR     LR,AMBNhandles
-        ADD     R4,R0,R3,LSL #2
-        ADD     R3,R3,#1
-;put new handles on free list
-00
-        STR     R3,[R4],#4
-        ADD     R3,R3,#1
-        CMP     R3,LR
-        BNE     %BT00
-        MOV     R3,#0
-        STR     R3,[R4]          ;0 = end of list
-        LDR     R4,[R0]          ;now we have a useable handle
-  ]
 
 01
-;get memory for node - from RMA
+;get memory for node - from system heap
         MOV     R3,#(AMBNode_pages - AMBNode_id) ;size excluding page list
         ADD     R3,R3,R1,LSL #2                  ;plus one word per page
-        MOV     R0,#ModHandReason_Claim
-        BL      XROS_Module
+        BL      AMB_BlockClaim
         BVS     alloc_done
 
 ;remember handle in node
@@ -90,10 +64,11 @@ allocate
         STR     R4,[R2,#AMBNode_Npages]    ;number of pages = 0 (so far)
         MOV     R4,#ApplicationStart
         STR     R4,[R2,#AMBNode_startaddr]
-        LDR     R4,=AppSpaceDANode
-        LDR     R4,[R4,#DANode_Flags]
-        AND     R4,R4,#&7F
-        STR     R4,[R2,#AMBNode_PPL]       ;PPL from bottom 8 bits of DA flags
+        LDR     R4,=ZeroPage+AppSpaceDANode
+        LDR     R4,[R4,#DANode_Flags]      ;Get the page flags from the DA.
+        LDR     LR,=DynAreaFlags_AccessMask;Note that this is rather academic
+        AND     R4,R4,LR                   ;because various bits of code ignore
+        STR     R4,[R2,#AMBNode_PPL]       ;or overwrite these flags!
 
 ;do the actual MMU page allocation (grow from 0), for R1 pages, using node R2
         BL      growpages
@@ -128,16 +103,17 @@ alloc_ok
 
         STR     R2,AMBMappedInNode       ;allocated node is also mapped in
         LDR     R2,[R2,#AMBNode_handle]  ;change address to handle
+        CLRV
 
 alloc_done
+;  Debug AMB,"<alloc ",r1,r2
         STRVS   R0,[SP]
         Pull    "R0,R3,R4,LR"
         B       SLVK_TestV
 
 ;free page table space and return 0 handle
 alloc_zeropages
-        MOV     R0,#ModHandReason_Free
-        BL      XROS_Module
+        BL      AMB_BlockFree
         MOV     R1,#0
         MOV     R2,#0
         B       alloc_done

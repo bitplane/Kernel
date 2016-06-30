@@ -122,10 +122,14 @@ EntryFromSWIPlot
         TST     R6, #ClipBoxEnableBit
         BLNE    DoPlotClipBox
 
+        BIC     R11, R2, #2_111         ; ARMv4 says we have to keep bits 1:0 of PC =0
+ [ No26bitCode
+        ADR     R14, CTidy              ; set up return address
+ |
         ADR     R14, CTidy + SVC_mode   ; set up return address
+ ]
                                         ; R0=X, R1=Y, R2=plot code
-        ADD     PC, PC, R2, LSR #1      ; jump to branch (bottom 2 bits of the
-                                        ; result are ignored!)
+        ADD     PC, PC, R11, LSR #1     ; jump to branch
         &       0                       ; dummy word
 
  B LineDrawSolid           ;   0 - Solid line
@@ -535,10 +539,15 @@ PlotPoint
 
         AND     R5, R5, R3                      ; mask zgora
         AND     R6, R6, R3                      ; & zgeor for this pixel
-        LDR     R7, [R2, R8, LSL #2]!           ;
+ [ AvoidScreenReads
+        CMP     R5, #&FFFFFFFF
+        LDRNE   R7, [R2, R8, LSL #2]
+ |
+        LDR     R7, [R2, R8, LSL #2]
+ ]
         ORR     R7, R7, R5                      ; and hit the screen
         EOR     R7, R7, R6
-        STR     R7, [R2]
+        STR     R7, [R2, R8, LSL #2]
         MOV     PC, R14
 
 ; *****************************************************************************
@@ -658,7 +667,7 @@ LineSty10
 
 DefaultLineStyle ROUT
  [ No26bitCode
-        mrs    ,R3, CPSR
+        MRS     R3, CPSR
  ]
 DefaultLineStylePSRready
         MOV     R0, #8                  ; dot pattern repeats after 8 pixels
@@ -669,7 +678,7 @@ DefaultLineStylePSRready
         MOV     R0, #0                  ; force a restart of the pattern
         STR     R0, [WsPtr, #LineDotCnt] ; if the user does a "continue"
  [ No26bitCode
-        msr    ,CPSR_f, R3
+        MSR     CPSR_f, R3
         MOV     PC, R14
  |
         MOVS    PC, R14
@@ -690,7 +699,7 @@ DefaultLineStylePSRready
 
 SetPatLength ROUT
  [ No26bitCode
-        mrs    ,R3, CPSR
+        MRS     R3, CPSR
  ]
         CMP     R2, #0
         BEQ     DefaultLineStylePSRready
@@ -698,7 +707,7 @@ SetPatLength ROUT
         MOV     R2, #0                          ; force restart of the pattern
         STR     R2, [WsPtr, #LineDotCnt]        ; if the user does a "continue"
  [ No26bitCode
-        msr    ,CPSR_f, R3
+        MSR     CPSR_f, R3
         MOV     PC, R14
  |
         MOVS    PC, R14
@@ -992,8 +1001,14 @@ NewHLine ROUT                           ; Entry point for sorted Xcoords
         ANDEQ   R14, R14, R6            ; if start word = end word
         BEQ     %FT40                   ; then combine masks
 
+ [ AvoidScreenReads
+        AND     R1, R8, R6              ; zgora AND left mask
+        CMP     R1, #&FFFFFFFF
+        LDRNE   R0, [R9]                ; do left hand word of line
+ |
         LDR     R0, [R9]                ; do left hand word of line
         AND     R1, R8, R6              ; zgora AND left mask
+ ]
         AND     R2, R10, R6             ; zgeor AND left mask
         ORR     R0, R0, R1              ; screen OR or mask
         EOR     R0, R0, R2              ; EOR eor mask
@@ -1018,7 +1033,7 @@ NewHLine ROUT                           ; Entry point for sorted Xcoords
 
 ; *****Additional message inserted by DJS
 
-        [       (. :AND: 15) = 12
+        [       ((.-KernelBase) :AND: 15) = 12
         !       0, "HLine critical loop has bad alignment for running in RAM"
         ]
 
@@ -1035,12 +1050,17 @@ NewHLine ROUT                           ; Entry point for sorted Xcoords
         TST     R11, #2                 ; can we do 2 words ?
         STMNEIA R9!, {R0-R1}            ; write 2 words to screen
         TST     R11, #1                 ; can we do 1 word ?
-        STMNEIA R9!, {R0}               ; write 1 word to screen
+        STRNE   R0, [R9], #4            ; write 1 word to screen
         AND     R10, R10, R14           ; do partial word at end
+ [ AvoidScreenReads
+        CMP     R14, #&FFFFFFFF
+        LDRNE   R0, [R9]
+ |
         LDR     R0, [R9]
+ ]
         OrrEor  R0,R0, R14,R10
         STR     R0, [R9],#4
-
+70
  [ No26bitCode
         Pull    "R0-R3,R11,PC"
  |
@@ -1169,6 +1189,11 @@ NewVLine ROUT                           ; Entry point for sorted Ycoords
         AND     R8, R8, R6              ; zgora = zgora AND pixelmask
         AND     R10, R10, R6            ; zgeor = zgeor AND pixelmask
 
+ [ AvoidScreenReads
+        CMP     R8, #&FFFFFFFF
+        BEQ     %FT20
+ ]
+
 ; now do the plotting
 
 10
@@ -1185,6 +1210,17 @@ NewVLine ROUT                           ; Entry point for sorted Ycoords
         Pull    "R0-R3,R11,PC",,^
  ]
 
+ [ AvoidScreenReads
+20      MVN     R6, R10
+25      STR     R6, [R9], R11
+        SUBS    R1, R1, #1
+        BPL     %BT25
+ [ No26bitCode
+        Pull    "R0-R3,R11,PC"
+ |
+        Pull    "R0-R3,R11,PC",,^
+ ]
+ ]
 
 
 ; *****************************************************************************
@@ -1551,22 +1587,34 @@ DoOsWord13 ROUT
         RSB     R0, R4, R0, LSL R2      ; R0 = (X << XEigFactor)-OrgX
         RSB     R1, R5, R1, LSL R3      ; R1 = (Y << YEigFactor)-OrgY
 
+      [ NoARMv6 :LOR: NoUnaligned
         STRB    R0, [R6], #1
         MOV     R0, R0, LSR #8
         STRB    R0, [R6], #1
         STRB    R1, [R6], #1
         MOV     R1, R1, LSR #8
         STRB    R1, [R6], #1
+      |
+        ; Use unaligned halfword stores available from ARMv6
+        STRH    R0, [R6], #2
+        STRH    R1, [R6], #2
+      ]
 
         ADD     R0, WsPtr, #GCsX
         LDMIA   R0, {R0, R1}            ; get current cursor
 
+      [ NoARMv6 :LOR: NoUnaligned
         STRB    R0, [R6], #1
         MOV     R0, R0, LSR #8
         STRB    R0, [R6], #1
         STRB    R1, [R6], #1
         MOV     R1, R1, LSR #8
         STRB    R1, [R6], #1
+      |
+        ; Use unaligned halfword stores available from ARMv6
+        STRH    R0, [R6], #2
+        STRH    R1, [R6]
+      ]
 
         Pull    "R0-R6"
         MOV     PC, R14

@@ -77,7 +77,7 @@ ChunkNotRM:Podule chunk is not a relocatable module
 ModulePostfix:'%%' in module title
 NotMod:This is not a relocatable module
 BadRMHeaderField:Illegal header field in module
-RMNot32bit:Module is not 32-bit compatible
+RMNot32bit:Module '%0' is not 32-bit compatible
 IncarnationNotFound:Incarnation not found
 RMNotFoundInROM:Module is not in ROM
 NumbTooBig:Number too big
@@ -151,7 +151,8 @@ BadMSFlags:Illegal flags in mode selector
 CDATStackOverflow:System stack overflow
 NoSuchSWI:SWI not known
 BadSav:Incorrect number of parameters for *Save
-MonType:Monitor type reconfigured.
+CmosRst:CMOS RAM reset, press ESCAPE to continue
+MonType:Monitor type reconfigured
 NoKbd:No keyboard present - autobooting
 BreakPt:Stopped at break point at &%0
 STail:|J|MUse *Configure to set the options.|J|M
@@ -161,12 +162,34 @@ Zonk:Unknown OS_ScreenMode reason code
 SNoMask:Mask or Palette operations not supported in this display depth
 BadVIDCDiv:Bad VIDC divider value
 BadPlatReas:Unknown OS_PlatformFeatures reason code
+UnConv:Unsupported conversion
+BadKeyHandler:Bad key handler
+BadGDriver:Bad graphics driver number
+TooManyGDrivers:Too many graphics drivers
+BadErrPtr:SWI &%0 returned a bad error pointer
 
 600:ARM 600 Processor
 610:ARM 610 Processor
 700:ARM 700 Processor
 710:ARM 710 Processor
+710a:ARM 710a Processor
+SA110:SA-110 Processor
 7500:ARM 7500 Processor
 7500FE:ARM 7500FE Processor
-810:ARM 810 Processor
-SA110:StrongARM Processor
+SA1100:SA-1100 Processor
+SA1110:SA-1110 Processor
+720T:ARM 720T Processor
+920T:ARM 920T Processor
+922T:ARM 922T Processor
+X80200:80200 Processor
+X80321:80321 Processor
+ARM1176JZF_S:ARM1176JZF-S Processor
+CA5:Cortex-A5 Processor
+CA7:Cortex-A7 Processor
+CA8:Cortex-A8 Processor
+CA9:Cortex-A9 Processor
+CA15:Cortex-A15 Processor
+CA17:Cortex-A17 Processor
+CA53:Cortex-A53 Processor
+CA57:Cortex-A57 Processor
+CA72:Cortex-A72 Processor

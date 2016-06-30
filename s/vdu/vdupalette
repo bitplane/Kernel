@@ -78,7 +78,7 @@ DC3     ROUT
                                         ; and drop thru to Palette OSWORD code
 SetPal  EntryS
         LDR     R6, [WsPtr, #DisplayModeFlags]
-        TST     R6, #Flag_Teletext      ; if teletext mode
+        TST     R6, #ModeFlag_Teletext  ; if teletext mode
         EXITS   NE                      ; then ignore VDU 19
 
 ; Now we must check for BBC style colours (VDU 19,n,0..15,...) and map these onto
@@ -87,7 +87,8 @@ SetPal  EntryS
         MOV     lr, r1
         LDRB    r0, [lr, #0]            ; r0 = logical colour
         LDRB    r1, [lr, #1]
-        AND     r2, r1, #&80            ; r2 = sup bit
+        ANDS    r2, r1, #&80
+        MOVNE   r2, #&FF                ; r2 = supremacy (&00 or &FF)
         BIC     r1, r1, #&80            ; r1 = type of colour
         CMP     r1, #16                 ; r1 < 16 => BBC style colour
         BCS     %FT10
@@ -115,12 +116,18 @@ SetPal  EntryS
         B       %FT20
 
 10
+      [ NoARMv6 :LOR: NoUnaligned
         LDRB    r3, [lr, #2]            ; r3 = red
-        ORR     r2, r2, r3, LSL #8      ; r2 = &0000RRS0
+        ORR     r2, r2, r3, LSL #8      ; r2 = &0000RRSS
         LDRB    r3, [lr, #3]            ; r3 = green
-        ORR     r2, r2, r3, LSL #16     ; r2 = &00GGRRS0
+        ORR     r2, r2, r3, LSL #16     ; r2 = &00GGRRSS
         LDRB    r3, [lr, #4]            ; r3 = blue
-        ORR     r2, r2, r3, LSL #24     ; r2 = &BBGGRRS0
+        ORR     r2, r2, r3, LSL #24     ; r2 = &BBGGRRSS
+      |
+        ; Use unaligned load from ARMv6
+        LDR     r3, [lr, #2]            ; r3 = &??BBGGRR
+        ORR     r2, r2, r3, LSL #8      ; r2 = &BBGGRRSS
+      ]
 20
         BL      CallSetPalette
         EXITS
@@ -148,7 +155,7 @@ CallPaletteV
 ;       R10-R12 corrupted (preserved by Sam), all others preserved
 ;
 
-SWIReadPalette ENTRY "r4"
+SWIReadPalette Entry "r4"
         VDWS    WsPtr
         MOV     r4, #paletteV_Read
         BL      CallPaletteV
@@ -179,7 +186,7 @@ SWIReadPalette ENTRY "r4"
 ;       R0-R4, R11, R12 can be corrupted
 ;
 
-DoReadPalette ENTRY
+DoReadPalette Entry
         MOV     r4, r1                  ; save pointer to block
         LDRB    r0, [r4]                ; r0 = logical colour
         MOV     r1, #16
@@ -187,12 +194,17 @@ DoReadPalette ENTRY
         LDROSB  r0, FlashState
         CMP     r0, #1                  ; CS => 1st state, CC => 2nd state
         MOVCC   r2, r3                  ; r2 = current state
+      [ NoARMv6 :LOR: NoUnaligned
         MOV     r1, #4
 10
         STRB    r2, [r4, #1]!           ; store 4 bytes of data in block, starting R1+1
         MOV     r2, r2, LSR #8
         SUBS    r1, r1, #1
         BNE     %BT10
+      |
+        ; Use unaligned store from ARMv6
+        STR     r2, [r4]
+      ]
         EXIT
 
 ; *****************************************************************************
@@ -204,13 +216,13 @@ DoReadPalette ENTRY
 DoFirstFlash EntryS "r0,r4"
         MOV     r4, #paletteV_1stFlashState
 SetFlashState
-        mrs    ,r0, CPSR
+        MRS     r0, CPSR
         ORR     r1, r0, #I32_bit + SVC_mode     ; to SVC26/32 mode
-        msr    ,CPSR_c, r1
+        MSR     CPSR_c, r1
         Push    "lr"
         BL      CallPaletteV
         Pull    "lr"
-        msr    ,CPSR_c, r0
+        MSR     CPSR_c, r0
         EXITS
 
 ; *****************************************************************************

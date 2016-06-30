@@ -14,7 +14,6 @@
 ;
         TTL  => Utility
 
-
 ; *****************************************************************************
 ; Arthur Utility commands
 
@@ -29,9 +28,9 @@ UtilityMod
         &       UtilModTitle-UtilityMod
         &       UtilHelpStr-UtilityMod
         &       UtilHelpTab-UtilityMod
-        &       0
-        &       0
-        &       0
+        &       &F00000
+        &       Util_SWI-UtilityMod
+        &       Util_SWITab-UtilityMod
         &       0
  [ International_Help <> 0
         &       MessageFileName-UtilityMod
@@ -42,6 +41,13 @@ UtilityMod
         &       UtilFlags-UtilityMod
  ]
 
+Util_SWITab
+        =       "ARM",0
+        =       "IMB",0
+        =       "IMBRange",0
+        =       0
+        ALIGN
+
 Module_BaseAddr SETA UtilityMod
 
   [ ChocolateService
@@ -50,6 +56,7 @@ Module_BaseAddr SETA UtilityMod
         ASSERT Service_MessageFileClosed < Service_BufferStarting
         ASSERT Service_BufferStarting    < Service_TerritoryStarted
         ASSERT Service_TerritoryStarted  < Service_DeviceFSCloseRequest
+        ASSERT Service_DeviceFSCloseRequest < Service_DisplayStatus
     ;
 
 Util_ChocServTab
@@ -63,6 +70,7 @@ Util_ChocServTab
         DCD    Service_TerritoryStarted
    ]
         DCD    Service_DeviceFSCloseRequest ;service 2
+        DCD    Service_DisplayStatus
         DCD    0                            ;terminator
         DCD    Util_ChocServTab-UtilityMod  ;table anchor
   ]
@@ -76,6 +84,7 @@ Util_Service ROUT
         TEQNE   r1, #Service_TerritoryStarted
         TEQNE   r1, #Service_MessageFileClosed
   ]
+        TEQNE   r1, #Service_DisplayStatus
         MOVNE   pc, lr
   [ ChocolateService
     ;entry point excluding pre-rejection code
@@ -86,8 +95,11 @@ Util_ChocService
         TEQNE   r1, #Service_MessageFileClosed
         BEQ     CacheCommonErrorsReinit
   ]
-        TEQ     r1, #Service_BufferStarting
-        BNE     %FT10
+        TEQ     r1, #Service_DeviceFSCloseRequest
+        BEQ     %FT10
+        TEQ     r1, #Service_DisplayStatus
+        BEQ     HandleServiceDisplayStatus
+        ; Else must be Service_BufferStarting
         Push    "r0-r3,lr"
 
 ; Register buffers with buffer manager in order of speed - first is fast
@@ -111,7 +123,7 @@ Util_ChocService
         MOV     r3, #Buff_RS423Out
         SWI     XBuffer_Register                ; register serial output buffer
 
-        MOV     r0, #0                          ; used as index to PrinterBufferThing
+        LDR     r0, =ZeroPage                   ; used as index to PrinterBufferThing
         LDR     r1, [r0, #PrinterBufferAddr]    ; r1 -> start of buffer
         LDR     r2, [r0, #PrinterBufferSize]    ; r2 = size
         ADD     r2, r2, r1                      ; r2 -> end+1 of buffer
@@ -131,23 +143,25 @@ Util_ChocService
 
 10
         Push    "r0,r1,lr"
+        LDR     lr, =ZeroPage
         MOV     r0, #0
-        LDR     r1, [r0, #OsbyteVars + :INDEX: PrinterActive]
+        LDR     r1, [lr, #OsbyteVars + :INDEX: PrinterActive]
         TEQ     r1, r2
-        STREQ   r0, [r0, #OsbyteVars + :INDEX: PrinterActive]
+        STREQ   r0, [lr, #OsbyteVars + :INDEX: PrinterActive]
         BEQ     %FT20
-        LDRB    r1, [r0, #OsbyteVars + :INDEX: SerialInHandle]
+        LDRB    r1, [lr, #OsbyteVars + :INDEX: SerialInHandle]
         TEQ     r1, r2
-        STREQB  r0, [r0, #OsbyteVars + :INDEX: SerialInHandle]
+        STREQB  r0, [lr, #OsbyteVars + :INDEX: SerialInHandle]
         BEQ     %FT20
-        LDRB    r1, [r0, #OsbyteVars + :INDEX: SerialOutHandle]
+        LDRB    r1, [lr, #OsbyteVars + :INDEX: SerialOutHandle]
         TEQ     r1, r2
         Pull    "r0,r1,pc",NE                   ; if not any of these then exit preserving everything
-        STRB    r0, [r0, #OsbyteVars + :INDEX: SerialOutHandle]
+        STRB    r0, [lr, #OsbyteVars + :INDEX: SerialOutHandle]
 20
         SWI     XOS_Find                        ; close file, ignore errors (if we get an error it's closed anyway)
+        LDR     r0, [sp], #8                    ; restore r0, junk r1
         MOV     r1, #Service_Serviced           ; indicate we closed it
-        Pull    "r0,lr,pc"                      ; restore r0, junk r1, and exit
+        LDR     pc, [sp], #4                    ; exit
 
 
 Util_Die   ROUT
@@ -182,6 +196,7 @@ UtilHelpStr  =  "MOS Utilities", 9, "$VersionNo", 0
   ]
 UtilHelpTab
            Command   Break,              0,  0, International_Help   ; just help
+           Command   Cache,              1,  0, International_Help
            Command   ChangeDynamicArea,255,  0, International_Help
            Command   Configure,        255,  0, Help_Is_Code_Flag :OR: International_Help
            Command   Commands,           0,  0, Help_Is_Code_Flag :OR: International_Help
@@ -327,6 +342,7 @@ UHC_hash14
            Command   SetEval,          255,  2, International_Help
            Command   RMRun,            255,  1, International_Help
            Command   RMInsert,           2,  1, International_Help
+           Command   Cache,              1,  0, International_Help
            =   0
            ALIGN
 UHC_hash19
@@ -372,8 +388,12 @@ RMFaster_Code
            MOV R0, #ModHandReason_LookupName
            SWI XOS_Module
            Pull "PC", VS
-           CMP   R3, #ROM
-           BLT   RMFast_notinROM
+           CMP   R3, #ROM                 ; HS if R3 >= ROM
+           BLO   RMFast_notinROM
+ [ :LNOT:ROMatTop
+           CMP   R3, #ROMLimit
+           BHS   RMFast_notinROM
+ ]
            MOV   R1, R3
            LDR   R2, [R1, #-4]
            MOV   R0, #ModHandReason_CopyArea
@@ -419,19 +439,21 @@ RMReInit_Code
 
 Modules_Help   ROUT
           Push  "r2, r3, lr"
-          MOV   r0, #0                          ; Try our own message file before Global.
-          LDR   r0, [r0, #KernelMessagesBlock]
+          LDR   r2, =ZeroPage                      ; Try our own message file before Global.
+          LDR   r0, [r2, #KernelMessagesBlock]
           TEQ   r0, #0
-          ADRNE r0, KernelMessagesBlock+4
+          ADDNE r0, r2, #KernelMessagesBlock+4
           ADRL  r1, modules_help1
+        [ ZeroPage <> 0
           MOV   r2, #0
+        ]
           SWI   XMessageTrans_Lookup
           SWIVC XMessageTrans_Dictionary
           MOVVC r1, r0
           MOVVC r0, r2
           SWIVC XOS_PrettyPrint
           Pull  "r2, r3, PC", VS
-          MOV    R1, #Module_List
+          LDR    R1, =ZeroPage+Module_List
 03        LDR    R1, [R1]
           CMP    R1, #0
           BEQ    %FT05
@@ -555,7 +577,7 @@ Show_Code
         CMP     r1, #0                  ; *show only?
         ADREQ   r0, starstr
         Entry   "r0,r7",8+256
-        mrs    ,r7,CPSR
+        MRS     r7, CPSR
 
         ADD     r6, sp, #8              ; initial buffer for var expansions
         MOV     lr, #256+4
@@ -659,7 +681,7 @@ Show_Exit
         TST     lr, #5
         SWIEQ   XOS_WriteI+15  ; paged mode off
 
-        msr    ,CPSR_f, r7
+        MSR     CPSR_f, r7
         EXIT
 
 06      SWI     XOS_NewLine
@@ -677,6 +699,7 @@ Show_Exit
 03
         =       "Macro", 0
       ]
+        ALIGN
 
 Show_ErrorReading
         ; Error from OS_ReadVarVal:
@@ -787,23 +810,25 @@ KeyHelpCommon                  ; also used by *Configure
         Push   r1
 ; R2 & R3 can be junked here?
         MOV    r1, r0
-        MOV    r0, #0          ; Try our own message file before Global.
-        LDR    r0, [r0, #KernelMessagesBlock]
+        LDR    r2, =ZeroPage   ; Try our own message file before Global.
+        LDR    r0, [r2, #KernelMessagesBlock]
         TEQ    r0, #0
-        ADRNE  r0, KernelMessagesBlock+4
+        ADDNE  r0, r2, #KernelMessagesBlock+4
+      [ ZeroPage <> 0
         MOV    r2, #0
+      ]
         SWI    XMessageTrans_Lookup
         SWIVC  XMessageTrans_Dictionary
         MOVVC  r1, r0
         MOVVC  r0, r2
         SWIVC  XOS_PrettyPrint
-        Pull   "r1,lr,PC", VS  ; if error, pull R1, junk stacked R0 and exit
         Pull   "r1,r3"         ; restore r1 and get buffer pointer
+        Pull   "pc", VS        ; if error, exit
         MOV    r0, #0
         ADRL   R2, SysCommsModule
         BL     OneModuleK
         BVS    %FT10
-        MOV    R6, #Module_List
+        LDR    R6, =ZeroPage+Module_List
 12      LDR    R6, [R6]
         CMP    R6, #0
         BEQ    %FT10
@@ -825,11 +850,11 @@ FileCommands_Help
 ;          string to print in r0
 
 OneModuleK     ROUT
-        Push  "r2-r6, lr"
+        Push  "r2-r7, lr"
         LDR    R4, [R2, #Module_HC_Table]
         CMP    R4, #0
-        Pull  "r2-r6, PC", EQ       ; no table
-        ORR    R3, R3, #&80000000   ; buffer position ptr and flag
+        Pull  "r2-r7, PC", EQ       ; no table
+        MOV    R7, #&80000000       ; flag
         MOV    R5, #0               ; buffer offset
 
         ADD    R2, R2, R4           ; point at table start.
@@ -854,7 +879,7 @@ OneModuleK     ROUT
         CMP    R4, R1, LSR #24      ; move flags into bottom byte
 79      ADDNE  R2, lr, #16
         BNE    %BT03
-        TST    R3, #&80000000
+        TST    R7, #&80000000
         BEQ    %FT05
         SWI    XOS_NewLine
         SWIVC  XOS_NewLine
@@ -863,19 +888,19 @@ OneModuleK     ROUT
         CMP    r0, #0
         BEQ    OneModuleK_PrintTitle ; Don't trust MessageTrans to preserve Z
         SWI    XMessageTrans_Dictionary
-        STMDB  sp!, {r1}
+        Push   "r1"
         MOVVC  r1, r0
         MOVVC  r0, r4
         SWIVC  XOS_PrettyPrint
-        LDMIA  sp!, {r1}
+        Pull   "r1"
         B      %FT77
 OneModuleK_PrintTitle
         LDR    r0, [stack]
         BL     PrintTitle
 77
         MOVVC  r0, r4
-        Pull  "r2-r6, PC", VS
-        BIC    R3, R3, #&80000000
+        Pull  "r2-r7, PC", VS
+        BIC    R7, R7, #&80000000
 05
         SUB    lr, r6, r2
         RSB    r4, r5, #HelpBufferSize
@@ -888,7 +913,7 @@ OneModuleK_PrintTitle
         MOV    r0, r3
         SWI    XOS_PrettyPrint
         SWIVC  XOS_NewLine
-        Pull   "r2-r6,pc",VS
+        Pull   "r2-r7,pc",VS
         MOV    r0, r4
         MOV    r5, #0                   ; start again with empty buffer
 07
@@ -907,8 +932,8 @@ OneModuleK_PrintTitle
 78      CMP    r4, #0
         B      %BT79
 
-06      TST    R3, #&80000000
-        Pull  "r2-r6, PC", NE
+06      TST    R7, #&80000000
+        Pull  "r2-r7, PC", NE
         Push  "R0"
         MOV    R0, #0
         SUB    R5, R5, #1
@@ -916,7 +941,7 @@ OneModuleK_PrintTitle
         MOV    R0, R3
         SWI    XOS_PrettyPrint
         STRVS  r0, [stack]
-        Pull  "R0, r2-r6, PC"
+        Pull  "R0, r2-r7, PC"
 
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -927,6 +952,41 @@ GOS_Code
         MOV     R0, #ModHandReason_Enter
         SWI     XOS_Module
         Pull    pc
+
+; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+; Deal with UtilityModule SWIs.
+;
+; The UtilityModule provides "OS-independent" SWIs. At present these are:
+;
+; SWI &F00000 (ARM_IMB)
+; SWI &F00001 (ARM_IMBRange)
+;
+; as specified by the ARMv5 ARM (section 2.7.4 Prefetching and self-modifying
+; code)
+
+Util_SWI
+        CMP     r11, #1
+        BLO     SyncCodeAreasFull       ; (00) will do tail-call return from SWI
+        BHI     Util_SWINotKnown        ; (02..3F)
+
+; Ranged wotsit                           (01)
+        Push    "r1,r2,lr"
+        SUB     r2, r1, #4              ; convert from exclusive to inclusive
+        MOV     r1, r0
+        BL      SyncCodeAreasRange
+        Pull    "r1,r2,pc"
+
+Util_SWINotKnown
+        ADR     r0, ErrorBlock_ModuleBadSWI
+      [ International
+        addr    r4, UtilModTitle
+        B       TranslateError_UseR4
+      |
+        RETURNVS
+      ]
+
+        MakeErrorBlock ModuleBadSWI
 
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ; ChangeDynamicArea - moved here from the Task Manager as embedded devices
@@ -943,11 +1003,11 @@ ramfsarea       *       5               ; RAM disc area
 vec_fontsize    #       4               ; fields in output vector
 vec_spritesize  #       4
 vec_ramfssize   #       4
-vec_rmasize	#	4
-vec_screensize	#	4
+vec_rmasize     #       4
+vec_screensize  #       4
 ss_outputvec    *       &100
 
-Keydef  DCB     "FontSize/K,SpriteSize/K,RamFsSize/K,RMASize/K,ScreenSize/K"
+Keydef  DCB     "FontSize/K,SpriteSize/K,RamFSSize/K,RMASize/K,ScreenSize/K"
         DCB     0
         ALIGN
 
@@ -1008,7 +1068,7 @@ changeR0R1      ROUT
         Push    "R0-R3,LR"
 
         CMP     R1,#0
-        Pull    "R0-R3,PC",LE
+        Pull    "R0-R3,PC",EQ
 
         SWI     XOS_ReadDynamicArea     ; R1 = current size of area
         MOVVC   R3,R1
@@ -1036,11 +1096,17 @@ getK    ROUT
         SWI     XOS_ReadUnsigned
         Pull    "R2-R3,PC",VS
 ;
-        LDRB    R3,[R1]                 ; if terminator is "K" or "k",
+        LDRB    R3,[R1]
         UpperCase R3, R14
-        TEQ     R3,#"K"
+        TEQ     R3,#"K"                 ; if terminator is "K" or "k",
         ADDEQ   R1,R1,#1
         MOVEQ   R2,R2,LSL #10           ; multiply by 1024
+        TEQ     R3,#"M"                 ; if terminator is "M" or "m",
+        ADDEQ   R1,R1,#1
+        MOVEQ   R2,R2,LSL #20           ; multiply by 1048576
+        TEQ     R3,#"G"                 ; if terminator is "G" or "g",
+        ADDEQ   R1,R1,#1
+        MOVEQ   R2,R2,LSL #30           ; multiply by 1073741824
 ;
         LDRB    R14,[R1]                ; check terminator
         RSBS    R14,R14,#" "+1          ; ensure GT set if OK

@@ -13,6 +13,4 @@
 | limitations under the License.
 |
 Dir <Obey$Dir>
-time
-amu_machine rom
-time
+amu_machine rom THROWBACK=-throwback
