@@ -4175,11 +4175,7 @@ AllocateBackingLevel2 Entry "r0-r8,r11"
  [ MEMM_Type = "VMSAv6"
         LDR     lr, =L1_Page
  |
-  [ ECC
-        LDR     lr, =L1_Page + L1_U + L1_P              ; form other bits to put in L1
-  |
         LDR     lr, =L1_Page + L1_U                     ; form other bits to put in L1
-  ]
  ]
         ORR     lr, lr, r6, LSL #12                     ; complete L1 entry
         STR     lr, [r8, #0]                            ; store entry for 1st MB
@@ -5153,7 +5149,6 @@ AreaShrink ROUT
       ]
 
 30
-  [ EarlierReentrancyInDAShrink
         LDR     r4, =ZeroPage                   ; indicate no page block (and ptr to semaphore)
       [ ZeroPage = 0
         STR     r4, [r4, #CDASemaphore]         ; OK to reenter now (we've done the damage)
@@ -5161,7 +5156,6 @@ AreaShrink ROUT
         MOV     lr, #0
         STR     lr, [r4, #CDASemaphore]
       ]
-  ]
         BL      CallPostShrink
         RSB     r1, r2, #0
         LDR     r0, [r11, #DANode_Number]       ; reload dynamic area number

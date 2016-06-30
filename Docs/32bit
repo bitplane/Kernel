@@ -196,11 +196,9 @@ in the 32-bit case:
 
         ADR     R14, saveblock          ; get address of saved registers
         LDR     R0, [R14, #16*4]        ; get user PSR
- [ :LNOT: NoSPSRcorruption
         MRS     R1, CPSR                ; get current PSR
         ORR     R1, R1, #&80            ; disable interrupts to prevent
         MSR     CPSR_c, R1              ; SPSR_SVC corruption by IRQ code (yuck)
- ]
         MSR     SPSR_cxsf, R0           ; put it into SPSR_SVC
         LDMIA   R14, {R0-R14}^          ; load user registers
         MOV     R0, R0                  ; no-op after forcing user mode

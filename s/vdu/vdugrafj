@@ -585,12 +585,10 @@ SanitizeSGetMode Entry "r0-r4,r11"
         EXIT    NE
 10
         MOV     r0, r11                 ; r0 -> mode selector
- [ ModeSelectors
         BL      ValidateModeSelector
         STRVS   r0, [sp]
         STRVS   r0, [WsPtr, #RetnReg0]
         EXIT    VS
- ]
 
 15
 ; convert to new format sprite word

@@ -137,7 +137,6 @@ Continue_after_HALInit
 ;           of the poked code will be used yet awhile (given that current IRQ hardware vector is
 ;           not actually changed below).
 
- [ ProcessorVectors
 ; Copy default processor vector table and default preveneers.
 ; Code relies on preveneers being immediately after processor vector table
 ; but could easily be changed into 2 copy loops.
@@ -152,7 +151,6 @@ Continue_after_HALInit
         STR     R3, [R1], #4
         SUBS    R2, R2, #4
         BNE     %BT39
- ]
 
 ; copy handler addresses
         ADRL    R1, MOSROMVecs+4        ; don't copy to 0: key stuff is using
@@ -267,13 +265,7 @@ kbdwait
         TST     r0, #KbdFlag_Done
         BNE     kbddone
 
-      [ EmulatorSupport
-        ARM_on_emulator r0
-        MOVEQ   r0, #us
-        LDRNE   r0, =KeyWait*us         ; Wait 1/5 second (give keys down a chance to come in).
-      |
         LDR     r0, =KeyWait*us         ; Wait 1/5 second (give keys down a chance to come in).
-      ]
         CallHAL HAL_CounterDelay
         SUBS    r6, r6, #1              ; else wait a maximum of 5 seconds.
         BNE     kbdwait
@@ -303,10 +295,8 @@ kbddone
         TST     R1, #OSStartFlag_POR
         BEQ     no_cmos_reset           ; not a power on reset
         DebugTX "POR detected"
-      [ CheckProtectionLink
         TST     R1, #OSStartFlag_NoCMOSReset
         BNE     no_cmos_reset
-      ]
         TST     R1, #OSStartFlag_CMOSReset
         BNE     cmos_reset
 
@@ -382,14 +372,8 @@ no_cmos_reset                           ; R1 has por_bit set if power on
         Pull    r0                      ; always pull CannotReset flag
 
 hard_reset
- [ DebugForcedReset
-        MOV     r2, #0                  ; indicate normal hard reset
- ]
 hard_reset_forced
         LDR     r8, =ZeroPage
- [ DebugForcedReset
-        STR     r2, [r8]                ; store to logical address zero
- ]
 
         Pull    "R2"                    ; discard old IOC state
 
@@ -606,13 +590,7 @@ ResetPart1Done                          ; R0 is reset type
         LDRVC   R0, =ZeroPage
         STRVC   R2, [R0, #ProcVec_Branch0]
 
- [ DebugForcedReset
-        LDR     R1, [R0]
-        TEQ     R1, #0                                  ; if normal hard reset
-        LDREQ   R1, BranchThroughZeroInstruction2       ; then get branchthruzero code
- |
         LDR     R1, BranchThroughZeroInstruction2
- ]
         STR     R1, [R0]                                ; put branch through 0 code at 0
 
         LDR     R1, RealIRQHandler
@@ -678,10 +656,8 @@ ResetPart1Done                          ; R0 is reset type
         DebugTX "Debug terminal on"
  ]
 
-        [ DoInitialiseMode
         BL      InitialiseMode          ; select correct screen mode, in case any
                                         ; module prints anything in initialisation
-        ]
 
         MOV     R0, #&FD                ; read last reset type
         MOV     R1, #0
@@ -794,9 +770,7 @@ SkipHardResetPart2                      ; code executed on all types of reset
         STRNEB  r0, [r0, #ErrorSemaphore] ; then allow errors to be translated
       ]
 
-      [ DoInitialiseMode
         BL      InitialiseMode
-      ]
         LDR     R0, =ZeroPage
         LDRB    R14, [R0, #MentionCMOSReset]
         TEQ     R14, #0
@@ -898,13 +872,10 @@ SkipHardResetPart2                      ; code executed on all types of reset
         CMP     r1, #PowerOnReset
         BNE     %FT75
 
- [ CheckProtectionLink
         LDR     r1, =ZeroPage+HAL_StartFlags
         LDR     r1, [r1]
         TST     r1, #OSStartFlag_NoCMOSReset
         BNE     %FT75
- ]
-
 
 ; if any monitor key pressed, reconfigure, otherwise hang around for a bit
 ; till keys get a chance to come in again after being reset for the umpteenth
@@ -912,13 +883,7 @@ SkipHardResetPart2                      ; code executed on all types of reset
 
         LDR     r3, =ZeroPage
         LDR     r3, [r3, #MetroGnome]
- [ EmulatorSupport
-        ARM_on_emulator r0
-        ADDEQ   r3, r3, #1
-        ADDNE   r3, r3, #10             ; Hang about for a little while
- |
         ADD     r3, r3, #10             ; Hang about for a little while
- ]
 
 KeypadStar_key  * -92
 
@@ -958,7 +923,6 @@ HorologicalDelayLoop1
         BL      WriteMultiField
 
 64
-    [ DoInitialiseMode
         BL      InitialiseMode
 
       [ International
@@ -973,15 +937,10 @@ HorologicalDelayLoop1
         =       10,"Monitor type reconfigured",10,13,10,0
         ALIGN
       ]
-    ]
         B       %FT75
 
 BranchThroughZeroInstruction2
- [ ProcessorVectors
         LDR     PC, .+ProcVec_Branch0
- |
-        B       .+Branch0_Trampoline
- ]
 
         LTORG
 
@@ -1056,13 +1015,7 @@ Hortoculture_Kicking
 
         LDR     r3, =ZeroPage
         LDR     r3, [r3, #MetroGnome]
- [ EmulatorSupport
-        ARM_on_emulator r1
-        ADDEQ   r3, r3, #1
-        ADDNE   r3, r3, #10             ; Hang about for a little while
- |
         ADD     r3, r3, #10             ; Hang about for a little while
- ]
 
 HorologicalDelayLoop2
         MOV     r1, #KeypadStar_key :AND: &FF
@@ -1119,11 +1072,7 @@ AutoBootCosNoKbd
 
 
 RealIRQHandler
- [ ProcessorVectors
         LDR     PC, .-&18+ProcVec_IRQ
- |
-        B     Initial_IRQ_Code+.-&18
- ]
 
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ; In    r1 = INKEY -ve key code to look for

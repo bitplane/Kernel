@@ -379,34 +379,6 @@ RMVMS_NColour
         MOVCS   r2, #1                                  ; else return 1
         B       GoodReadModeVar
 
-; TMD 09-Dec-93
-; New algorithms for xeig, yeig from Roger:
-;       xeig = 1: yeig = 1
-;       if yres<xres/2 OR yres<400 then yeig = 2
-;       if (xres<<xeig)<(yres<<yeig) then xeig = 2
-
- [ RogerEXEY
-RMVMS_XEigFactor
-        LDR     r2, [r0, #ModeSelector_XRes]
-        LDR     r11, [r0, #ModeSelector_YRes]
-        CMP     r11, r2, LSR #1                         ; if yres < xres/2
-        CMPCS   r11, #400                               ; or yres < 400
-        MOVCC   r11, r11, LSL #2                        ; then yeig = 2
-        MOVCS   r11, r11, LSL #1                        ; else yeig = 1
-        CMP     r11, r2, LSL #1                         ; if (xres<<1) < (yres<<yeig)
-        MOVHI   r2, #2                                  ; then xeig = 2
-        MOVLS   r2, #1                                  ; else xeig = 1
-        B       GoodReadModeVar
-
-RMVMS_YEigFactor
-        LDR     r2, [r0, #ModeSelector_XRes]
-        LDR     r11, [r0, #ModeSelector_YRes]
-        CMP     r11, r2, LSR #1                         ; if yres < xres/2
-        CMPCS   r11, #400                               ; or yres < 400
-        MOVCC   r2, #2                                  ; then yeig = 2
-        MOVCS   r2, #1                                  ; else yeig = 1
-        B       GoodReadModeVar
- |
 RMVMS_XEigFactor
         MOV     r2, #1                                  ; default xeig = 1
         B       GoodReadModeVar
@@ -418,7 +390,6 @@ RMVMS_YEigFactor
         MOVCC   r2, #2                                  ; then yeig = 2
         MOVCS   r2, #1                                  ; else yeig = 1
         B       GoodReadModeVar
- ]
 
 RMVMS_LineLength
         LDR     r2, [r0, #ModeSelector_XRes]
@@ -1267,24 +1238,10 @@ SWIWriteN ROUT
 10
         SUBS    R1, R1, #1
         BCC     %FT90                   ; count has expired (V=0)
-  [ StrongARM
         LDRB    R0, [R10], #1
         Push    PC                      ; need to get to %FT20 - push PC+12 (old ARM) or PC+8 (StrongARM)
-        [ AssemblingArthur
         B       PMFWrchDirect
-        |
-        LDR     PC, =(MOSDriver + MOSPMFWrch)
-        ]
         MOV     R0,R0                   ; NOP for PC+8 case
-  |
-        Push    PC                      ; push address of %FT20
-        LDRB    R0, [R10], #1
-        [ AssemblingArthur
-        B       PMFWrchDirect
-        |
-        LDR     PC, =(MOSDriver + MOSPMFWrch)
-        ]
-  ]
 
 20
         BVS     %FT90
@@ -1337,24 +1294,10 @@ SWIWrite0 ROUT
 10
         LDRB    R0, [R10], #1
         CMP     R0, #0
-  [ StrongARM
         BEQ     %FT80                   ; no more characters
         Push    PC, NE                  ; need to get to %FT20 - push PC+12 (old ARM) or PC+8 (StrongARM)
-        [ AssemblingArthur
         BNE     PMFWrchDirect
-        |
-        LDRNE   PC, =(MOSDriver + MOSPMFWrch)
-        ]
         MOV     R0,R0                   ;NOP for PC+8
-  |
-        Push    PC, NE                  ; push address of %FT20
-        [ AssemblingArthur
-        BNE     PMFWrchDirect
-        |
-        LDRNE   PC, =(MOSDriver + MOSPMFWrch)
-        ]
-        B       %FT80                   ; no more characters
-  ]
 
 20
         BVS     %FT80
@@ -1399,16 +1342,10 @@ SWIWriteS ROUT
 10
         LDRB    R0, [R10], #1
         CMP     R0, #0
-  [ StrongARM
         BEQ     %FT80                   ; no more characters
         Push    PC, NE                  ; need to get to %FT20 - push PC+12 (old ARM) or PC+8 (StrongARM)
         BNE     PMFWrchDirect
         MOV     R0,R0                   ;NOP for PC+8
-  |
-        Push    PC, NE                  ; push address of %FT20
-        BNE     PMFWrchDirect
-        B       %FT80                   ; no more characters
-  ]
 20
         BVS     %FT80
         LDR     R0, [R11]
@@ -1441,8 +1378,6 @@ SWIWriteS ROUT
         TEQ     R11, #0
         BNE     %BT95
         B       %BT85
-
-        [ AssemblingArthur
 
 ; *****************************************************************************
 ;
@@ -1583,8 +1518,6 @@ InsertRemovePagesCommon ROUT
 
         LDR     R3, [WsPtr, #DisplayStart]
         MOV     PC, R14
-
-        ]
 
 ; *****************************************************************************
 ;

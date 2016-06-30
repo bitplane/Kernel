@@ -22,62 +22,9 @@
 ; Author R C Manby
 ; Date   5.9.86
 ;
-        GBLL NewStyleEcfs
-NewStyleEcfs   SETL  {TRUE}
-
-        GBLL    DoVdu23_0_12
-DoVdu23_0_12   SETL  {FALSE}
-
-        GBLL    BleedinDaveBell
-BleedinDaveBell SETL {TRUE}
-
-        GBLL    LCDPowerCtrl
-LCDPowerCtrl    SETL {TRUE}
 
         GET s.vdu.VduDecl
         GET s.vdu.VduGrafDec
-
-        MACRO
-        HostVdu
-        Push    "R0,R14"
-      [ ZeroPage = 0
-        LDR     R0, [R0, -R0]
-      |
-        LDR     R0, =ZeroPage
-        LDR     R0, [R0]
-      ]
-        TEQ     R0, #0
-        ADREQ   R0, %FT01
-        SWIEQ   OS_CLI
-        Pull    "R0,R14"
-        B       %FT02
-01
-        =       "HOSTVDU", 0
-        ALIGN
-02
-        MEND
-
-        MACRO
-        Print   $string
-        Push    "R0,R14"
-      [ ZeroPage = 0
-        LDR     R0, [R0, -R0]
-      |
-        LDR     R0, =ZeroPage
-        LDR     R0, [R0]
-      ]
-        TEQ     R0, #0
-        BNE     %FT01
-        SWI     OS_WriteS
-        =       "$string", 0
-        ALIGN
-        SWI     OS_ReadC
-        Pull    "R0,R14",CS
-        SWICS   OS_BreakPt
-        SWI     OS_NewLine
-01
-        Pull    "R0,R14"
-        MEND
 
         MACRO
         RMVT    $var, $BW
@@ -1465,34 +1412,13 @@ GenerateModeSelectorVars Entry "r0,r1,r3-r8,r10-r12"
         STR     lr, [r9, #wkYShftFactor]        ; yshftfactor = 0 (obsolete)
         STR     lr, [r9, #wkModeFlags]          ; modeflags = 0
 
- [ RogerEXEY
-; TMD 09-Dec-93
-; New algorithms for xeig, yeig from Roger:
-;       xeig = 1: yeig = 1
-;       if yres<xres/2 OR yres<400 then yeig = 2
-;       if (xres<<xeig)<(yres<<yeig) then xeig = 2
-
-        CMP     r5, r4, LSR #1                  ; if yres < xres/2
-        CMPCS   r5, #400                        ; or yres < 400
-        MOVCC   r7, #2                          ; then yeig = 2
-        MOVCS   r7, #1                          ; else yeig = 1
-        STR     r7, [r9, #wkYEigFactor]
-
-        MOV     r7, r5, LSL r7                  ; r7 = yres << yeig
-        CMP     r7, r4, LSL #1                  ; if (xres<<1) < (yres<<yeig)
-        MOVHI   r7, #2                          ; then xeig = 2
-        MOVLS   r7, #1                          ; else xeig = 1
-        STR     r7, [r9, #wkXEigFactor]
-
-        MOV     lr, #1
- |
         MOV     lr, #1
         STR     lr, [r9, #wkXEigFactor]         ; xeig = 1
         CMP     r5, r4, LSR #1                  ; if yres < xres/2
         MOVCC   r7, #2                          ; then yeig = 2
         MOVCS   r7, #1                          ; else yeig = 1
         STR     r7, [r9, #wkYEigFactor]
- ]
+
         RSB     r7, lr, r4, LSR #3              ; scrrcol = (xres >> 3) -1
         STR     r7, [r9, #wkScrRCol]
         RSB     r7, lr, r5, LSR #3              ; scrbrow = (yres >> 3) -1

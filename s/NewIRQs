@@ -96,11 +96,7 @@ Initial_IRQ_Code ROUT
         MOV      r0, r11                        ; restore original R0
         LDR      r10, =ZeroPage
         LDRB     r11, [r10, #CallBack_Flag]
-      [ FixCallBacks
         B        Do_CallBack_postpone_already_clear
-      |
-        B        Do_CallBack
-      ]
 
         LTORG
 

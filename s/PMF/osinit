@@ -205,11 +205,9 @@ ReadCMOSDefaults
         MOV     R0, #MMUCReason_ModifyControl
         BL      MMUControlSub
 
- [ ModeSelectors
         BL      Read_Configd_MonitorType
         LDR     r1, =ZeroPage+VduDriverWorkSpace+CurrentMonitorType ; set current to default
         STR     r0, [r1]
- ]
 
         Pull    R14
 
@@ -240,7 +238,6 @@ PostInit ROUT
         TEQ     R0, #0
         BEQ     %FT10                   ; [soft reset, skip]
 
- [ StorkPowerSave
         SWI     XPortable_ReadFeatures
         BVC     %FT01
 ;
@@ -253,19 +250,9 @@ PostInit ROUT
         AND     R1, R1, #(PortableFeature_Speed :OR: PortableFeature_Idle :OR: PortableFeature_Stop)
         LDR     R0, =ZeroPage
         STRB    R1, [R0, #PortableFlags]
- |
-        LDR     r0, =ZeroPage           ; allow SWI Portable_Speed to be issued
-        ASSERT  (ZeroPage :AND: 255) = 0
-        STRB    r0, [r0, #PortableFlag]
- ]
 
-        [ BleedinDaveBell
         MOV     R0, #1                  ; indicate keyboard UK
         MOV     R1, #101                ; indicate alphabet Latin1
-        |
-        MOV     R0, #2                  ; indicate keyboard Master
-        MOV     R1, #100                ; indicate alphabet Bfont
-        ]
         STRB    R0, Keyboard
         STRB    R1, Alphabet
         STRB    R1, KeyAlphabet         ; alphabet corresponding to keyboard

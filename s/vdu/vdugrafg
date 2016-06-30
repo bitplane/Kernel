@@ -133,14 +133,6 @@ AdjustSpriteAddress ROUT
 
 SpriteInit ROUT
         Push    R14
-        [ :LNOT: AssemblingArthur
-        LDR     R0, =SvcTable                   ; intercept SWI SpriteOp
-        ADR     R1, SwiSpriteOp
-        STR     R1, [R0, #(OS_SpriteOp*4)]
-
-        ADRL    R1, SwiReadPoint                ; might as well catch ReadPoint
-        STR     R1, [R0, #(OS_ReadPoint*4)]     ; here
-        ]
 
         BL      ClearSpritePtrName      ; clear SpChoosePtr,SpChooseName
 
@@ -513,13 +505,7 @@ Group5  * SSO_NeedsSomething + SSO_NeedsSprite
 
 SwiSpriteOpCallTb
         SpriteOpEntry BadReasonCode, Group1
-
-       [ AssemblingArthur :LOR: Module
         SpriteOpEntry BadReasonCode, Group1
-       |
-        SpriteOpEntry ClaimSpace, Group1        ; *SSpace <size>
-       ]
-
         SpriteOpEntry ScreenSave, Group1
         SpriteOpEntry ScreenLoad, Group1
         SpriteOpEntry BadReasonCode, Group1 ; 4
@@ -622,14 +608,12 @@ SwiSpriteOpCallTb_End
 SetupSprModeData ROUT
         Push    R14
         LDR     R11, [R2, #spMode]
- [ ModeSelectors
         CMP     r11, #&100              ; check for mode selector/new format sprite word
         BCC     %FT05                   ; [it's a mode number so check for known ones]
         TST     r11, #1                 ; if it's a new format sprite word
         BNE     %FT10                   ; then call pushmodeinfo to get info on it
         B       %FT20                   ; else it's a mode selector, which is illegal as a sprite mode word
 05
- ]
         BranchIfKnownMode R11, %FA10
         Push    "R2-R4"
         MOV     R2, R11

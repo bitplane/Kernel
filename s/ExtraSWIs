@@ -14,8 +14,6 @@
 ;
 ; > ExtraSWIs
 
- [ ProcessorVectors
-
 ;----------------------------------------------------------------------------------------
 ; ClaimProcVecSWI
 ;
@@ -74,8 +72,6 @@ ClaimProcVecSWI ROUT
   ]
         PullEnv
         B       SLVK_SetV
-
- ]
 
 
         END

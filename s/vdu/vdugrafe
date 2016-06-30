@@ -666,10 +666,6 @@ CheckAlong ROUT
         ADDS    R0, R0, R9              ; point R0 back to end of word
         BGE     %BT10                   ; if still inside, continue but slowly
         B       %FT24                   ; else exit
-
-        [ :LNOT: AssemblingArthur
-        MALIGN   16, 0                  ; try to get %FT30 aligned !
-        ]
 22
         AND     R1, R10, R14            ; R1 := zgora AND pixmask
         ORR     R7, R7, R1              ; screen := screen OR R1
@@ -739,10 +735,6 @@ CheckAlong ROUT
 
         ORR     R1, R4, R10             ; word to store if going fast
         EOR     R1, R1, R11
-
-        [ :LNOT: AssemblingArthur
-        ASSERT  ((.-ArthurVduDriver):AND:15) = 0
-        ]
 30
         LDR     R7, [R2]                ; screen word
         CMP     R7, R4                  ; EOR target colour (CS if EQ)

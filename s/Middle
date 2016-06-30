@@ -1263,13 +1263,8 @@ ReadSysInfo_InvalidReason
         Push    "r3-r5, lr"
         BL      Read_Configd_Sync
         MOV     r2, r0
- [ ModeSelectors
         LDR     r1, =ZeroPage+VduDriverWorkSpace+CurrentMonitorType      ; read current monitortype
         LDR     r1, [r1]
- |
-        BL      Read_Configd_MonitorType
-        MOV     r1, r0
- ]
         BL      Read_Configd_Mode
         CMP     r0, #-1                         ; if none of the three are auto, don't bother with translation
         CMPNE   r1, #-1
