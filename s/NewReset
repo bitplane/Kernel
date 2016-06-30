@@ -293,42 +293,6 @@ kbddone
         BNE     cmos_reset
  ]
 
- [ ValidateCMOS :LAND: STB
-
-; ScreenSizeCMOS, RAMDiscCMOS, SysHeapCMOS, RMASizeCMOS and SpriteSizeCMOS
-; should be 0. Happily they are at consecutive addresses so we can loop through
-; them.
-        MOV     R1, #ScreenSizeCMOS
-reset_loop
-        MOV     R0, R1
-        BL      Read
-        TEQ     R0, #0
-        BNE     cmos_reset
-        INC     R1
-        TEQ     R1, #SpriteSizeCMOS
-        BHI     reset_loop
-
-; Year should be >=1995, <=2037 (when 32 bit signed Unix time breaks)
-        MOV     R0, #YearCMOS+1
-        BL      Read
-        MOV     R1, R0
-        MOV     R0, #YearCMOS+0
-        BL      Read
-        MOV     R2, #100
-        MLA     R0, R2, R1, R0
-        LDR     R1, =1995
-        SUB     R0, R0, R1
-        CMP     R0, #2037 - 1995
-        BHI     cmos_reset
-
-; Bit 4 of DBTBCMOS should be 1 (Boot)
-        MOV     R0, #DBTBCMOS
-        BL      Read
-        TST     R0, #(1:SHL:4)
-        BEQ     cmos_reset
- ]
-
-
 ; IF power-on bit set AND R/T/Del/Copy pressed THEN reset CMOS RAM
 ; note that memory cleared if POR, so key info has had plenty of time!
 
@@ -714,7 +678,7 @@ ResetPart1Done                          ; R0 is reset type
         DebugTX "Debug terminal on"
  ]
 
-        [ DoInitialiseMode :LOR: :LNOT: Embedded_UI
+        [ DoInitialiseMode
         BL      InitialiseMode          ; select correct screen mode, in case any
                                         ; module prints anything in initialisation
         ]
@@ -830,10 +794,9 @@ SkipHardResetPart2                      ; code executed on all types of reset
         STRNEB  r0, [r0, #ErrorSemaphore] ; then allow errors to be translated
       ]
 
-      [ DoInitialiseMode :LOR: :LNOT: Embedded_UI
+      [ DoInitialiseMode
         BL      InitialiseMode
       ]
-    [ :LNOT: Embedded_UI
         LDR     R0, =ZeroPage
         LDRB    R14, [R0, #MentionCMOSReset]
         TEQ     R14, #0
@@ -880,9 +843,6 @@ SkipHardResetPart2                      ; code executed on all types of reset
         ALIGN
 
         BL      ARM_PrintProcessorType
-    |
-        ! 0,    "Banner & printing of processor type disabled"
-    ]
 
         MOV     r0, #0                  ; Set DomainId to 0 every reset
       [ ZeroPage = 0
@@ -998,7 +958,7 @@ HorologicalDelayLoop1
         BL      WriteMultiField
 
 64
-    [ DoInitialiseMode :LOR: :LNOT: Embedded_UI
+    [ DoInitialiseMode
         BL      InitialiseMode
 
       [ International
@@ -1143,7 +1103,6 @@ str_booterror   DCB     "Boot$$Error",0
 
 
 AutoBootCosNoKbd
-    [ :LNOT: Embedded_UI
       [ International
         SWI     XOS_WriteI+7
         BVS     %FT81
@@ -1156,7 +1115,6 @@ AutoBootCosNoKbd
         =       7, "No keyboard present - autobooting", 10,13,0
         ALIGN
       ]
-    ]
         B       Hortoculture_Kicking
 
 

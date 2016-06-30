@@ -32,7 +32,7 @@ DoVdu23_0_12   SETL  {FALSE}
 BleedinDaveBell SETL {TRUE}
 
         GBLL    LCDPowerCtrl
-LCDPowerCtrl    SETL {TRUE} :LAND: :LNOT: STB
+LCDPowerCtrl    SETL {TRUE}
 
         GET s.vdu.VduDecl
         GET s.vdu.VduGrafDec
@@ -851,12 +851,6 @@ mchsub_3
 07
         SETV                            ; indicate error
         Pull    PC
-
- [ STB
-TV_Mode_string
-         =       "TV_Mode", 0
-        ALIGN
- ]
 
 ; valid mode and enough memory
 
@@ -1859,15 +1853,6 @@ OfferModeExtension ROUT
         TEQ     r1, #0
         STREQ   r4, [sp, #2*4] ; if service claimed, then return r4 from service, else preserve it
         Pull    "r1,r2,r4,r5,pc"
-
- [ STB
-svc_PortMan
-        TEQ     R0, #0                                  ; PortManager starting
-        MOVNE   PC, LR
-
-        ! 0, "HAL - svc_PortMan broken by kernel/HAL split due to lack of VIDCControlSoftCopy"
-        MOV     PC, LR
- ]
 
 
 ; *****************************************************************************

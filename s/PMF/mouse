@@ -49,9 +49,6 @@ MouseInit
 
         MOV     r0, #0
         STRB    r0, MouseButtons
-        [ STB
-        STRB    r0, MousePresent
-        ]
 
         MOV     r0, #MouseCMOS
         BL      Read
@@ -396,15 +393,7 @@ PollPointer
         BL      CallVector
         Pull    "lr"                    ; Restore SVC lr.
         RestPSR r9
-        [ STB
-        TEQ     r2, #0
-        TEQEQ   r3, #0
-        MOVNE   lr, #1
-        STRNEB  lr, MousePresent
-        BLNE    ProcessMouseXY
-        |
         BL      ProcessMouseXY
-        ]
 
         Pull    "r4,r12,pc"
 
@@ -421,15 +410,7 @@ PointerVector
         TEQ     r1, lr
         MOVEQ   lr, #1
         STREQB  lr, MouseReporting
-        [ STB
-        TEQ     r2, #0
-        TEQEQ   r3, #0
-        MOVNE   lr, #1
-        STRNEB  lr, MousePresent
-        BLNE    ProcessMouseXY
-        |
         BL      ProcessMouseXY
-        ]
         Pull    "r2,r3,r11,pc"
 
 
@@ -443,12 +424,6 @@ PointerSWI
         TEQ     r0, #0
         LDREQB  r0, MouseType
         BEQ     SLVK
-
-        [ STB
-        TEQ     r0, #2
-        LDREQB  r0, MousePresent
-        BEQ     SLVK
-        ]
 
         TEQ     r0, #1
         BNE     %FT10

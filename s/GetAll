@@ -87,7 +87,6 @@
         GET     hdr.ARMops
 
         GET     s.Kernel
-        $GetFlashROM
         GET     s.ARMops
         GET     s.NewIRQs
         GET     s.Oscli

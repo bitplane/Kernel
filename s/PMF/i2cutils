@@ -1620,14 +1620,6 @@ NVMemory_ResetValue ROUT
         TEQ     R1, #PrintSoundCMOS
         BEQ     %FT30           ; code driven
 
-    [ STB :LAND: :DEF: IOMD_C_PALNTSCType
-        TEQ     R1, #TerritoryCMOS
-        BEQ     %FT40           ; code driven
-        TEQ     R1, #CountryCMOS
-        BEQ     %FT41           ; code driven
-        TEQ     R1, #TimeZoneCMOS
-        BEQ     %FT42           ; code driven
-    ]
         ADR     R3, DefaultCMOSTable
 10
         LDRB    R2, [R3], #2    ; table is of location/value pairs...
@@ -1663,26 +1655,6 @@ NVMemory_ResetValue ROUT
                      ; ^^^       interpolate at low rates, 16 bit DAC, fully programmable rates
                      ;    ^^^^^  tbs chars valid, escape with GSTrans
         EXIT
-    [ STB :LAND: :DEF: IOMD_C_PALNTSCType
-40
-        MOV     R2, #0                       ; PAL = territory UK
-        MOV     R3, #49                      ; NTSC = territory USA
-        B       %FT44
-41
-        MOV     R2, #1                       ; PAL = country UK
-        MOV     R3, #48                      ; NTSC = country USA
-        B       %FT44
-42
-        MOV     R2, #0                       ; PAL = 0 from UTC (GMT)
-        MOV     R3, #&E0                     ; NTSC = -8 hours from UTC (USA Pacific)
-        B       %FT44
-44
-        MOV     R14, #IOMD_Base
-        LDRB    R14, [R14, #IOMD_CLINES]
-        TST     R14, #IOMD_C_PALNTSCType
-        MOVNE   R2, R3                       ; Select NTSC when line high
-        EXIT
-    ]
 
 ; -----------------------------------------------------------------------------
 ; OS_NVMemory 7 - set station
@@ -1721,30 +1693,6 @@ NVMemory_SetStation ROUT
         MSR     CPSR_cf, R4     ; restore interrupt state
         EXIT
 
- [ ValidateCMOS :LAND: STB
-DefaultCMOSTable
-        ; Minimalist table
-        DCB     KeyDelCMOS,         32
-        DCB     KeyRepCMOS,         8
-        DCB     MODETVCMOS,         &10                                     ; TV 0,1
-        DCB     StartCMOS,          (1:SHL:7):OR:(2:SHL:3)                  ; NONUM, NOCAPS
-        DCB     DBTBCMOS,           (1:SHL:4)                               ; Boot
-        DCB     YearCMOS+0,         00
-        DCB     YearCMOS+1,         20
-      [ IOMD_C_MonitorType = 0 :LAND: IOMD_C_PALNTSCType = 0
-        ; TV if we don't have a MonitorType auto-detect bit
-        DCB     VduCMOS,            Sync_Separate :OR: MonitorType0
-      |
-        ; auto-detect if we have a MonitorType auto-detect bit
-        DCB     VduCMOS,            Sync_Auto :OR: MonitorTypeAuto
-      ]
-        DCB     CountryCMOS,        1                                       ; UK
-        DCB     MouseStepCMOS,      2
-        DCB     SystemSpeedCMOS,    (1:SHL:2):OR:(1:SHL:4):OR:(0:SHL:5)
-                                    ; Delete-etc reset
-                                    ;              WimpMode auto
-                                    ;                           Cache on
- |
 DefaultCMOSTable
         ; Normal table
  [ :DEF: CMOS_Override
@@ -1772,9 +1720,7 @@ DefaultCMOSTable
         DCB     StartCMOS,          (4:SHL:0) :OR: (2:SHL:3) :OR: (1:SHL:6) :OR: (0:SHL:7)
                                     ; ^              ^              ^              ^
                                     ; ADFS DR.4      NOCAPS         NODIR (moot)   NUM
-      [ :LNOT: STB
         DCB     NewADFSCMOS+0,      &41     ; floppies=1, ST506=0, IDE=1 (changed 01-Sep-93)
-      ]
         DCB     NewADFSCMOS+1,      4_3333  ; step 3 for each drive
         DCB     NewADFSCMOS+2,      1       ; ADFSBuffers 1
 
@@ -1804,17 +1750,6 @@ DefaultCMOSTable
                                     ;                Homerton.Medium
                                     ;                               Tiled window background
 
-      [ STB
-        DCB     SystemSpeedCMOS,    (1:SHL:0):OR:(0:SHL:1):OR:(1:SHL:2):OR:(0:SHL:3):OR:(1:SHL:4):OR:(0:SHL:5):OR:(1:SHL:6):OR:(0:SHL:7)
-                                    ; AUN ROMBoot Enabled
-                                    ;              AUN auto-station numbering off
-                                    ;                           Delete-etc reset
-                                    ;                                        Power saving off
-                                    ;                                                     WimpMode auto
-                                    ;                                                                  Cache on
-                                    ;                                                                               Broadcast loader disabled
-                                    ;                                                                                            Broadcast loader colours off
-      |
         DCB     SystemSpeedCMOS,    (0:SHL:0):OR:(0:SHL:1):OR:(1:SHL:2):OR:(0:SHL:3):OR:(1:SHL:4):OR:(0:SHL:5):OR:(1:SHL:6):OR:(0:SHL:7)
                                     ; AUN BootNet Disabled
                                     ;              AUN auto-station numbering off
@@ -1824,25 +1759,16 @@ DefaultCMOSTable
                                     ;                                                                  Cache on
                                     ;                                                                               Broadcast loader disabled
                                     ;                                                                                            Broadcast loader colours off
-      ]
-
-      [ STB
-        ;       FontMaxCMOS                     yes, omitting is deliberate!
-        DCB     FontMax2CMOS,       &2C       ; 32 point
-        DCB     FontMax3CMOS,       &38       ; 32 point
-      |
         DCB     FontMaxCMOS,        64        ; 4096k
         DCB     FontMax2CMOS,       36:EOR:12 ; 36 point
         DCB     FontMax3CMOS,       36:EOR:24 ; 36 point
         DCB     FontMax4CMOS,       16        ; 16 point
-      ]
         DCB     AlarmAndTimeCMOS,   2_00010000           ; !Alarm autosave on
         DCB     FSLockCMOS+5,       &EA                  ; Checksum for no password
         DCB     SparrowMarker,      FreewayNoAutoAddress ; Stop Freeway assigning addresses to interfaces
         DCB     NetworkFlags,       LanManFStransport    ; LMTransport is NetBIOS over IP
         DCB     WimpDragMoveLimitCMOS, (1:SHL:7)         ; WimpIconiseButton
         DCB     CDROMFSCMOS,        &C1                  ; drives = 1, buffer size = 256K
- ]
         DCB     &FF
         ALIGN
 

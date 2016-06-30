@@ -290,9 +290,6 @@ DRAM1PhysRam *  &14000000
 DRAM2PhysRam *  &18000000
 DRAM3PhysRam *  &1C000000
 DRAMBaseAddressMask * &1C000000         ; used to mask off bits after stealing video RAM
- [ STB
-PhysExtROM *    &01000000               ; 2nd ROM bank starts at 16M
- ]
 SAMLength *     512*4                   ; SAM length in bytes for 1 bank of VRAM
 
 ; Manifests
@@ -689,11 +686,7 @@ JTABLE  & SWIWriteC
  ]
         & PerformReset
         & MMUControlSWI
- [ STB
-        & NoSuchSWI
- |
         & ResyncTimeSWI
- ]
  [ StrongARM
         & PlatFeatSWI
         & SyncCodeAreasSWI

@@ -528,31 +528,10 @@ TranslateMonitorLeadType Entry "r0-r2"
 
 
 MonitorLeadList
-  [ STB
-   [ IOMD_C_MonitorType = 0                                     ; no auto-detect bit
-     [ IOMD_C_PALNTSCType = 0                                   ; no PAL/NTSC bits:
-        MonitorLeadItem 4_3333,  12, 0, 1                       ; PAL TV assumed
-     | ; IOMD_C_PALNTSCType = 0
-        MonitorLeadItem 4_0333,  12, 0, 1                       ; PAL TV
-        MonitorLeadItem 4_1333,  46, 8, 1                       ; NTSC TV
-     ] ; IOMD_C_PALNTSCType = 0
-   |
-     [ :LNOT: ChrontelSupport
-       [ IOMD_C_PALNTSCType = 0                                 ; no PAL/NTSC bits:
-        MonitorLeadItem 4_3331,  12, 0, 1                       ; PAL TV assumed
-       | ; IOMD_C_PALNTSCType = 0                               ; wealth of bits:
-        MonitorLeadItem 4_0331,  12, 0, 1                       ; PAL TV
-        MonitorLeadItem 4_1331,  46, 8, 1                       ; NTSC TV
-       ] ; IOMD_C_PALNTSCType = 0
-     ] ; :LNOT: ChrontelSupport
-   ] ; IOMD_C_MonitorType = 0
-        MonitorLeadItem 4_3333,  28, 3, 0                       ; VGA-capable monitors 256 colours
-  | ; STB
         ; KJB - changed default modes to 256 colours
         MonitorLeadItem 4_3330,  28, 3, 0                       ; VGA-capable monitors
         MonitorLeadItem 4_3111,  28, 5, 0                       ; Nothing - try LCD (fudge fudge)
         MonitorLeadItem 4_3333,  15, 0, 1                       ; Others - assume TV standard
-  ]; STB
 
 
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

@@ -19,11 +19,7 @@
 
                 GET   Version
                 GBLS  VersionNo
-                [ Module_MinorVersion = "" :LOR: :LNOT: STB
 VersionNo       SETS  "$VString ($Date)"
-                |
-VersionNo       SETS  "$VString ($Date) $Module_MinorVersion"
-                ]
 
 MosVer          *       6               ; As returned by OS_Byte 0
 
@@ -55,47 +51,15 @@ ShowWS          SETL    {TRUE}          ; Make KernelWS be verbose
                 GBLL    Module
 Module          SETL    {FALSE}
 
-;RISC OS 3.71 onwards assumed bus timings - if true, then ROM speeds atc are assumed according to IOMD ID regs. as follows:
-;     if IOMD (Risc PC)     ROM ticks 5-3 (assumed bus 32 MHz)
-;     if 7500 (A7000)       ROM ticks 5-3 (assumed bus 32 MHz), all clocks divide-by-1
-;     if 7500FE (A7000+)    ROM ticks 5-3,half speed (asssumed bus 64 MHz), EDO memory, divide-by-2 I/O, divide-by-1 CPU and memory
-;
-                GBLL    RO371Timings
-RO371Timings    SETL    :LNOT: STB
-
                 GBLL    VCOstartfix              ;code in early kernel to fix VCO start problem on A7000 (esp. 7500FE)
 VCOstartfix     SETL    {TRUE}
-
-; For development on Customer M hardware only
-                GBLL    ParallelFlashUpgrade
-ParallelFlashUpgrade SETL {FALSE}
 
 ;whether we support running on the (Risc PC) emulator
                 GBLL    EmulatorSupport
 EmulatorSupport SETL    {FALSE} ; Disabled; QEMU doesn't like it
 
-  [ :LNOT: RO371Timings
-
-                GBLL    NormalSpeedROMS
- [ STB
-NormalSpeedROMS SETL    {TRUE}           ;use FALSE for slow EPROMS
- |
-NormalSpeedROMS SETL    {FALSE}          ;use FALSE for slow EPROMS
- ]
-
-                GBLL    AutoSpeedROMS
-AutoSpeedROMS   SETL    {TRUE} :LAND: :LNOT: STB
-
-                GBLL    RISCPCBurstMode
-RISCPCBurstMode SETL    {FALSE}
-;>>>RCM says if the FRM approves the use of burst mode ROMS for
-;>>>RISC PC (no reason why it shouldn't) all references to RISCPCBurstMode
-;>>>could be replaced by NormalSpeedROMS
-
-  ] ; :LNOT:RO371Timings
-
                 GBLL    DoInitialiseMode
-DoInitialiseMode SETL   {TRUE} :LAND: Embedded_UI
+DoInitialiseMode SETL   {TRUE}
 
                 GBLL    SqueezeMods     ; whether squeezed modules are allowed
 SqueezeMods     SETL    {TRUE}
@@ -119,7 +83,7 @@ AlwaysClearRAM  SETL    {TRUE}
 CacheCMOSRAM    SETL    {TRUE}
 
                 GBLL    ProtectStationID        ; Disallow writes to NetStnCMOS (via OS_Byte & OS_NVMemory)
-ProtectStationID        SETL :LNOT:Embedded_UI
+ProtectStationID        SETL {TRUE}
 
                 GBLL    CheckProtectionLink     ; if true, disallow CMOS RAM changes if link in protected position
 CheckProtectionLink     SETL {TRUE}             ; NB affects Delete/Copy/R/T and 0-9/.
@@ -131,10 +95,10 @@ ValidateCMOS    SETL    {TRUE}                  ; and do minimal default setting
 ChecksumCMOS    SETL    {TRUE}                  ; invalid. Also, calculate CMOS checksum and write it when needed.
 
                 GBLL    LCDInvert
-LCDInvert       SETL    {TRUE} :LAND: :LNOT: STB
+LCDInvert       SETL    {TRUE}
 
                 GBLL    LCDSupport              ; Whether LCD Support is assembled in or not
-LCDSupport      SETL    {TRUE} :LAND: :LNOT: STB
+LCDSupport      SETL    {TRUE}
 
                 GBLL    ModeSelectors           ; whether mode selectors are understood
 ModeSelectors   SETL    {TRUE}
@@ -280,9 +244,6 @@ StorkPowerSave  SETL    MorrisSupport   ;False=> older A4 code only
                 GBLL    FixCallBacks            ; see Docs.CallbackChange
 FixCallBacks    SETL    {TRUE}                  ; also addresses some atomicity problems
 
-                GBLL    InterlacedPointer
-InterlacedPointer SETL {TRUE} :LAND: STB        ; enable code to do proper interlaced pointer
-
   [ :LNOT: :DEF: HiProcVecs
                 GBLL    HiProcVecs              ; Relocate processor vectors and first 16K of workspace to &FFFF0000
 HiProcVecs      SETL    "$Machine"="Tungsten" :LOR: :LNOT: NoARMv6
@@ -334,7 +295,7 @@ AssemblePointerV    SETL  {TRUE}          ; Use PointerV.
 ProcessorVectors    SETL  {TRUE}          ; Processor vectors indirected through 0 page.
 
                     GBLL  UseNewFX0Error
-UseNewFX0Error      SETL  (:LNOT: Embedded_UI) :LAND: ((Version :AND: 1) = 1) ; Whether *FX 0 should show the ROM link date instead of the UtilityModule date
+UseNewFX0Error      SETL  ((Version :AND: 1) = 1) ; Whether *FX 0 should show the ROM link date instead of the UtilityModule date
 
                     GBLS  GetMessages
  [ International
@@ -347,12 +308,6 @@ GetMessages         SETS  ""
 GetUnsqueeze        SETS  "GET s.Unsqueeze"
  |
 GetUnsqueeze        SETS  ""
- ]
-                    GBLS  GetFlashROM
- [ ParallelFlashUpgrade
-GetFlashROM         SETS  "GET s.FlashROM"
- |
-GetFlashROM         SETS  ""
  ]
                     GBLS  GetKernelMEMC
                     GBLS  GetPalette
