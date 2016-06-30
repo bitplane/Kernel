@@ -96,6 +96,7 @@
         $GetUnsqueeze
         GET     s.ArthurSWIs
         $GetKernelMEMC
+        GET     s.Exceptions
         GET     s.ChangeDyn
         GET     s.HAL
         GET     s.Arthur2

@@ -77,12 +77,12 @@ LongCLISize          * 1024                     ; buffer size for long commands
                 GBLL    XScaleMiniCache         ; is the XScale mini data-cache used (at all)
                 GBLL    XScaleJTAGDebug
 
-SASTMhatbroken     SETL {TRUE}
+SASTMhatbroken     SETL SupportARMv4 :LAND: NoARMv5
 
                 GBLL    CacheCleanerHack        ; Cache clean hack in ClearPhysRAM for platforms that use DCacheCleanAddress. Does not work with all CPUs!
                 GBLL    InterruptDelay          ; True if we might be running on a CPU with CPUFlag_InterruptDelay set (e.g. StrongARM)
 CacheCleanerHack   SETL {TRUE}
-InterruptDelay     SETL {TRUE}
+InterruptDelay     SETL SupportARMv4 :LAND: NoARMv5
 
 ARM6support        SETL (MEMM_Type = "ARM600")  ; Needs updating for VMSAv6 compatability
 XScaleMiniCache    SETL {FALSE}
