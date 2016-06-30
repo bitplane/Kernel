@@ -775,15 +775,10 @@ PerformReset
         LDR     R1, PowerDownMagic
         TEQ     R0, R1
         BNE     %FT15
-        [ :LNOT: HAL
-        LDR     r0, =&83900000                  ; Address in IOMD to force power off
-        LDR     r0, [r0]
-        |
         AddressHAL
         MOV     a1, #0
         LDR     a2, =L1PT
         CallHAL HAL_Reset
-        ]
 15
         B       CONT_Break                      ; If we can't turn the power off,we may end up back here anyway
         |

@@ -172,7 +172,6 @@ Write
         STRB    R3, [R1, R2]            ; real hardware as well
 15
 
-  [ HAL
         Push    "R2,R3,sb,R12"
         AddressHAL
         CallHAL HAL_NVMemoryType
@@ -207,7 +206,6 @@ Write
         Pull    "R0-R4,PC"
 20
         Pull    "R2,R3,sb,R12"
-  ]
 
 
  [ E2ROMSupport
@@ -416,7 +414,6 @@ WriteSubBlock ROUT
 15
         Push    "R0-R2"
         ADD     R0, R0, R4              ; R0 = physical address
-  [ HAL
         Push    "sb, R12"
         MOV     R5, R0                  ; save address
         AddressHAL
@@ -454,7 +451,6 @@ WriteSubBlock ROUT
 
 17
         Pull    "sb,R12"
-  ]
 
   [     E2ROMSupport
         BL      GetI2CAddress           ; convert to device address and offset
@@ -562,7 +558,6 @@ Read
 
 ; else drop thru into real CMOS reading code
 
-  [ HAL
         Push    "R3,R4,sb,R12"
         MOV     R4, R0                  ; save address
         AddressHAL
@@ -590,7 +585,6 @@ Read
 
 20
         Pull    "R3,R4, sb,R12"
-  ]
 
   [     E2ROMSupport
         BL      GetI2CAddress           ; convert to device address and offset
@@ -736,7 +730,6 @@ ReadSubBlock ROUT
         Push    "R0-R2"
         ADD     R0, R0, R4              ; R0 = physical start address
         ADD     R3, R3, R4              ; R3 = physical end address
-  [ HAL
         Push    "sb"
         SUB     R2, R3, R0
         MOV     R5, R0                  ; save address
@@ -770,7 +763,6 @@ ReadSubBlock ROUT
 
 17
         Pull    "sb"
-  ]
 
         SUB     R5, R3, R0              ; R5 = bytes being read
 
@@ -917,7 +909,6 @@ ChecksumSubBlock ROUT
         Push    "R0-R2"
         ADD     R0, R0, R4              ; R0 = physical start address
         ADD     R3, R3, R4              ; R3 = physical end address
-  [ HAL
         Push    "sb,R12"
         MOV     R5, R0                  ; save address
         AddressHAL
@@ -964,7 +955,6 @@ ChecksumSubBlock ROUT
         Pull    "R3-R5,PC"
 17
         Pull    "sb,R12"
-  ]
         SUB     R5, R3, R0              ; R5 = bytes being read
 
   [     E2ROMSupport
@@ -1192,7 +1182,6 @@ InitCMOSCache   Entry "r1-r6, sb,r12"
         MOV     R3, #10         ; Default speed setting (5µs delays)
         STRB    R3, [R4, #NVRamSpeed]
 
- [ HAL
         AddressHAL
         CallHAL HAL_NVMemoryType
         MOV     R5, R0
@@ -1254,7 +1243,6 @@ InitCMOSCache   Entry "r1-r6, sb,r12"
         MOVNE   R0, #0                  ; Failure exit condition
         EXIT
 03
- ]
 
 ;       No HAL,so determine what hardware we've got fitted by probing,
 ;       R4 holds the number of 256 byte blocks that we've found
@@ -1477,11 +1465,7 @@ NVMemorySub
         B       NVMemory_Write
         B       NVMemory_ReadBlock
         B       NVMemory_WriteBlock
-  [ E2ROMSupport :LAND: :LNOT: HAL
-        B       NVMemory_WriteSize
-  |
-        B       NVMemory_Unknown
-  ]
+        B       NVMemory_Unknown        ; Reserved for Kernel-5_41 divergence
         B       NVMemory_ResetValue
         B       NVMemory_SetStation
 
@@ -1614,27 +1598,6 @@ NVMemory_WriteBlock ROUT
         EXIT
 
 ; -----------------------------------------------------------------------------
-; OS_NVMemory 5 - read/write value of NVRamWriteSize
-;
-; in:   R0 = 5
-;       R1 = new value of NVRamWriteSize (in bytes, multiple of 256), or -1 to read
-; out:  R1 = value of NVRamWriteSize (in bytes)
-;
-  [ E2ROMSupport :LAND: :LNOT: HAL
-
-NVMemory_WriteSize ROUT
-        Entry   "R2"
-        LDR     R2, =ZeroPage
-        CMP     R1, #-1
-        LDREQB  R1, [R2, #NVRamWriteSize]
-        MOVNE   R1, R1, LSR #8
-        STRNEB  R1, [R2, #NVRamWriteSize]
-        MOV     R1, R1, LSL #8             ; convert to bytes
-        EXIT
-
-  ] ; E2ROMSupport :LAND: :LNOT: HAL
-
-; -----------------------------------------------------------------------------
 ; OS_NVMemory 6 - query CMOS value that would be used on a Delete-Power-On reset
 ;
 ; in:   R0 = 6
@@ -1676,7 +1639,6 @@ NVMemory_ResetValue ROUT
         EXIT    EQ
         B       %BT10
 20
-    [ HAL
       [ "$Machine"="IOMD"
         Push    "R0-R1,R9,R12"
         AddressHAL
@@ -1695,53 +1657,11 @@ NVMemory_ResetValue ROUT
         ; Everyone else is on USB
         MOV     R2, #PointerDevice_USB
       ]
-    |
-        Push    "R0-R1"
-        MOV     R3, #IOMD_Base
-        LDRB    R1, [R3, #IOMD_ID1]
-        LDRB    R0, [R3, #IOMD_ID0]
-        ORR     R0, R0, R1, LSL #8
-        LDR     R1, =IOMD_Original
-        TEQ     R0, R1
-        MOVEQ   R2, #PointerDevice_QuadMouse ; Risc PC
-        MOVNE   R2, #PointerDevice_PS2Mouse  ; A7000 et al
-        Pull    "R0-R1"
-    ]
         EXIT
 30
-    [ HAL
         MOV     R2, #2_10100100
                      ; ^^^       interpolate at low rates, 16 bit DAC, fully programmable rates
                      ;    ^^^^^  tbs chars valid, escape with GSTrans
-    |
-        Push    "R0-R1"
-        MOV     R3, #IOMD_Base
-        LDRB    R1, [R3, #IOMD_ID1]
-        LDRB    R0, [R3, #IOMD_ID0]
-        ORR     R0, R0, R1, LSL #8
-        LDR     R1, =IOMD_7500
-        TEQ     R0, R1
-        LDRNE   R1, =IOMD_7500FE
-        TEQNE   R0, R1
-      [ STB
-        MOVEQ   R2, #2_00000100              ; Cheapskates
-      |
-        MOVEQ   R2, #2_10100100              ; A7000 et al always have 16 bit sound
-      ]
-        BEQ     %FT31
-        ; on Issue A's the protection bit is only weakly pulled up,
-        ; so force it high, then read it back
-        LDR     R3, =IOMD_MonitorType
-        LDR     R1, [R3]
-        ORR     R1, R1, #IOMD_SoundsystemLinkBit
-        STR     R1, [R3]
-        LDR     R1, [R3]
-        TST     R1, #IOMD_SoundsystemLinkBit
-        MOVEQ   R2, #2_10100100              ; if zero, must be Rimmer, so assume 16bit sound hardware present
-        MOVNE   R2, #2_00000100              ; 8 bit sound on the motherboard (can't detect plugin upgrades)
-31
-        Pull    "R0-R1"
-    ]
         EXIT
     [ STB :LAND: :DEF: IOMD_C_PALNTSCType
 40

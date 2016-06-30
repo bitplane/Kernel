@@ -39,9 +39,7 @@ UseProcessTransfer SETL {FALSE}
 
 ; Make sure we aren't being compiled against a CPU that can't possibly support a VMSAv6 MMU
 
-        ASSERT HAL32
-        ASSERT :LNOT: ECC
-        ASSERT :LNOT: ARM6support
+        ASSERT :LNOT: NoARMv6
 
         KEEP
 
@@ -554,7 +552,7 @@ MMUControl_GetARMop
 ;
 ;       Exception veneers
 
- [ No26bitCode :LAND: ChocolateAMB
+ [ ChocolateAMB
 ;  Instruction fetch abort pre-veneer, just to field possible lazy AMB aborts
 ;
 PAbPreVeneer    ROUT

@@ -1173,25 +1173,8 @@ SWIPlot ROUT
         BNE     %FT10
 
         Push    "R0-R9,R14"
- [ No26bitCode
         BL      PreWrchCursor
         WritePSRc SVC_mode, R14         ; interrupts on
- |
-        ADR     R14, %FT05 + SVC_mode   ; R14 will have I_bit clear
-
-; TMD 16-May-89: Next instruction used to be B PreWrchCursor2, a secondary
-; entry point that didn't disable IRQs as they were assumed to be already
-; off. However this caused a bug in RISC OS 2.00, since SWIs are now entered
-; with the IRQ state of the caller, so this has now been changed back to
-; use the primary entry point (PreWrchCursor) which does disable them.
-
-        B       PreWrchCursor           ; this exits by MOVS PC, R14 so it
-                                        ; clears the I_bit for us
-; PreWrchCursor  also exits with R6 = CursorFlags, needed for the
-; EntryFromSWIPlot routine to do clip window calculations if necessary
-
-05
- ]
         LDMFD   R13, {R0-R2}
         MOV     R3, R0                  ; save plot code
         MOV     R0, R1, LSL #16
@@ -1442,16 +1425,11 @@ SWIWriteS ROUT
         BVS     %FT90
         Pull    "R0, R14"
 85
-  [ No26bitCode
         TST     R14, #T32_bit
         ADDNE   R10, R10, #1            ; if Thumb
         BICNE   R10, R10, #1            ; round up to next halfword boundary
         ADDEQ   R10, R10, #3            ; else
         BICEQ   R10, R10, #3            ; round up to next word boundary
-  |
-        ADD     R10, R10, #3
-        BIC     R10, R10, #3            ; round up to next word boundary
-  ]
         STR     R10, [R13, #4]          ; Poke new address into stack
         ExitSWIHandler
 

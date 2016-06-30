@@ -373,12 +373,7 @@ InitialiseROMModule Entry "r0-r12"
         LDR     r6, [r11, #ROMModule_BaseAddress]
         LDR     r7, [r12, #ROMModule_PoduleNumber]
         ADRL    r1, crstring
-      [ No26bitCode
         ADR     lr, %FT20
-      |
-        MOV     lr, pc                                  ; ADRS lr, %FT10
-        ADD     lr, lr, #%FT20-%FT10                    ; ADRS lr, %FT20
-      ]
 10
         Push    "r0-r7,r9,lr"
         LDR     r1, [r11, #ROMModule_Size]
@@ -2163,7 +2158,6 @@ CheckHeader ROUT
         LDR     R3, [R1, #Module_Init]
         TST     R3, #&80000000
         BLEQ    %FT10                           ; only check init offset if an unsqueezed module
- [ No26bitCode
 ; Need to go through extra checks to see that (a) we have a module
 ; flags table, and (b) it says that we're 32-bit
         LDR     R3, [R1, #Module_SWIChunk]
@@ -2183,7 +2177,6 @@ CheckHeader ROUT
         LDR     R3, [R1, R3]
         TST     R3, #ModuleFlag_32bit
         BEQ     %FT88
- ]
         CLRV
         Pull   "R3, PC"
 
@@ -2200,7 +2193,6 @@ CheckHeader ROUT
       ]
         Pull   "R3, PC"
 
- [ No26bitCode
 20      TST     R3, #3
         BNE     %FT88
 21      CMP     R3, R2
@@ -2218,7 +2210,6 @@ CheckHeader ROUT
       ]
         Pull   "R3, PC"
         MakeErrorBlock RMNot32bit
- ]
 
         MakeErrorBlock BadRMHeaderField
 

@@ -16,7 +16,6 @@
 
 ; Compatibility fudgery for OS_ReadLine and ReadLineV with 32-bit addresses
 
- [ No26bitCode
 ReadLineSWI
         Push    "r4,lr"
         MOV     r4, #0
@@ -38,43 +37,18 @@ ReadLineSWI
 ReadLine32SWI
         MOV     r11, #OS_ReadLine
         B       VecSwiDespatch
- |
-ReadLine32SWI
-        TST     r0, #ARM_CC_Mask-3
-        BNE     %FT90
-        AND     r11, r4, #ARM_CC_Mask
-        ORR     r0, r0, r11
-        Push    "r4,lr"
-        AND     r4, r4, #&FF
-        SWI     XOS_ReadLine
-        Pull    "r4,lr"
-        B       SLVK_TestV
-
-90      Push    "lr"
-        BL      SetErrorBadAddress
-        Pull    "lr"
-        B       SLVK_SetV
- ]
 
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ; VecRdLine - Read line from input stream (OSWORD 0 equivalent)
 
 ; In    r0 -> buffer for characters
- [ :LNOT:No26bitCode
-;               bit 31 set means don't reflect characters that don't go in the buffer
-;               bit 30 set means reflect with the character in R4
- ]
 ;       r1 =  max length of line (excluding carriage return)
 ;       r2 = lowest character put into buffer
 ;       r3 = highest character put into buffer
- [ No26bitCode
 ;       r4 = flags
 ;               bit 31 set means don't reflect characters that don't go in the buffer
 ;               bit 30 set means reflect with the character in R4
 ;               bits 7-0 = character to echo if r4 bit 30 is set
- |
-;       r4 = character to echo if r1 bit 30 is set
- ]
 ;       wp -> OsbyteVars
 
 ; Out   r0, r2, r3 corrupted
@@ -88,16 +62,8 @@ VecRdLine ROUT
 
         Push    "R4-R7"
 
- [ No26bitCode
         MOV     R7, R4                  ; R7 = flags + echo byte
         MOV     R4, R0                  ; R4 -> buffer
- |
-        AND     R7, R0, #&C0000000      ; extract flags
-        AND     R4, R4, #&FF
-        ORR     R7, R7, R4              ; got flags, potential echo byte in R7
-
-        BIC     R4, R0, #ARM_CC_Mask-3  ; R4 -> buffer
- ]
 
         MOV     R6, #0                  ; R6 = index into buffer
         STRB    R6, PageModeLineCount   ; reset page lines
@@ -183,15 +149,7 @@ EndReadLine
         MOVS    R5, R5, LSL #(32-6)     ; shift esc bit into carry
 
         MOV     R1, R6                  ; R1 := length
- [ No26bitCode
         Pull    "R4-R7, pc"             ; Always claiming vector
- |
-        Pull    "R4-R7, lr"             ; Always claiming vector
-        BIC     lr, lr, #V_bit :OR: C_bit
-        MOV     r12, pc
-        AND     r12, r12, #V_bit :OR: C_bit
-        ORRS    pc, lr, r12             ; back with C, V affected.
- ]
 
 ReadLine_Vset
         SETV
@@ -300,18 +258,12 @@ SBRKPT ROUT
         ADD     sp, sp, #4              ; discard stacked SWI number
         LDR     r10, =ZeroPage
         LDR     r10, [r10, #BrkBf]
-  [ No26bitCode
         STR     r12, [r10, #16*4]       ; original PSR (with V)
         Pull    r14
         TST     r12, #T32_bit
         SUBEQ   r14, r14, #4
         SUBNE   r14, r14, #2            ; r14 = PC of the SWI
         TST     r12, #2_01111
-  |
-        FakeLR  r11,,r12                ; r12+[sp] -> lr (r11 temp reg)
-        SUB     r14, r14, #4            ; r14 = PC of the SWI
-        TST     r14, #SVC_mode
-  ]
         STR     r14, [r10, #15*4]       ; PC of the SWI put in.
         BNE     %FT01                   ; NE if not in user mode
         STR     r0, [r10], #4
@@ -464,10 +416,8 @@ EVENTH  MOV     pc, lr
 
 NOCALL  LDR     r0, =ZeroPage               ; default callback routine
         LDR     r14, [r0, #CallBf]
- [ No26bitCode
         LDR     r0, [r14, #4*16]
         MSR     SPSR_cxsf, r0
- ]
         LDMIA   r14, {r0-r12, r13_usr, r14_usr}^ ; load user's regs
         NOP
         LDR     r14, [r14, #4*15]
@@ -953,20 +903,10 @@ Branch0_FromTrampoline
         B       DebugStub
 20
  ]
- [ No26bitCode
         MOV     R0, #0
         STR     R0, [R1, #15*4]
         MRS     R0, CPSR
         STR     R0, [R1, #16*4]
- |
-        MRS     R0, CPSR                        ; Fake up a combined PC+PSR (PC=0)
-        AND     R1, R0, #I32_bit :OR: F32_bit
-        AND     R0, R0, #&F0000003
-        ORR     R0, R0, R1, LSL #IF32_26Shift
-        MOV     R1, #0
-        LDR     R1, [R1, #ExceptionDump]
-        STR     R0, [R1, #15*4]
- ]
         SWI     XOS_EnterOS
 
         LDR     R0, =ZeroPage
@@ -976,15 +916,6 @@ Branch0_FromTrampoline
         ADR     R7, ErrorBlock_BranchThrough0
         B       UNDEF1
         MakeErrorBlock BranchThrough0
-
- [ :LNOT: No26bitCode
-BranchThroughZeroInstruction
- [ ProcessorVectors
-        LDR     PC, .+ProcVec_Branch0
- |
-        B       .+Branch0_Trampoline
- ]
- ]
 
  [ XScaleJTAGDebug
         ; Magic from the Multi-ICE User Guide
@@ -1023,7 +954,6 @@ DebugStubLine2
 DoAnUpCall ROUT
 
         Push    lr                  ; better have one of these to pull later !
- [ No26bitCode
         MRS     r12, CPSR
       [ NoARMT2
         BIC     r12, r12, #&F0000000
@@ -1036,24 +966,15 @@ DoAnUpCall ROUT
         BFI     r10, lr, #28, #4 ; copy user flags (I bit clear)
       ]
         MSR     CPSR_cf, r10        ; ints on, stay in SVC mode, flags in psr
- |
-        AND     r10, lr, #&F0000000 ; copy user flags (I_bit clear)
-        TEQP    r10, #SVC_mode      ; ints on, stay in SVC mode, flags in psr
- ]
         MOV     r10, #UpCallV
         BL      CallVector
  [ NoARMT2
         Pull    lr
         BIC     lr, lr, #&F0000000
-   [ No26bitCode
         MRS     R10, CPSR
         MOV     R10, R10, LSR #(32-4)
-   |
-        MOV     R10, PC, LSR #(32-4)
-   ]
         ORR     lr, lr, R10, LSL #(32-4)
  |
-        ASSERT  No26bitCode
         MRS     R10, CPSR
         Pull    lr
         MOV     R10, R10, LSR #28
@@ -1111,11 +1032,7 @@ AdjustOurSet
         CMPNE   R12, #0
         STRNE   R12, [R11]
 
- [ No26bitCode
         Pull    pc
- |
-        Pull    pc,,^
- ]
 
 AOS_Silly
         ADR     r0, ErrorBlock_BadEnvNumber
@@ -1123,13 +1040,8 @@ AOS_Silly
         BL      TranslateError
       ]
 exit_AOS
- [ No26bitCode
         SETV
         Pull    "pc"
- |
-        Pull    "lr"
-        ORRS    pc, lr, #V_bit
- ]
         MakeErrorBlock BadEnvNumber
 
 AOS_Table
@@ -1419,22 +1331,6 @@ ReadSysInfo_InvalidReason
 ;       r3 = word 0 of unique machine ID, or 0 if unavailable
 ;       r4 = word 1 of unique machine ID, or 0 if unavailable
 
-; Bits in IOSystemType
-
-IOST_COMBOMASK  * 7
-IOST_82C710     * 1
-IOST_82C711     * 2
-IOST_37C665     * 3
-IOST_37C669     * 4
-IOST_UMC669     * 5
-IOST_IOEB       * 8     ; On IOMD systems this really means IOMD.
-IOST_LC         * 16
- [ MorrisSupport
-IOST_7500       * 32    ;Running on ARM7500 (Morris) so actually IOMDL and VIDC2L
-IOST_BATMAN     * 64    ;Stork keyboard/battery controller seems to be present
- ]
-
- [ HAL
 20
         Push    "r9,r14"
         AddressHAL
@@ -1452,41 +1348,6 @@ IOST_BATMAN     * 64    ;Stork keyboard/battery controller seems to be present
         MOV     r4, r4, LSR #16                 ; and move the rest down to the bottom
         Pull    "r0-r2,r9,r14"
         ExitSWIHandler
- |
-20
-        MOV     r0, #0
-        LDR     r3, [r0, #RawMachineID+0]
-        LDR     r4, [r0, #RawMachineID+4]
-        MOV     r3, r3, LSR #8                  ; lose first 8 bits
-        ORR     r3, r3, r4, LSL #24             ; and put bits 0..7 of r3 into bits 24..31 of r2
-        MOV     r4, r4, LSL #8                  ; lose CRC bits
-        MOV     r4, r4, LSR #16                 ; and move the rest down to the bottom
-        LDRB    r0, [r0, #IOSystemType]
-
-        ANDS    r2, r0, #IOST_LC
-        MOVNE   r2, #1                          ; make r2 0 or 1
- [ MorrisSupport
-        TST     r0, #IOST_BATMAN
-        MOVNE   r2, #2                          ;NE, its a Stork portable
-        TST     r0, #IOST_7500
-        ORRNE   r2, r2, #&00000100              ;NE, Morris based machine with IOMDL
-        ORRNE   r2, r2, #&00010000              ;NE, and VIDC2L
- ]
-        MOV     r1, #0
-        LDRB    r1, [r1, #NVRamSpeed]
-
-        SUB     r1, r1, #1                      ; catch zero = slow (just in case)
-        CMP     r1, #3-1                        ; speed is 3 for 400kHz, 10 for 100kHz.
-        ORRLS   r2, r2, #&01000000              ; indicate fast speed
- [ StopClocksDuringIdle
-        ORR     r2, r2, #&02000000
- ]
-        ANDS    r1, r0, #IOST_COMBOMASK
-        MOVNE   r1, #1                          ; make r1 0 or 1
-
-        LDR     r0, =&01010100
-        ExitSWIHandler
- ]
 
 ; ReadSysInfo(3)
 ;
@@ -1514,7 +1375,6 @@ IOST_BATMAN     * 64    ;Stork keyboard/battery controller seems to be present
 ;
 
 30
- [ HAL
         Push    "r9,r14"
         AddressHAL
         SUB     sp, sp, #8
@@ -1523,31 +1383,6 @@ IOST_BATMAN     * 64    ;Stork keyboard/battery controller seems to be present
         CallHAL HAL_SuperIOInfo
         Pull    "a1,a2,r9,r14"
         ExitSWIHandler
- |
-        MOV     r0, #0                          ; used as index and as default value
-        LDRB    r1, [r0, #IOSystemType]
-        ANDS    r1, r1, #IOST_COMBOMASK
-        TEQ     r1, #IOST_82C710
-        LDREQ   r0, =&00101111
-        MOVEQ   r1, #0
-        TEQ     r1, #IOST_82C711
-        LDREQ   r0, =&00211111
-        MOVEQ   r1, #0
-        CMP     r1, #IOST_37C665
- [ ReassignedIOMDInterrupts
-; If the device numbers have been reassigned, we can't really call the devices compatible.
-; Also, we've lost the floppy and hard disc interrupts, so mark as not present.
-        LDRHS   r0, =&00022200
- |
-        LDRHS   r0, =&00011111
- ]
-        ORRHS   r0, r0, r1, LSL #20
-        LDRHS   r1, =&00011100
-        MOV     r2, #0
-        MOV     r3, #0
-        MOV     r4, #0
-        ExitSWIHandler
- ]
 
 ; ReadSysInfo(4)
 ;
@@ -1998,7 +1833,6 @@ osri6_maxvalue * (.-4-osri6_table) :SHR: 2
 ;     7..31 reserved (currently undefined)
 ;
 80
- [ HAL
         Push    "r9,r14"
         AddressHAL
         SUB     sp, sp, #8
@@ -2016,29 +1850,6 @@ osri6_maxvalue * (.-4-osri6_table) :SHR: 2
     ]
         ORR     r2, r2, #3:SHL:5
         ExitSWIHandler
- |
-        Push    "r3-r5"
-        ADR     r3, %86
-        MOV     r4, #IOMD_Base
-        LDRB    r4, [r4, #IOMD_ID0]
-82
-        LDR     r5, [r3], #4
-        TEQ     r5, #&80000000     ;terminator
-        TEQNE   r5, r4
-        LDMEQIA r3, {r0-r2}
-        BEQ     %FT84
-        ADD     r3, r3, #3*4
-        B       %BT82
-84
-        Pull    "r3-r5"
-        ExitSWIHandler
-86
-        DCD     IOMD_Original :AND: &FF,   1, &00000005, &0000000F
-        DCD     IOMD_7500     :AND: &FF,   2, &00000001, &0000000F
-        DCD     IOMD_7500FE   :AND: &FF,   3, &00000001, &0000000F
-        DCD     IOMD_IOMD2    :AND: &FF,   4, &0000000F, &0000000F
-        DCD     &80000000,                 0,         0,         0  ;terminator
- ]
 
 ; OS_ReadSysInfo 9 - Read ROM info
 ;

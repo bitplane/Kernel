@@ -127,18 +127,12 @@ temp    SETA    .-ArthurVduDriver-temp
 
         MACRO
         GetBandwidthAndSize  $bw, $size
-  [ HAL
         LDR     $size, =ZeroPage
         LDR     $size, [$size, #VideoSizeFlags]
         MOV     $bw, #100*1024*1024
         MOV     $size, $size, LSR #12
         MOV     $size, $size, LSL #12
         !       0, "Sort out GetBandwidthAndSize"
-  |
-        MOV     $size, #0
-        LDR     $bw, [$size, #VideoBandwidth]   ; load bandwidth
-        LDR     $size, [$size, #VideoSize]      ; and total amount of video RAM
-  ]
         MEND
 
 ; *****************************************************************************
@@ -436,13 +430,7 @@ Vdu     ROUT
         BL      PreWrchCursor           ; exits with R6 = CursorFlags
         Pull    "R0"
 05
- [ No26bitCode
         ADR     R14, VduPrintExit
- |
-        MOV     R14, PC
-        ADD     R14, R14, #(VduPrintExit-%BT05-8) ; push address of SEC exit
-                                                  ; (with flags)
- ]
         Push    R14
         BL      Vdu05
         BL      PostWrchCursor
@@ -514,13 +502,7 @@ Vdu07   ROUT
         BL      PreWrchCursor           ; exits with R6 = CursorFlags
         Pull    "R0"
 10
- [ No26bitCode
         ADR     R14, VduPrintExit
- |
-        MOV     R14, PC
-        ADD     R14, R14, #(VduPrintExit-%BT10-8) ; push address of SEC exit
-                                                  ; (with flags)
- ]
         Push    R14
         BL      Vdu10
         BL      PostWrchCursor
@@ -581,13 +563,7 @@ Vdu20   ROUT
         BL      PreWrchCursor           ; exits with R6 = CursorFlags
         Pull    "R0"
 05
- [ No26bitCode
         ADR     R14, VduPrintExit
- |
-        MOV     R14, PC
-        ADD     R14, R14, #(VduPrintExit-%BT05-8) ; push address of SEC exit
-                                                  ; (with flags)
- ]
         Push    R14
         BL      TimWrch
         BL      PostWrchCursor
@@ -933,20 +909,6 @@ TV_Mode_string
         MOV     R1, #Service_ModeChanging
         BL      IssueModeService
 
-
-        [ {FALSE} ;;; LCDPowerCtrl :LAND: :LNOT: STB
-                  ;;; HAL no LCD support
-        ;Switch LCD off here if it is _not_ an LCD mode
-        MOV     R3, #0
-        LDRB    R3, [R3, #LCD_Active]
-        ANDS    R0, R3, #&7F            ;Pick out the lcd mode bits, ignoring the single/dual panel bit
-        Push    "r0-r1"
-        MOVEQ   R0, #0
-        LDREQ   R1, =:NOT:(PortableControl_LCDEnable :OR: PortableControl_BacklightEnable)
-        SWIEQ   XPortable_Control
-        Pull    "r0-r1"
-        ]
-
 ; R13 -> mode variables
 
 13      LDR     R3, [R13, #wkScreenSize]
@@ -1113,19 +1075,6 @@ TV_Mode_string
         BL      UnblankScreen
         BL      SetMouseRectangle
         BL      FF
-
-        [ {FALSE} ;;; LCDPowerCtrl :LAND: :LNOT: STB
-                  ;;; mjsHAL no LCD support
-        ;Switch the LCD on if LCD mode
-        Push    "r0"
-        MOV     R1, #0
-        LDRB    R1, [R1, #LCD_Active]
-        ANDS    R1, R1, #&7F            ;Check the LCD mode bits only, not the single/dual panel bit
-        LDRNE   R0, =(PortableControl_LCDEnable :OR: PortableControl_BacklightEnable)
-        LDRNE   R1, =:NOT:(PortableControl_LCDEnable :OR: PortableControl_BacklightEnable)
-        SWINE   XPortable_Control
-        Pull    "r0"
-        ]
 
         MOV     R1, #Service_ModeChange
         BL      IssueModeService
@@ -1916,23 +1865,8 @@ svc_PortMan
         TEQ     R0, #0                                  ; PortManager starting
         MOVNE   PC, LR
 
-    [ {TRUE}
         ! 0, "HAL - svc_PortMan broken by kernel/HAL split due to lack of VIDCControlSoftCopy"
         MOV     PC, LR
-    |
-; When PortManager restarts, we need to put TV_Mode back. PortMan defaults to
-; output high, but we don't know polarity of bit, so must set either way.
-        Entry   "r0-r1, WsPtr"
-        VDWS    WsPtr
-        LDR     R0, [WsPtr, #VIDCControlSoftCopy]       ; get saved VIDC control register
-        AND     R0, R0, #CR_VCLK :OR: CR_HCLK :OR: CR_RCLK
-        TEQ     R0, #CR_HCLK                            ; are we using HCLK?
-        MOVNE   R0, #1                                  ; no: TV_Mode = 0
-        MOVEQ   R0, #3                                  ; yes: TV_Mode = 1
-        addr    R1, TV_Mode_string
-        SWI     XPortMan_AccessBit
-        EXIT
-    ]
  ]
 
 

@@ -151,12 +151,7 @@ OscliStackFull
        |
          SETV                           ; In place of TranslateError
        ]
-       [ No26bitCode
          Pull      "pc"
-       |
-         Pull      "lr"
-         ORRS       PC, lr, #V_bit
-       ]
 
 ;******************************************************************************
 ; Main OSCLI code
@@ -273,13 +268,8 @@ RedirectionError
          Pull     "R5, R6"
 OscliFailure
          STR       R0, [stack]
- [ No26bitCode
          SETV
          Pull     "R0-R2, PC"
- |
-         Pull     "R0-R2, lr"
-         ORRS      PC, lr, #V_bit
- ]
 
 OscliLineTooLong
          ADR       R0, ErrorBlock_OscliLongLine

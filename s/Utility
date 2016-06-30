@@ -37,9 +37,7 @@ UtilityMod
  |
         &       0
  ]
- [ :LNOT: No32bitCode
         &       UtilFlags-UtilityMod
- ]
 
 Util_SWITab
         =       "ARM",0
@@ -1119,8 +1117,6 @@ getK    ROUT
         Pull    "R2-R3,PC"
 
 
- [ :LNOT: No32bitCode
 UtilFlags DCD ModuleFlag_32bit
- ]
 
         END

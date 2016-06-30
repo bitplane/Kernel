@@ -319,31 +319,19 @@ VecInitLoop
 ; Call_vector (n)
 ;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ; In:   r10 = vector number
-  [ No26bitCode
 ;       lr contains return address
 ;       cpsr contains flags/int state to set up before calling
-  |
-;       lr contains return address + flags/int state to set up before calling
-  ]
 
 ; Out:  r10, r12, lr corrupted
 
 CallVector ROUT
 
-  [ No26bitCode
         MRS     r12, CPSR
         CMP     r10, #NVECTORS
         BHS     CallVecTooHigh          ; return - silly value
 
         MSR     CPSR_f, r12             ; put back caller's flags + int state
         Push    lr                      ; claimed return goes back to caller
-  |
-        CMP     r10, #NVECTORS
-        MOVCSS  pc, lr                  ; return - silly value
-
-        Push    lr                      ; claimed return goes back to caller
-        TEQP    lr, #0                  ; put back caller's flags + int state
-  ]
 
         LDR     r14, =ZeroPage+VecPtrTab ; Point at table of head pointers
         LDR     r10, [r14, r10, LSL #2] ; nextblock:=vecptrtab!(n*4)
@@ -359,17 +347,11 @@ CallVecLoop
         TEQ     r10, #0                 ; until nextblock points to zero
         BNE     CallVecLoop
 
-  [ No26bitCode
         Pull    pc                      ; can't restore all flags. CV will be preserved
 
 CallVecTooHigh
         MSR     CPSR_f, r12
         MOV     pc, lr
-  |
-        Pull    pc,,^                   ; we don't expect to get to here
-                                        ; (should always be claimed),
-                                        ; but return to caller, restoring flags
-  ]
 
 ;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ;Add_To_vector(n, Addressess)
@@ -979,15 +961,11 @@ Issue_Service ROUT             ; R1 is service number, R2 may be a parameter
 
 01     CMP      R1, #Service_ReleaseFIQ
        Pull    "R9-R12, PC",NE
-    [ :LNOT: HAL
-       STRB     R1, [R1, #MOShasFIQ-Service_ReleaseFIQ]
-    ]
 
     [ FIQDebug
      TubeChar r0, r1, "MOV r1, #""D"""
     ]
      assert (Service_ReleaseFIQ :AND: &FF) <> 0
-    [ HAL
      [ ZeroPage = 0
        LDRB     R9, [R1, #MOShasFIQ-Service_ReleaseFIQ]
        STRB     R1, [R1, #MOShasFIQ-Service_ReleaseFIQ]
@@ -1018,7 +996,6 @@ Issue_Service ROUT             ; R1 is service number, R2 may be a parameter
        ADD      R1, R0, #&100
        ARMop    IMB_Range,,,R0
        Pull     "R0"
-    ]
 
                                         ; MOS is default owner if nobody
 06     MOV      R1, #Service_Serviced   ; else wants it.
@@ -1164,7 +1141,6 @@ display_post_postinit_calls
        B        %BT87
  ]
 
- [ HAL
 FIQKiller
        SUB     R14, R14, #4
        ADR     R13, FIQKiller-&1C+&100
@@ -1175,7 +1151,6 @@ FIQKiller
        MyCLREX R0, R1
        LDMFD   R13!, {R0-R3,PC}^
 FIQKiller_ws
- ]
 
 
 ;************************************************

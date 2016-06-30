@@ -1245,13 +1245,11 @@ MMUon_nol1ptoverlap
         LDR     a3, =SVCStackSize
         BL      Init_MapInRAM
 
- [ HAL32
 ; Allocate the interrupt stack
         LDR     a1, =IRQStackAddress
         ORR     a2, v4, #AP_None * L2X_APMult
         LDR     a3, =IRQStackSize
         BL      Init_MapInRAM
- ]
 
 ; Allocate the abort stack
         LDR     a1, =ABTStackAddress

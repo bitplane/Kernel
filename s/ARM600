@@ -95,44 +95,6 @@ TempUncache_L2PTMask * L2_X+L2_C+L2_B
 ;                               and maps 4MB of each ROM bank.
 ;                               Otherwise: always maps 8MB of ROM space independant of ImageSize
 
-
- [ :LNOT: HAL
-; Fixed page allocation is as follows
-
-        ^       0
-DRAMOffset_CursorChunk  #       32*1024         ; ie on MEMC1 this is the last 32K of DAG-addressable memory
-DRAMOffset_PageZero     #       32*1024         ; 32K at location zero
-DRAMOffset_SystemHeap   #       32*1024         ; system heap/svc stack
- [ No26bitCode
-DRAMOffset_AbortStack   #        8*1024
- ]
-        AlignSpace      16*1024                 ; L1PT (and hence L2PT) must be 16K-aligned
-DRAMOffset_L2PT         #       0               ; static L2PT (variable size, with embedded L1PT)
-DRAMOffset_L1PT         *       DRAMOffset_L2PT + 48*1024
-
-; Undefined stack memory (size 8K) starts immediately after end of L2PT (which is variable size)
-; Soft CAM map (variable size) starts immediately after end of UndStack
-
-StaticPagesSize         *       @
-
-; Logical addresses are as follows
-
-
-FixedAreasL2Size        *       96*1024        ; amount of L2 to cover fixed areas, excluding free pool
-
-UndStackSoftCamChunk    *       &01E00000
-UndStackSize            *       8*1024
-CamEntriesForVicky      *       UndStackSoftCamChunk + UndStackSize
-
-
-; - address for virtual area for StrongARM data cache cleaning (32k, for two 16k areas)
-; - the two areas are used in strict rotation for each full clean, so that we can do a full
-;   clean (and not flush) with interrupts on
-; - the address must be aligned such that EOR with 16*1024 flipflops between the two addresses
-ARMA_Cleaners_address  * &01F10000
- ] ; :LNOT: HAL
-
-
         KEEP
 
 ; **************** CAM manipulation utility routines ***********************************
@@ -570,42 +532,7 @@ MMUControl_GetARMop
 ;
 ;       Exception veneers
 
- [ :LNOT:No26bitCode
-; Undefined instruction trap pre-veneer
-; in:   r13_undef -> a FD stack
-;       r14_undef -> undefined instruction +4
-;       psr_undef = PSR at time of undef'd instruction
-
-UndPreVeneer    ROUT
-
-        Push    "r0-r7,r14"             ; push r0-r7 on undef stack, and make room for return address
-        MOV     r0, r13_undef
-
-; for the time being just merge lr and psr
-
-        MRS     r1, SPSR                                ; r1 = saved PSR
-        AND     r2, r1, #&F0000003                      ; get saved NZCV and 26 bit modes
-        ORR     lr_undef, lr_undef, r2
-        AND     r2, r1, #I32_bit + F32_bit              ; extract I and F from new place
-        ORR     r1, lr_undef, r2, LSL #IF32_26Shift     ; r1 = combined lr and psr
-
-        MRS     r2, CPSR                ; now switch into SVC26
-        BIC     r3, r2, #&1F
-        ORR     r3, r3, #SVC26_mode
-        MSR     SPSR_cxsf, r3           ; set SPSR_undef to be CPSR but with SVC26
-        MSR     CPSR_c, r3              ; and select this mode now
-
-        MOV     lr_svc, r1              ; lr_svc = PC + PSR from exception
-
-        MSR     CPSR_c, r2              ; go back into undef mode
-
-        LDR     r1, =UndHan             ; work out address of undefined instruction handler
-        LDR     r1, [r1]
-        STR     r1, [r0, #8*4]          ; and store it as return address
-        Pull    "r0-r7, pc",,^          ; exit to handler, restoring sp_undef and entering SVC26 mode
- ]
-
- [ No26bitCode :LAND: ChocolateAMB
+ [ ChocolateAMB
 ;  Instruction fetch abort pre-veneer, just to field possible lazy AMB aborts
 ;
 PAbPreVeneer    ROUT
@@ -622,40 +549,6 @@ PAbPreVeneer    ROUT
         Pull    "r0-r7, pc"
  ]
 
- [ :LNOT:No26bitCode
-; Instruction fetch abort pre-veneer
-
-PAbPreVeneer    ROUT
-
-        LDR     r13_abort, =PreVeneerRegDump
-        STMIA   r13_abort, {r0-r7}
-        MOV     r0, r13_abort
-
-; for the time being just merge lr and psr
-
-        MRS     r1, SPSR                                ; r1 = saved PSR
-
-        LDR     r2, =Abort32_dumparea
-        STMIA   r2, {r1,lr_abort}                       ;dump 32-bit PSR, fault address (PC)
-        STR     lr_abort,[r2,#2*4]                      ;dump 32-bit PC
-
-        AND     r2, r1, #&F0000003                      ; get saved NZCV and 26 bit modes
-        ORR     lr_abort, lr_abort, r2
-        AND     r2, r1, #I32_bit + F32_bit              ; extract I and F from new place
-        ORR     r1, lr_abort, r2, LSL #IF32_26Shift     ; r1 = combined lr and psr
-
-        MRS     r2, CPSR                ; now switch into SVC26
-        BIC     r2, r2, #&1F
-        ORR     r2, r2, #SVC26_mode
-        MSR     CPSR_c, r2
-
-        MOV     lr_svc, r1              ; lr_svc = PC + PSR from exception
-        LDR     r1, =PAbHan
-        LDR     r1, [r1]
-        STR     r1, [r0, #8*4]
-        LDMIA   r0, {r0-r7, pc}         ; jump to prefetch abort handler
- ]
-
 ; Preliminary layout of abort indirection nodes
 
         ^       0
@@ -669,11 +562,7 @@ AI_Addr #       4
 
 DAbPreVeneer    ROUT
 
- [ No26bitCode
         SUB     r13_abort, r13_abort, #17*4     ; we use stacks, dontcherknow
- |
-        LDR     r13_abort, =PreVeneerRegDump
- ]
         STMIA   r13_abort, {r0-r7}              ; save unbanked registers anyway
         STR     lr_abort, [r13_abort, #15*4]    ; save old PC, ie instruction address
 
@@ -716,17 +605,10 @@ DAbPreVeneer    ROUT
         MRS     r5, SPSR                        ; get the SPSR for the aborter's mode
         STR     r5, [r2, #8*4]                  ; and store away in the spare slot on the end
                                                 ; (this is needed for LDM with PC and ^)
-  [ No26bitCode
         ORR     r1, r1, #ABT32_mode
         MSR     CPSR_c, r1                      ; back to abort mode for the rest of this
 05
         Push    "r0"                            ; save SPSR_abort
-  |
-05
-        ORR     r1, r1, #SVC26_mode             ; then switch to SVC for the rest of this
-        MSR     CPSR_c, r1
-        Push    "r0, lr_svc"                    ; save SPSR_abort and lr_svc
-  ]
 
   [ SASTMhatbroken
         SUB     sp, sp, #3*4
@@ -1095,14 +977,8 @@ DAbPreVeneer    ROUT
         NOP                                     ; don't access banked registers after LDM^
         ADD     sp, sp, #8*4                    ; junk user bank stack frame
 
- [ No26bitCode
         Pull    "r0"                            ; r0 = (possibly updated) SPSR_abort
         MRS     r1, CPSR
- |
-        Pull    "r0, lr"                        ; r0 = (possibly updated) SPSR_abort, restore lr_svc
-
-        SetMode ABT32_mode, r1                  ; leaves r1 = current PSR
- ]
 
         MRS     r6, SPSR                        ; get original SPSR, with aborter's original mode
         AND     r7, r6, #&0F
@@ -1122,9 +998,7 @@ DAbPreVeneer    ROUT
         MSR     SPSR_cxsf, r0                   ; set up new SPSR (may have changed for LDM {PC}^)
 
         LDMIA   r13_abort, {r0-r7}              ; reload r0-r7
- [ No26bitCode
         ADD     r13_abort, r13_abort, #17*4     ; we use stacks, dontcherknow
- ]
         SUBS    pc, lr_abort, #4                ; go back 8 to adjust for PC being 2 words out,
                                                 ; then forward 4 to skip instruction we've just executed
 
@@ -1144,7 +1018,6 @@ DAbPreVeneer    ROUT
         LDR     r1, [r0,#5*4]
         STR     r1, [r0,#2*4]
 
- [ No26bitCode
         LDR     r0, =ZeroPage                           ; we're going to call abort handler
       [ ZeroPage = 0
         STR     r0, [r0, #CDASemaphore]                 ; so allow recovery if we were in CDA
@@ -1187,48 +1060,6 @@ DAbPreVeneer    ROUT
 
         Pull    pc
 
- |
-; for the time being just merge lr and psr
-
-        LDR     r0, [sp, #8*4]                          ; r0 = original SPSR (can't have been modified)
-
-        LDR     lr, [r11, #15*4]                        ; get PC of aborter
-        AND     r1, r0, #&F0000000                      ; get saved NZCV
-        ORR     lr, lr, r1
-        AND     r1, r0, #I32_bit + F32_bit              ; extract I and F from new place
-        ORR     lr, lr, r1, LSL #IF32_26Shift           ; and merge
-        AND     r1, r0, #3                              ; get old mode bits (have to assume a 26-bit mode!)
-        ORR     lr, lr, r1                              ; lr = combined lr and psr
-        STR     lr, [sp, #9*4]                          ; overwrite stacked lr_svc
-        TEQ     r1, #SVC26_mode                         ; if aborter was in SVC mode
-        STREQ   lr, [r11, #14*4]                        ; then also overwrite r14 in aborter's register bank
-
-        BIC     r0, r0, #&1F                            ; clear mode bits in SPSR
-        ORR     r0, r0, #SVC26_mode :OR: I32_bit        ; and force SVC26 with I set
- [ DebugAborts
-        DLINE   "Going to call data abort handler"
-        DREG    lr, "lr_svc will be "
-        DREG    r0, "PSR going to exit with = "
- ]
-        STR     r0, [sp, #8*4]                          ; overwrite stacked SPSR
-
-        LDR     r0, =ZeroPage                           ; we're going to call abort handler
-      [ ZeroPage = 0
-        STR     r0, [r0, #CDASemaphore]                 ; so allow recovery if we were in CDA
-      |
-        MOV     r2, #0
-        STR     r2, [r0, #CDASemaphore]                 ; so allow recovery if we were in CDA
-      ]
-
-        LDR     r0, =ZeroPage+DAbHan
-        LDR     r0, [r0, #DAbHan]                       ; get address of data abort handler
- [ DebugAborts
-        DREG    r0, "Handler address = "
- ]
-        ADD     r0, r0, #4                              ; add on 4 to adjust for abort exit
-        STR     r0, [r11, #15*4]                        ; and store in pc in register bank
-        B       %BT70                                   ; then junk to normal tidy-up routine
- ]
 
  [ UseProcessTransfer
 
@@ -1345,10 +1176,6 @@ ProcessTransfer Entry "r1-r7,r12"
         BCC     Fault                                   ; and check user list
   ]
 
-  [ :LNOT:No26bitCode
-        SetMode SVC32_mode, lr                          ; go into SVC32 so we can poke or peek vector area
-  ]
-
         TST     r0, #1                                  ; test for peek/poke
         BEQ     %FT30
 26
@@ -1391,9 +1218,6 @@ ProcessTransfer Entry "r1-r7,r12"
         BNE     %BT40                                   ; no, then loop
 
 50
-  [ :LNOT:No26bitCode
-        SetMode SVC26_mode, lr
-  ]
         CMP     r3, #0
         BNE     %BT10
         EXIT                                            ; exit (VC from CMP)
@@ -1421,7 +1245,7 @@ CheckPage
 
         MOV     lr, lr, LSR #10                         ; remove domain and U bits
         MOV     lr, lr, LSL #10
- [ HAL
+
         SUB     sp, sp, #4
         Push    "r0-r3,r12"
         MOV     r0, #0
@@ -1430,19 +1254,17 @@ CheckPage
         BL      RISCOS_AccessPhysicalAddress
         MOV     lr, r0
         Pull    "r0-r3,r12"
- |
-        ORR     lr, lr, #PhysSpace                      ; now physical address is converted to a logical one (in physspace)
- ]
+
         AND     r7, r2, #&000FF000                      ; extract bits which are to form L2 offset
 
         LDR     lr, [lr, r7, LSR #10]                   ; lr = L2PT entry
- [ HAL
+
         Push    "r0-r3,r12,lr"
         LDR     r0, [sp, #6*4]
         BL      RISCOS_ReleasePhysicalAddress
         Pull    "r0-r3,r12,lr"
         ADD     sp, sp, #4
- ]
+
         ANDS    r7, lr, #3                              ; 00 => trans.fault, 01 => large page
                                                         ; 10 => small page, 11 => reserved (fault)
         TEQNE   r7, #3
@@ -1521,164 +1343,6 @@ Fault
         TEQ     r3, #0
         BNE     %BT10                           ; yes, then loop
         EXIT                                    ; no, then exit (V=0 from SUBS)
-
-
-; L1L2PTenhancements not currently used for HAL, but let's keep it as reference in case we want to implement it later
- [ :LNOT: HAL
-
-;some tricks to improve performance, looking at MMU level 1 and level 2 page tables
-L1L2PTenhancements ROUT
-        Push    "r0-r5,lr"
-
-        ;mjs change for Ursula:
-        ;improved kernel workspace protection
-        ; - user access to bottom 3k restricted to read only (things like Clib tmpnam counter prevent
-        ;   going further)
-        ; - Java VM will probably require bottom 1k restricted to no user access (so that VM can avoid
-        ;   all run-time checks for null pointers), but this currently makes various things like ShareFS
-        ;   go pop-bang, so not done yet (see TRUE/FALSE choice below)
-        ;
-        MOV     r0,#L2PT                ;L2PT address for page at 0
-        LDR     r1,[r0]
-        BIC     r1,r1,#&FF0             ;clear current AP bits for all four 1k sub-pages (S0 to S3)
-     [ {FALSE}                          ;this would be good for Java VM:
-        ORR     r1,r1,#&E90             ;S0=user none, S1=user read, S2=user read, S3=user read/write
-     |                                  ;this makes less current things go pop-bang:
-        ORR     r1,r1,#&EA0             ;S0=user read, S1=user read, S2=user read, S3=user read/write
-     ]
-        STR     r1,[r0]
-
-;if the MMU control reg (soft copy) has R bit set (bit 9), then adjust the L1 entries for ROM
-;space to give full write protection (user and supervisor)
-        LDR     r0,=ZeroPage
-        LDR     r1,[r0,#MMUControlSoftCopy]
-        TST     r1,#MMUC_R
-        BEQ     L1L2PTe_WPROMdone              ;ARM 610 has no R bit, for example
-        LDR     r0,=L1PT
-        ADD     r0,r0,#ROM :SHR: (20-2)        ;address of first L1PT entry for ROM space
-  [ OSROM_ImageSize > 8192
-        MOV     r1,#OSROM_ImageSize / 1024
-  |
-        MOV     r1,#8                          ;8 entries (8 Mbytes)
-  ]
-L1L2PTe_WPROMloop
-        LDR     r2,[r0]
-        BIC     r2,r2,#&C00                    ;set AP (access permission) bits to 00
-        STR     r2,[r0],#4
-        SUBS    r1,r1,#1
-        BNE     L1L2PTe_WPROMloop
-L1L2PTe_WPROMdone
-
-   [ :LNOT: (CanLiveOnROMCard :LOR: ROMCardSupport :LOR: ExtROMSupport)
-
-;go for best available memory speed for data cache cleaner area (StrongARM)
-        LDR     r0,=L2PT :OR: (ARMA_Cleaners_address :SHR: 10)  ;address of 1st L2PT word for cleaner area
-        LDR     r1,[r0]
-        MOV     r1,r1,LSL #20
-        MOV     r1,r1,LSR #20                   ;zap physical address field
-        ORR     r1,r1,#&01000000                ; = physical address of start of ROM bank 1
-        MOV     r2,#8                           ;8 L2PT entries to fiddle
-00
-        STR     r1,[r0],#4
-        SUBS    r2,r2,#1
-        BNE     %BT00
-        MOV     r0,#IOC
-        MOV     r1,#5
-        STRB    r1,[r0, #IOMD_ROMCR1]           ;ROM bank 1 speed = fastest (62.5 ns)
-    ]
-
-;make first 5 pages of cursor chunk cacheable and bufferable - this is rather handy, 'coz things
-;like the SWI dispatcher, IRQ dispatcher are here. May be a slight worry over cursor data
-;being write-back cached (StrongARM) - should strictly clean,drain write buffer or whatever for shape change.
-        LDR     r0,=L2PT :OR: (CursorChunkAddress :SHR: 10)  ;address of 1st L2PT word for CursorChunk
-        MOV     R2,#5                           ;5 entries to adjust
-01
-        LDR     r1,[r0]
-        ORR     r1,r1,#&C                       ;make page cacheable and bufferable
-        STR     r1,[r0],#4
-        SUBS    r2,r2,#1
-        BNE     %BT01
-
-;make other 3 pages of chunk bufferable
-        MOV     R2,#3
-02
-        LDR     r1,[r0]
-        ORR     r1,r1,#&4                       ;make page bufferable
-        STR     r1,[r0],#4
-        SUBS    r2,r2,#1
-        BNE     %BT02
-
-;try to rescue some pages from the L2PT itself, in the AppSpace region - ie. AppSpace max size can really
-;be total RAM size, if that is less than 28 Mb, and for every 4Mb less that is we can rescue a 4k page
-;and return it to the free pool - handy on a 2Mb Kryten for instance!
-
-        LDR     r0,=ZeroPage+MaxCamEntry
-        LDR     r0,[r0]
-        ADD     r0,r0,#1+255+768                ; = no. of 4k RAM pages in machine + 255 + 3*256
-        MOV     r0,r0,LSR #8                    ; = no. of Mbytes in machine rounded up + 3
-        BIC     r0,r0,#3                        ; round up to next 4 Mb
-        CMP     r0,#28                          ; if 28Mb or more, no pages to be rescued from L2PT AppSpace
-        BHS     %FT09
-        LDR     r1,=ZeroPage+AppSpaceDANode
-        MOV     r2,r0,LSL #20
-        STR     r2,[r1,#DANode_MaxSize]         ; update AppSpace max size
-        MOV     r0,r0,LSR #2                    ; no. of L2PT AppSpace pages which cannot be rescued
-        MOV     r1,#L2PT
-        ADD     r4, r1, #L1PT-L2PT
-        ADD     r4, r4, r0, LSL #4              ;the L1PT entry to blank out (4 L1 entries per L2 entry)
-        ADD     r1,r1,#(L2PT :SHR: (12-2))      ;the L2PT of the L2PT (and first 7 entries are for App Space)
-        ADD     r1,r1,r0,LSL #2                 ;first entry for rescue
-        LDR     r3,=ZeroPage+FreePoolDANode
-        LDR     r2,[r3,#DANode_Base]
-        LDR     r5,[r3,#DANode_Size]            ; FreePool size so far
-        ADD     r2,r2,r5                        ; r2 -> next logical address for a rescued page
-
-        SUB     sp,sp,#16                       ; room for 1 page block entry + terminator
-        MOV     r3,sp
-05
-        Push    "r0"
-        LDR     r0,[r1],#4                      ; pick up the L2PT entry
-        BIC     r0,r0,#&0FF
-        BIC     r0,r0,#&F00                     ; mask to leave physical address only
-        STR     r0,[r3,#8]                      ; store physical address in word 2 of page block entry
-
-        Push    "r1-r2"
-        MOV     r0,#&0C00
-        MOV     r1,r3
-        MOV     r2,#1
-        SWI     XOS_Memory                      ; fill in page number, given physical address
-
-        MOV     r0,#2                           ; means inaccessible in user mode (destined for FreePool)
-        STR     r0,[r3,#8]
-        MOV     r0,#-1
-        STR     r0,[r3,#12]                     ; terminator
-        Pull    "r1-r2"
-
-        STR     r2,[r3,#4]                      ; new logical address for page
-        MOV     r0,r3
-        SWI     XOS_SetMemMapEntries
-
-        MOV     r0, #0                          ; Blank out the L1PT entries for the page table we just removed
-        STR     r0, [r4], #4
-        STR     r0, [r4], #4
-        STR     r0, [r4], #4
-        STR     r0, [r4], #4
-
-        Pull    "r0"
-        ADD     r2,r2,#4096
-        ADD     r5,r5,#4096                     ; next page
-        ADD     r0,r0,#1
-        CMP     r0,#7                           ;7 entries in total for full 28Mb AppSpace
-        BNE     %BT05
-        ADD     sp,sp,#16                       ;drop the workspace
-
-        LDR     r0,=ZeroPage+FreePoolDANode
-        STR     r5,[r0,#DANode_Size]            ;update FreePoolSize
-
-09
-        Pull    "r0-r5,pc"
-
- ] ; :LNOT: HAL
 
  ] ; UseProcessTransfer
 

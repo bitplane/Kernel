@@ -98,7 +98,7 @@
         GET     s.ArthurSWIs
         $GetKernelMEMC
         GET     s.ChangeDyn
-        $GetHAL
+        GET     s.HAL
         GET     s.Arthur2
         GET     s.LibKern
         GET     s.Utility
@@ -110,7 +110,6 @@
         GET     s.Arthur3
         GET     s.SWINaming
         GET     s.TickEvents
-        $GetKbdRes
         GET     s.NewReset
         $GetMessages
         GET     s.Middle
@@ -166,7 +165,6 @@ StartOfPMF
         GET     s.PMF.IIC
         GET     s.PMF.oswrch
         GET     s.PMF.buffer
-        $GetKbdDrA1
         GET     s.PMF.key
         GET     s.PMF.mouse
         ALIGN
