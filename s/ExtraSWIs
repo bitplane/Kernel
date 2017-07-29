@@ -246,10 +246,35 @@ SyncCodeAreasRange
         Pull    "r0-r2, pc"
 
 SyncCodeAreasFull
-        Push    "r0, lr"
+      [ SMP
+        Entry   "r0-r2"
+        LDR     r2, =ZeroPage
+        ARMop   Cache_RangeThreshold,,,r2
+        CMP     r0, #-1
+        BNE     %FT90
+        ; ARMops are in SMP-friendly mode
+        ; Just clean application space and the RMA?
+        GetAppSpaceDANode r1, r2
+        LDR     r0, [r1, #DANode_Flags]
+        TST     r0, #DynAreaFlags_PMP
+        LDR     r1, [r1, #DANode_Size]
+        ADDNE   r1, r1, #32*1024
+        MOV     r0, #32*1024
+        ARMop   IMB_Range,,,r2
+        MOV     r0, #ChangeDyn_RMA
+        SWI     XOS_ReadDynamicArea
+        ADD     r1, r1, r0
+        ARMop   IMB_Range,,,r2
+        EXIT
+90
+        ARMop   IMB_Full,,,r2
+        EXIT
+      |
+        Entry   "r0"
         LDR     r0, =ZeroPage
         ARMop   IMB_Full,,,r0
-        Pull    "r0, pc"
+        EXIT
+      ]
 
         LTORG
 
