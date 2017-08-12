@@ -5,19 +5,19 @@
  *
  */
 #define Module_MajorVersion_CMHG        5.86
-#define Module_MinorVersion_CMHG        4.129.2.2
-#define Module_Date_CMHG                29 Jul 2017
+#define Module_MinorVersion_CMHG        4.129.2.3
+#define Module_Date_CMHG                12 Aug 2017
 
 #define Module_MajorVersion             "5.86"
 #define Module_Version                  586
-#define Module_MinorVersion             "4.129.2.2"
-#define Module_Date                     "29 Jul 2017"
+#define Module_MinorVersion             "4.129.2.3"
+#define Module_Date                     "12 Aug 2017"
 
-#define Module_ApplicationDate          "29-Jul-17"
+#define Module_ApplicationDate          "12-Aug-17"
 
 #define Module_ComponentName            "Kernel"
 #define Module_ComponentPath            "castle/RiscOS/Sources/Kernel"
 
-#define Module_FullVersion              "5.86 (4.129.2.2)"
-#define Module_HelpVersion              "5.86 (29 Jul 2017) 4.129.2.2"
+#define Module_FullVersion              "5.86 (4.129.2.3)"
+#define Module_HelpVersion              "5.86 (12 Aug 2017) 4.129.2.3"
 #define Module_LibraryVersionInfo       "5:86"
