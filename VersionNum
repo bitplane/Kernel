@@ -1,23 +1,23 @@
-/* (5.89)
+/* (5.97)
  *
  * This file is automatically maintained by srccommit, do not edit manually.
  * Last processed by srccommit version: 1.1.
  *
  */
-#define Module_MajorVersion_CMHG        5.89
-#define Module_MinorVersion_CMHG        4.129.2.6
-#define Module_Date_CMHG                10 Sep 2017
+#define Module_MajorVersion_CMHG        5.97
+#define Module_MinorVersion_CMHG        4.129.2.7
+#define Module_Date_CMHG                16 Feb 2018
 
-#define Module_MajorVersion             "5.89"
-#define Module_Version                  589
-#define Module_MinorVersion             "4.129.2.6"
-#define Module_Date                     "10 Sep 2017"
+#define Module_MajorVersion             "5.97"
+#define Module_Version                  597
+#define Module_MinorVersion             "4.129.2.7"
+#define Module_Date                     "16 Feb 2018"
 
-#define Module_ApplicationDate          "10-Sep-17"
+#define Module_ApplicationDate          "16-Feb-18"
 
 #define Module_ComponentName            "Kernel"
 #define Module_ComponentPath            "castle/RiscOS/Sources/Kernel"
 
-#define Module_FullVersion              "5.89 (4.129.2.6)"
-#define Module_HelpVersion              "5.89 (10 Sep 2017) 4.129.2.6"
-#define Module_LibraryVersionInfo       "5:89"
+#define Module_FullVersion              "5.97 (4.129.2.7)"
+#define Module_HelpVersion              "5.97 (16 Feb 2018) 4.129.2.7"
+#define Module_LibraryVersionInfo       "5:97"
