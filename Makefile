@@ -17,11 +17,17 @@
 
 COMPONENT       = Kernel
 
+include StdTools
+
 ifeq (${MAKECMDGOALS},install)
-EXP_HDR         = ${INSTDIR}.Hdr.Interface
-C_EXP_HDR       = ${INSTDIR}.C.Global.h
+EXP_HDR         = ${INSTDIR}${SEP}Hdr${SEP}Interface
+C_EXP_HDR       = ${INSTDIR}${SEP}C${SEP}Global
 else
-C_EXP_HDR       = <cexport$dir>.Global.h
+CEXPORTDIR     ?= <cexport$dir>
+C_EXP_HDR       = ${CEXPORTDIR}${SEP}Global
+endif
+ifeq (,${MAKE_VERSION})
+C_EXP_HDR      := ${C_EXP_HDR}.h
 endif
 
 # Keep SyncLib out of the kernel for now:
@@ -36,36 +42,7 @@ KERNEL_MODULE   = bin${SEP}${COMPONENT}
 ASFLAGS        += -PD "FreezeDevRel SETL {${FREEZE_DEV_REL}}" -PD "USE_SYNCLIB SETL {${USE_SYNCLIB}}" -PD "RISCOS_KERNEL SETL {TRUE}"
 CFLAGS         += -ff -APCS 3/32bit/nofp/noswst -DRISCOS_KERNEL
 CUSTOMROM       = custom
-CUSTOMEXP       = custom
 CUSTOMSA        = custom
-EXPORTS         = ${EXP_HDR}.AMBControl \
-                  ${EXP_HDR}.DBellDevice \
-                  ${EXP_HDR}.EnvNumbers \
-                  ${EXP_HDR}.HALDevice \
-                  ${EXP_HDR}.HALEntries \
-                  ${EXP_HDR}.ModHand \
-                  ${EXP_HDR}.OSEntries \
-                  ${EXP_HDR}.OSMem \
-                  ${EXP_HDR}.OSMisc \
-                  ${EXP_HDR}.OSRSI6 \
-                  ${EXP_HDR}.PL310 \
-                  ${EXP_HDR}.PublicWS \
-                  ${EXP_HDR}.RISCOS \
-                  ${EXP_HDR}.Variables \
-                  ${EXP_HDR}.VduExt \
-                  ${EXP_HDR}.VIDCList \
-                  ${EXP_HDR}.VideoDevice \
-                  ${C_EXP_HDR}.HALDevice \
-                  ${C_EXP_HDR}.HALEntries \
-                  ${C_EXP_HDR}.ModHand \
-                  ${C_EXP_HDR}.OSEntries \
-                  ${C_EXP_HDR}.OSMem \
-                  ${C_EXP_HDR}.OSMisc \
-                  ${C_EXP_HDR}.OSRSI6 \
-                  ${C_EXP_HDR}.RISCOS \
-                  ${C_EXP_HDR}.Variables \
-                  ${C_EXP_HDR}.VduExt \
-                  ${C_EXP_HDR}.VIDCList
 ifeq (${USE_SYNCLIB},TRUE)
 CFLAGS	       += -DUSE_SYNCLIB
 LIBS            = ${SYNCLIB}k
@@ -84,11 +61,13 @@ DECGEN = <Tools$Dir>.Misc.decgen.decgen
 # Note that FPA is only included in IOMD builds
 ABORTTRAP_ACTIONS_ARM = ARMv3 ARMv4 ARMv5TE ARMv6 ARMv6K ARMv6T2 ARMv8 VFP ASIMD
 
-ABORTTRAP_ENCODINGS_ARM = Build:decgen.encodings.ARMv7 \
-                          Build:decgen.encodings.ARMv7_ASIMD \
-                          Build:decgen.encodings.ARMv7_VFP \
-                          Build:decgen.encodings.ARMv8_AArch32 \
-                          Build:decgen.encodings.FPA
+TOOLSDIR ?= <Tool$Dir>
+
+ABORTTRAP_ENCODINGS_ARM = ${TOOLSDIR}${SEP}decgen${SEP}encodings${SEP}ARMv7 \
+                          ${TOOLSDIR}${SEP}decgen${SEP}encodings${SEP}ARMv7_ASIMD \
+                          ${TOOLSDIR}${SEP}decgen${SEP}encodings${SEP}ARMv7_VFP \
+                          ${TOOLSDIR}${SEP}decgen${SEP}encodings${SEP}ARMv8_AArch32 \
+                          ${TOOLSDIR}${SEP}decgen${SEP}encodings${SEP}FPA
 
 ifneq (,$(findstring $(MACHINE),IOMD))
 ABORTTRAP_ACTIONS_ARM = ARMv3 ARMv4 FPA
@@ -111,7 +90,49 @@ ABORTTRAP_CACHE = $(subst $(subst x,,x x),_,$(strip ${ABORTTRAP_ACTIONS_ARM}))
 
 CFLAGS += $(addprefix -DABORTTRAP_,${ABORTTRAP_ACTIONS})
 
-include StdTools
+HEADER1         = DBellDevice
+HEADER2         = EnvNumbers
+HEADER3         = HALDevice
+HEADER4         = HALEntries
+HEADER5         = ModHand
+HEADER6         = OSEntries
+HEADER7         = OSMem
+HEADER8         = OSMisc
+HEADER9         = OSRSI6
+HEADER10        = PL310
+HEADER11        = PublicWS
+HEADER12        = RISCOS
+HEADER13        = Variables
+HEADER14        = VduExt
+HEADER15        = VIDCList
+HEADER16        = VideoDevice
+
+ASMCHEADER1     = HALEntries
+ASMCHEADER2     = ModHand
+ASMCHEADER3     = OSMem
+ASMCHEADER4     = OSMisc
+ASMCHEADER5     = OSRSI6
+ASMCHEADER6     = RISCOS
+ASMCHEADER7     = Variables
+ASMCHEADER8     = VduExt
+
+EXPORTS =                                        \
+    ${EXP_HDR}${SEP}AMBControl                   \
+    ${C_EXP_HDR}${SEP}HALDevice${SUFFIX_HEADER}  \
+    ${C_EXP_HDR}${SEP}HALEntries${SUFFIX_HEADER} \
+    ${C_EXP_HDR}${SEP}ModHand${SUFFIX_HEADER}    \
+    ${C_EXP_HDR}${SEP}OSEntries${SUFFIX_HEADER}  \
+    ${C_EXP_HDR}${SEP}OSMem${SUFFIX_HEADER}      \
+    ${C_EXP_HDR}${SEP}OSMisc${SUFFIX_HEADER}     \
+    ${C_EXP_HDR}${SEP}OSRSI6${SUFFIX_HEADER}     \
+    ${C_EXP_HDR}${SEP}RISCOS${SUFFIX_HEADER}     \
+    ${C_EXP_HDR}${SEP}Variables${SUFFIX_HEADER}  \
+    ${C_EXP_HDR}${SEP}VduExt${SUFFIX_HEADER}     \
+    ${C_EXP_HDR}${SEP}VIDCList${SUFFIX_HEADER}   \
+
+SOURCES_TO_SYMLINK = $(wildcard s/AMBControl/*) $(wildcard s/PMF/*) $(wildcard s/vdu/*)
+SYMLINK_EXT_FIRST = yes
+
 include AAsmModule
 include StdRules
 ifeq (${USE_SYNCLIB},TRUE)
@@ -130,12 +151,12 @@ ROM_OBJECTS = $(addsuffix .o,${OBJS})
 #
 
 clean ::
-        @IfThere aborttrap.c.atarm     Then delete aborttrap.c.atarm
+	@IfThere aborttrap.c.atarm     Then delete aborttrap.c.atarm
 
 ABORTTRAP_ARM_DEPS = $(addprefix aborttrap.actions.,${ABORTTRAP_ACTIONS_ARM})
 
 aborttrap.c.atarm: $(ABORTTRAP_ARM_DEPS) aborttrap.c.atpre $(ABORTTRAP_ENCODINGS_ARM)
-        $(DECGEN) -bits=32 -e "-DCDP={ne(coproc,1)}" "-DLDC_STC={ne(coproc,1)}{ne(coproc,2)}" "-DMRC_MCR={ne(coproc,1)}" -DVFP1=(cond:4) "-DVFP2={ne(cond,15)}" -DAS1(X)=1111001[X] -DAS2=11110100 -DAS3=(cond:4)1110 "-DAS4={ne(cond,15)}" "-DCC={ne(cond,15)}" $(ABORTTRAP_ENCODINGS_ARM) -valid -a $(addprefix aborttrap/actions/,${ABORTTRAP_ACTIONS_ARM}) -default=DEFAULT -o aborttrap/atarm.c -name=aborttrap_arm -pre aborttrap/atpre.c -updatecache aborttrap/cache/${ABORTTRAP_CACHE}
+	$(DECGEN) -bits=32 -e "-DCDP={ne(coproc,1)}" "-DLDC_STC={ne(coproc,1)}{ne(coproc,2)}" "-DMRC_MCR={ne(coproc,1)}" -DVFP1=(cond:4) "-DVFP2={ne(cond,15)}" -DAS1(X)=1111001[X] -DAS2=11110100 -DAS3=(cond:4)1110 "-DAS4={ne(cond,15)}" "-DCC={ne(cond,15)}" $(ABORTTRAP_ENCODINGS_ARM) -valid -a $(addprefix aborttrap/actions/,${ABORTTRAP_ACTIONS_ARM}) -default=DEFAULT -o aborttrap/atarm.c -name=aborttrap_arm -pre aborttrap/atpre.c -updatecache aborttrap/cache/${ABORTTRAP_CACHE}
 
 o.atarm: aborttrap.c.atarm
 	${CC} ${CFLAGS} -o $@ aborttrap.c.atarm
@@ -173,97 +194,18 @@ GetAll.o: ${TOKHELPSRC}
 #
 # Custom exports:
 #
-export: ${EXPORTS}
-	@${ECHO} ${COMPONENT}: export complete
+ifeq (,${MAKE_VERSION})
+
+# RISC OS / amu case
 
 ${EXP_HDR}.AMBControl: hdr.AMBControl
 	${CP} hdr.AMBControl $@ ${CPFLAGS}
 
-${EXP_HDR}.EnvNumbers: hdr.EnvNumbers
-	${CP} hdr.EnvNumbers $@ ${CPFLAGS}
-
-${EXP_HDR}.DBellDevice: hdr.DBellDevice
-	${CP} hdr.DBellDevice $@ ${CPFLAGS}
-
-${EXP_HDR}.HALDevice: hdr.HALDevice
-	${CP} hdr.HALDevice $@ ${CPFLAGS}
-
-${EXP_HDR}.HALEntries: hdr.HALEntries
-	${CP} hdr.HALEntries $@ ${CPFLAGS}
-
-${EXP_HDR}.ModHand: hdr.ModHand
-	${CP} hdr.ModHand $@ ${CPFLAGS}
-
-${EXP_HDR}.OSEntries: hdr.OSEntries
-	${CP} hdr.OSEntries $@ ${CPFLAGS}
-
-${EXP_HDR}.OSMem: hdr.OSMem
-	${CP} hdr.OSMem $@ ${CPFLAGS}
-
-${EXP_HDR}.OSMisc: hdr.OSMisc
-	${CP} hdr.OSMisc $@ ${CPFLAGS}
-
-${EXP_HDR}.OSRSI6: hdr.OSRSI6
-	${CP} hdr.OSRSI6 $@ ${CPFLAGS}
-
-${EXP_HDR}.PL310: hdr.PL310
-	${CP} hdr.PL310 $@ ${CPFLAGS}
-
-${EXP_HDR}.PublicWS: hdr.PublicWS
-	${CP} hdr.PublicWS $@ ${CPFLAGS}
-
-${EXP_HDR}.RISCOS: hdr.RISCOS
-	${CP} hdr.RISCOS $@ ${CPFLAGS}
-
-${EXP_HDR}.Variables: hdr.Variables
-	${CP} hdr.Variables $@ ${CPFLAGS}
-
-${EXP_HDR}.VduExt: hdr.VduExt
-	${CP} hdr.VduExt $@ ${CPFLAGS}
-
-${EXP_HDR}.VIDCList: hdr.VIDCList
-	${CP} hdr.VIDCList $@ ${CPFLAGS}
-
-${EXP_HDR}.VideoDevice: hdr.VideoDevice
-	${CP} hdr.VideoDevice $@ ${CPFLAGS}
-
 ${C_EXP_HDR}.HALDevice: Global.h.HALDevice h.HALDevice
 	${FAPPEND} $@ h.HALDevice Global.h.HALDevice
 
-${C_EXP_HDR}.HALEntries: hdr.HALEntries
-	${MKDIR} ${C_EXP_HDR}
-	${HDR2H} hdr.HALEntries $@
-
-${C_EXP_HDR}.ModHand: hdr.ModHand
-	${MKDIR} ${C_EXP_HDR}
-	${HDR2H} hdr.ModHand $@
-
 ${C_EXP_HDR}.OSEntries: Global.h.OSEntries h.OSEntries
 	${FAPPEND} $@ h.OSEntries Global.h.OSEntries
-
-${C_EXP_HDR}.OSMem: hdr.OSMem
-	${MKDIR} ${C_EXP_HDR}
-	${HDR2H} hdr.OSMem $@
-
-${C_EXP_HDR}.OSMisc: hdr.OSMisc
-	${MKDIR} ${C_EXP_HDR}
-	${HDR2H} hdr.OSMisc $@
-
-${C_EXP_HDR}.OSRSI6: hdr.OSRSI6
-	${MKDIR} ${C_EXP_HDR}
-	${HDR2H} hdr.OSRSI6 $@
-
-${C_EXP_HDR}.RISCOS: hdr.RISCOS
-	${MKDIR} ${C_EXP_HDR}
-	${HDR2H} hdr.RISCOS $@
-
-${C_EXP_HDR}.Variables: hdr.Variables
-	${MKDIR} ${C_EXP_HDR}
-	${HDR2H} hdr.Variables $@
-
-${C_EXP_HDR}.VduExt: hdr.VduExt
-	${MKDIR} ${C_EXP_HDR}
-	${HDR2H} hdr.VduExt $@
 
 ${C_EXP_HDR}.VIDCList: Global.h.VIDCList h.VIDCList
 	${FAPPEND} $@ h.VIDCList Global.h.VIDCList
@@ -279,6 +221,36 @@ Global.h.OSEntries: hdr.OSEntries
 Global.h.VIDCList: hdr.VIDCList
 	${MKDIR} Global.h
 	${HDR2H} hdr.VIDCList $@
+
+else
+
+# Posix / gmake case
+
+${EXP_HDR}/AMBControl: AMBControl.hdr
+	${CP} AMBControl.hdr $@
+
+${C_EXP_HDR}/HALDevice.h: Global/HALDevice.h HALDevice.h
+	${FAPPEND} $@ HALDevice.h Global/HALDevice.h
+
+${C_EXP_HDR}/OSEntries.h: Global/OSEntries.h OSEntries.h
+	${FAPPEND} $@ OSEntries.h Global/OSEntries.h
+
+${C_EXP_HDR}/VIDCList.h: Global/VIDCList.h VIDCList.h
+	${FAPPEND} $@ VIDCList.h Global/VIDCList.h
+
+Global/HALDevice.h: HALDevice.hdr
+	${MKDIR} Global
+	${HDR2H} $^ $@
+
+Global/OSEntries.h: OSEntries.hdr
+	${MKDIR} Global
+	${HDR2H} $^ $@
+
+Global/VIDCList.h: VIDCList.hdr
+	${MKDIR} Global
+	${HDR2H} $^ $@
+
+endif
 
 clean::
 	${XWIPE} Global ${WFLAGS}
