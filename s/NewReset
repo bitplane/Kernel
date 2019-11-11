@@ -88,7 +88,11 @@ CmosScreenWillDo
 CONT_Break
         AddressHAL
         MOV     a1, #1
+      [ LongDesc
+        LDR     a2, =LL1PT ; Probably not very useful (L2PT would be better)
+      |
         LDR     a2, =L1PT
+      ]
         CallHAL HAL_Reset
 
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
