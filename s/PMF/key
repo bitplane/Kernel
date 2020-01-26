@@ -744,7 +744,11 @@ PerformReset
         BNE     %FT15
         AddressHAL
         MOV     a1, #0
-      [ LongDesc
+      [ LongDesc :LAND: ShortDesc
+        PTWhich a2
+        LDRNE   a2, =LL1PT
+        LDREQ   a2, =L1PT
+      ELIF LongDesc
         LDR     a2, =LL1PT ; Probably not very useful (L2PT would be better)
       |
         LDR     a2, =L1PT

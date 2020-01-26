@@ -182,8 +182,15 @@ PMPRAMFS_Size   * 256                           ; Number of logical pages (physi
 
   [ :LNOT: :DEF: LongDesc
                 GBLL    LongDesc
-LongDesc        SETL    {FALSE} :LAND: MEMM_Type = "VMSAv6" ; Use long descriptor page table format?
+LongDesc        SETL    {FALSE} :LAND: MEMM_Type = "VMSAv6" ; Support long descriptor page table format?
   ]
+
+  [ :LNOT: :DEF: ShortDesc
+                GBLL    ShortDesc
+ShortDesc       SETL    {TRUE}                  ; Support short descriptor page table format?
+  ]
+
+                ASSERT  LongDesc :LOR: ShortDesc ; Must support at least one!
 
                 GBLL    CacheablePageTables
 CacheablePageTables SETL {TRUE}                 ; Use cacheable page tables where possible
