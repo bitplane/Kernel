@@ -93,6 +93,7 @@ MemReturn
 
 80
         B       MemoryConvert64                 ; 64
+        B       MemoryLogToPhys                 ; 65
 90      ; End of list
 
 
@@ -2628,6 +2629,41 @@ CMA_Done
         BNE     %BT40
         Pull    "r2,r4,r5,r8,r9,r10,lr"
         B       %BT05
+
+;----------------------------------------------------------------------------------------
+;
+;       In:     r0 = flags
+;                       bit     meaning
+;                       0-7     65 (reason code)
+;                       8-31    reserved (set to 0)
+;               r1 = logical address
+;
+;       Out:    r0,r1 = physical address
+;               r2 = size/alignment of mapping
+;               For invalid addresses:
+;               r0 = "Address not recognised" error
+;               r1 corrupt
+;               r2 = size/alignment of mapping (so caller knows how much
+;                    to skip)
+;
+;       Convert a logical address to a physical address. Supports all page types
+;       (unlike other logical -> physical SWIs, which only cope with regular
+;       4KB RAM pages).
+;
+MemoryLogToPhys ROUT
+        CMP     r0, #OSMemReason_LogToPhys
+        BNE     %FT99
+        Entry   "r3"
+        MOV     r0, r1
+        BL      RISCOS_LogToPhys
+        MOV     r2, r3
+        CMP     r0, #-1
+        CMPEQ   r1, #-1
+        ADREQL  r0, ErrorBlock_BadAddress
+        SETV    EQ
+        EXIT
+99
+        B       MemoryBadParameters
 
         LTORG
 

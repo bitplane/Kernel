@@ -412,12 +412,13 @@ Get1MPTE_ShortDesc
 ; r0,r1 = phys addr
 ; r2 = page flags
 ;      or -1 if fault
-; r3 = page size (bytes)
+; r3 = entry size/alignment (bytes)
 LoadAndDecodeL2Entry_ShortDesc   ROUT
         LDR     r1, =L2PT
         LDR     r0, [r1, r0, LSR #10]
         ANDS    r3, r0, #3
         MOVEQ   r2, #-1
+        MOVEQ   r3, #4096
         MOVEQ   pc, lr
         Entry   "r4-r6"
         ; Get AP bits in low bits

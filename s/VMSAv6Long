@@ -377,16 +377,16 @@ Get2MPTE_LongDesc
 ; r0,r1 = phys addr
 ; r2 = page flags
 ;      or -1 if fault
-; r3 = page size (bytes)
+; r3 = entry size/alignment (bytes)
 LoadAndDecodeL2Entry_LongDesc ROUT
         LDR     r1, =LL3PT
         ADD     r0, r1, r0, LSR #9
         LDRD    r0, [r0]
         ASSERT  LL_Fault = 0
         TST     r0, #LL_TypeMask
+        MOV     r3, #4096
         MOVEQ   r2, #-1
         MOVEQ   pc, lr
-        MOV     r3, #4096
 05      ; Arrive here from LoadAndDecodeL1Entry
         Entry   "r4-r5"
         LDR     lr, =ZeroPage
