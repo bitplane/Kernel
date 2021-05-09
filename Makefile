@@ -88,11 +88,11 @@ inst_dirs:
 install: ${EXPORTS} inst_dirs
 	@${ECHO} ${COMPONENT}: header files installed
 
-${KERNEL_MODULE}: ${ROM_OBJECTS} ${DIRS}
+${KERNEL_MODULE}: ${ROM_OBJECTS} ${DIRS} ${LIBS} kstrip
 	${MKDIR} bin
 	SetEval KernelBase "4" + STR ( 227858432 + ( HALSize LEFT ( LEN HALSize - 1 ) ) * 1024 )
-	Do ${LD} -bin -base <KernelBase> -o $@ ${ROM_OBJECTS}
-	Do ${LD} -aif -base <KernelBase> -bin -d -o ${KERNEL_MODULE}_aif ${ROM_OBJECTS}
+	Do ${LD} -aif -base <KernelBase> -RW-base 0xff000000 -bin -d -o ${KERNEL_MODULE}_aif ${ROM_OBJECTS} ${LIBS}
+	Do kstrip ${KERNEL_MODULE}_aif ${KERNEL_MODULE}
 	${TOGPA} -s ${KERNEL_MODULE}_aif ${KERNEL_MODULE}_gpa
 
 GetAll.o: ${TOKHELPSRC}
@@ -210,5 +210,9 @@ Global.h.VIDCList: hdr.VIDCList
 clean::
 	${XWIPE} Global ${WFLAGS}
 	${XWIPE} bin    ${WFLAGS}
+	${RM} kstrip
+
+kstrip: kstrip.c
+	${MAKE} -f kstrip/mk COMPONENT=kstrip THROWBACK=${THROWBACK}
 
 # Dynamic dependencies:

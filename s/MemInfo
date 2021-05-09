@@ -1212,7 +1212,8 @@ ReleasePhysAddr
 ;                               14=DebuggerSpace
 ;                               15=Scratch space
 ;                               16=Compatibility page
-;                       16-31   reserved (set to 0)
+;                               17=RW data section
+;                       18-31   reserved (set to 0)
 ;
 ;       Out:    r1 = base of area
 ;               r2 = address space allocated for area (whole number of pages)
@@ -1248,6 +1249,7 @@ MAI_TableStart
         B       MAI_DebuggerSpace
         B       MAI_ScratchSpace
         B       MAI_CompatibilityPage
+        B       MAI_RWData
 MAI_TableEnd
 
 70
@@ -1397,6 +1399,15 @@ MAI_CompatibilityPage
         CMP     r3, #0
         MOVNE   r3, #4096
       ]
+        EXIT
+
+MAI_RWData
+        LDR     r1, =|Image$$RW$$Base|
+        LDR     r2, =|Image$$ZI$$Limit|+&FFF
+        SUB     r2, r2, r1
+        BIC     r2, r2, #&FF
+        BIC     r2, r2, #&F00
+        MOV     r3, r2
         EXIT
 
 ;----------------------------------------------------------------------------------------
@@ -2502,6 +2513,13 @@ CheckMemoryAccess ROUT
         LDR     r3, =ROM
         LDR     r4, =OSROM_ImageSize*1024
         LDR     r5, =CMA_ROM
+        BL      CMA_AddRange
+        ASSERT  RWBase > ROM
+        LDR     r3, =RWBase
+        LDR     r4, =|Image$$ZI$$Limit|+&FFF-RWBase
+        BIC     r4, r4, #&FF
+        BIC     r4, r4, #&F00
+        LDR     r5, =CMA_RWArea
         BL      CMA_AddRange
         ; Finally, high processor vectors/relocated zero page
         ASSERT  ProcVecs = ZeroPage

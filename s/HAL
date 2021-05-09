@@ -1537,6 +1537,17 @@ ROMDecompAlign_$pt * 20
         LDR     a3, =(KbuffsSize + &FFF) :AND: &FFFFF000  ;(round to 4k)
         BL      Init_MapInRAM_Clear_$pt
 
+; Allocate the RW/ZI data segment
+        IMPORT  |Image$$RW$$Base|
+        LDR     a1, =|Image$$RW$$Base|
+        LDR     a2, =AreaFlags_RWArea
+        IMPORT  |Image$$ZI$$Limit|
+        LDR     a3, =|Image$$ZI$$Limit|+&FFF
+        SUB     a3, a3, a1
+        BIC     a3, a3, #&FF
+        BIC     a3, a3, #&F00
+        BL      Init_MapInRAM_Clear_$pt
+
  [ HiProcVecs
         ; Map in DebuggerSpace
         LDR     a1, =DebuggerSpace

@@ -325,6 +325,7 @@ WorkspaceLimit      # 0
 ROM                 * &FC000000
 ROMatTop         SETL {TRUE}
         ASSERT ROM >= WorkspaceLimit
+RWBase              * &FF000000 ; ~16MB of RW data space available to C code
 
 
 IRQSTK              * IRQStackAddress + IRQStackSize

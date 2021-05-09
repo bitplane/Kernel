@@ -18,7 +18,7 @@
 ; Arthur Utility commands
 
 SysModules_Info ROUT     ; start of ROM modules chain
-        &       EndOfKernel-SysModules_Info
+        &       (EndOfKernelRW-RWBase)+EndOfKernelRO-SysModules_Info
 
 UtilityMod
 Module_BaseAddr

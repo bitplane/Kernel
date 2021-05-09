@@ -176,7 +176,10 @@ EndOfAMB
         ! 0, "AMB section size = &" :CC: :STR: (EndOfAMB - StartOfAMB)
 
         AREA    zzzzzz, DATA, READONLY
-EndOfKernel
+EndOfKernelRO
+
+        AREA    zzzzzzz, DATA
+EndOfKernelRW
         DCD     0
 
         END

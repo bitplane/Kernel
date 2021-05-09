@@ -155,6 +155,7 @@ ABTStack             DefAreaFlags None, PageFlags_Unavailable
 UNDStack             DefAreaFlags None, PageFlags_Unavailable
 Kbuffs               DefAreaFlags Read, PageFlags_Unavailable
 DebuggerSpace        DefAreaFlags Read, PageFlags_Unavailable
+RWArea               DefAreaFlags None, PageFlags_Unavailable
 
   [ DA_Batman
 ChangeDyn_Batcall    * -3               ; special DA number to select Batman usage of OS_ChangeDynamicArea

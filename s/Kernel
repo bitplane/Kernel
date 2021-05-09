@@ -320,7 +320,7 @@ RISCOS_Header
         DCD     (RISCOS_Entries_End - RISCOS_Entries) / 4
         DCD     OSROM_ImageSize*1024 - OSROM_HALSize
         DCD     0
-        DCD     EndOfKernel - KernelBaseA
+        DCD     (EndOfKernelRW-RWBase)+EndOfKernelRO - KernelBaseA
         ASSERT  (. - RISCOS_Header) = OSHdr_size
 
 RISCOS_Entries

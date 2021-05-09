@@ -103,6 +103,19 @@ CONT_Break
 ; Entry point from HALInit
 
 Continue_after_HALInit
+; Initialise the RW data segment
+        IMPORT  |Image$$RW$$Base|
+        IMPORT  |Image$$RO$$Limit|
+        IMPORT  |Image$$ZI$$Base|
+        LDR     R0, =|Image$$RW$$Base|
+        LDR     R1, =|Image$$RO$$Limit|
+        LDR     R2, =|Image$$ZI$$Base|
+31
+        CMP     R0, R2
+        LDRNE   R3, [R1], #4
+        STRNE   R3, [R0], #4
+        BNE     %BT31
+
 
 ; OK, there is quite a bit of code poking below, to various addresses. We'll
 ; defer IMB consideration till the poking's done, then do a full IMB (full
