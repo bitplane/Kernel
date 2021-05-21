@@ -36,16 +36,6 @@ PAbPreVeneer    ROUT
         Pull    "r0-r7, pc"
  ]
 
-; Preliminary layout of abort indirection nodes
-
-        ^       0
-AI_Link #       4
-AI_Low  #       4
-AI_High #       4
-AI_WS   #       4
-AI_Addr #       4
-
-        EXPORT DAbPreVeneer
 
 DAbPreVeneer    ROUT
 
@@ -111,66 +101,17 @@ DAbPreVeneer    ROUT
         SUBNES  pc, lr_abort, #8                ; and restart aborting instruction
   ]
 
-        MRS     r0, SPSR                        ; r0 = PSR when we aborted
-        MRS     r1, CPSR                        ; r1 = CPSR
-        ADD     r2, r13_abort, #8*4             ; r2 -> saved register bank for r8 onwards
+; Remember the details of this abort, for OS_ReadSysInfo 7
 
-        LDR     r4, =ZeroPage+Abort32_dumparea+3*4 ;use temp area (avoid overwriting main area for expected aborts)
+        MRS     r1, SPSR                        ; r0 = PSR when we aborted
+
+        LDR     r4, =ZeroPage+Abort32_dumparea
         ARM_read_FAR r3
-        STMIA   r4, {r0,r3,lr_abort}            ; dump 32-bit PSR, fault address, 32-bit PC
+        MOV     r0, lr
+        STMIA   r4, {r0,r1,r3}                  ; dump 32-bit PC, 32-bit PSR, fault address
 
-        MOV     r4, lr_abort                    ; move address of aborting instruction into an unbanked register
-        BIC     r1, r1, #&1F                    ; knock out current mode bits
-        ANDS    r3, r0, #&1F                    ; extract old mode bits (and test for USR26_mode (=0))
-        TEQNE   r3, #USR32_mode                 ; if usr26 or usr32 then use ^ to store registers
-  [ SASTMhatbroken
-        STMEQIA r2!,{r8-r12}
-        STMEQIA r2 ,{r13,r14}^
-        SUBEQ   r2, r2, #5*4
-  |
-        STMEQIA r2, {r8-r14}^
-  ]
-        BEQ     %FT05
-
-        ORR     r3, r3, r1                      ; and put in user's
-        MSR     CPSR_c, r3                      ; switch to user's mode
-
-        STMIA   r2, {r8-r14}                    ; save the banked registers
-
-        MRS     r5, SPSR                        ; get the SPSR for the aborter's mode
-        STR     r5, [r2, #8*4]                  ; and store away in the spare slot on the end
-                                                ; (this is needed for LDM with PC and ^)
-        ORR     r1, r1, #ABT32_mode
-        MSR     CPSR_c, r1                      ; back to abort mode for the rest of this
-05
-        Push    "r0"                            ; save SPSR_abort
-
-  [ SASTMhatbroken
-        SUB     sp, sp, #3*4
-        STMIA   sp, {r13,r14}^                  ; save USR bank in case STM ^, and also so we can corrupt them
-        NOP
-        STMDB   sp!, {r8-r12}
-  |
-        SUB     sp, sp, #8*4                    ; make room for r8_usr to r14_usr and PC
-        STMIA   sp, {r8-r15}^                   ; save USR bank in case STM ^, and also so we can corrupt them
-  ]
-
-        SUB     r11, r2, #8*4                   ; r11 -> register bank
-        STR     r4, [sp, #7*4]                  ; store aborter's PC in user register bank
 
 ; Call normal exception handler
-
-90
-
-; copy temp area to real area (we believe this is an unexpected data abort now)
-
-        LDR     r0, =ZeroPage+Abort32_dumparea
-        LDR     r1, [r0,#3*4]
-        STR     r1, [r0]
-        LDR     r1, [r0,#4*4]
-        STR     r1, [r0,#4]
-        LDR     r1, [r0,#5*4]
-        STR     r1, [r0,#2*4]
 
         LDR     r0, =ZeroPage                           ; we're going to call abort handler
       [ ZeroPage = 0
@@ -181,28 +122,6 @@ DAbPreVeneer    ROUT
       ]
 
         LDR     r0, [r0, #DAbHan]                       ; get address of data abort handler
-
-        ADD     r2, r11, #8*4                   ; point r2 at 2nd half of main register bank
-        LDMIA   sp, {r8-r14}^                   ; reload user bank registers
-        NOP                                     ; don't access banked registers after LDM^
-        ADD     sp, sp, #9*4                    ; junk user bank stack frame + saved SPSR
-
-        MRS     r1, CPSR
-
-        MRS     r6, SPSR                        ; get original SPSR, with aborter's original mode
-        AND     r7, r6, #&0F
-        TEQ     r7, #USR26_mode                 ; also matches USR32
-        LDMEQIA r2, {r8-r14}^                   ; if user mode then just use ^ to reload registers
-        NOP
-        BEQ     %FT80
-
-        ORR     r6, r6, #I32_bit                ; use aborter's flags and mode but set I
-        BIC     r6, r6, #T32_bit                ; and don't set Thumb
-        MSR     CPSR_c, r6                      ; switch to aborter's mode
-        LDMIA   r2, {r8-r14}                    ; reload banked registers
-        MSR     CPSR_c, r1                      ; switch back to ABT32
-
-80
         STR     r0, [r13_abort, #16*4]          ; save handler address at top of stack
         LDR     lr_abort, [r13_abort, #15*4]    ; get abort address back in R14
 

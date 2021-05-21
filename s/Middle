@@ -1606,18 +1606,15 @@ osri6_maxvalue * (.-4-osri6_table) :SHR: 2
 ; ReadSysInfo(7)  - read 32-bit Abort information for last unexpected abort
 ;                      (prefetch or data)
 ;
-; On entry:       r0 =  6 (reason code)
+; On entry:       r0 = 7 (reason code)
 ;
 ; On exit:        r1 = 32-bit PC for last abort
 ;                 r2 = 32-bit PSR for last abort
 ;                 r3 = fault address for last abort (same as PC for prefetch abort)
 ;
 70
-        Push    "r0"
-        LDR     r0, =ZeroPage+Abort32_dumparea
-        LDMIA   r0, {r2, r3}
-        LDR     r1, [r0,#2*4]
-        Pull    "r0"
+        LDR     r1, =ZeroPage+Abort32_dumparea
+        LDMIA   r1, {r1-r3}
         ExitSWIHandler
 
 ; ReadSysInfo(8) - Returns summary information on host platform.

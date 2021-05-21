@@ -167,8 +167,7 @@ DatCopy
         LDR     r0, =ZeroPage
         STR     r2, [r0, #ResetIndirection]
 
-        MOV     r3, #0                  ; zero-initialise abort list, and other key workspace
-        STR     r3, [r0, #AbortIndirection]
+        MOV     r3, #0                  ; zero-initialise key bits of workspace
  [ CompatibilityPage
         STRB    r3, [r0, #CompatibilityPageEnabled]
  ]

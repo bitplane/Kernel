@@ -1518,7 +1518,8 @@ SysVars_StickyPointers # (10+1)*4                ;used if ChocolateSysVars is TR
       ! 0, "SysVars_StickyPtrs    at ":CC::STR:(SysVars_StickyPointers)
  ]
 ;
-Abort32_dumparea   # 6*4          ;info for OS_ReadSysInfo 7 - 32-bit PSR, fault address, 32-bit PC (room for two copies)
+Abort32_dumparea   # 3*4          ;info for OS_ReadSysInfo 7 - 32-bit PC, 32-bit PSR, fault address
+                   # 12           ; Spare
  [ :DEF: ShowWS
       ! 0, "Abort32_dumparea      at ":CC::STR:(Abort32_dumparea)
  ]
@@ -1601,7 +1602,6 @@ PowerSave * &80                         ; Gets set in PortableFlags when we've s
         AlignSpace
 
 MOSConvertBuffer    #  12               ; Enough romm for 8 hex digits.
-AbortIndirection    #  4                ; Pointer to list of addresses and trap routines
 PreVeneerRegDump    #  17*4             ; room for r0-r15, spsr
 
  [ CacheCommonErrors
