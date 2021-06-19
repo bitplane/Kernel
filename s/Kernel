@@ -649,7 +649,7 @@ JTABLE  & SWIWriteC
         & PointerSWI
         & ScreenModeSWI
         & DynamicAreaSWI
-        & NoSuchSWI                     ; OS_AbortTrap
+        & AbortTrapSWI
         & MemorySWI
         & ClaimProcVecSWI
         & PerformReset
@@ -1530,6 +1530,139 @@ platfeat_clrex
 ; SWI OS_GenerateError
 
 GenErrorSWI * SLVK_SetV
+
+; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; SWI OS_AbortTrap
+;
+;     r0 = reason code:
+;          0 -> register
+;          1 -> deregister
+;     r1 = low address (inclusive)
+;     r2 = high address (exclusive)
+;     r3 -> handler routine
+;     r4 = handler R12
+;
+; The handler will be called for any data abort caused by a load/store
+; instruction that targets the indicated region, where the cause of the failure
+; was either a translation fault (no memory at the target address) or a
+; permission fault (memory is there, but the code has insufficient permissions
+; to access it). The handler will not be called for alignment faults, and might
+; not be called for instructions that are documented as unpredictable (e.g.
+; LDM which loads the base register but also applies writeback). These checks
+; are occurred for every byte of the transfer; e.g. if a transfer crosses from
+; normal memory (which the instruction has permission to access) over to memory
+; which the instruction can't access, the handler will only be called for the
+; part which the instruction can't access.
+;
+; Processing occurs after any handlers installed via OS_ClaimProcessorVector,
+; and before the abort is passed to the data abort environment handler.
+;
+; Handler input:
+;     r0 = Reason (bits 0-3):
+;            0 = Store operation
+;            1 = Load operation
+;            2 = Memmap operation
+;            3+ reserved
+;          Reasons 0 & 1 use bit 4 to indicate if the memory access is
+;            privileged (1) or unprivileged (0).
+;          Reason 3 uses bits 4-9 to indicate the required permissions:
+;            Bit 4 = executable in user mode
+;            Bit 5 = writable in user mode
+;            Bit 6 = readable in user mode
+;            Bit 7 = executable in privileged modes
+;            Bit 8 = writable in privileged modes
+;            Bit 9 = readable in privileged modes
+;          Other bits are reserved.
+;     r1 = Pointer to buffer to as data source (reason 0) or destination (1).
+;          Invalid for memmap requests (reason 2).
+;     r2 = Base address of memory being accessed by the instruction
+;     r3 = Length of memory required (bytes)
+;     r12 = Handler-specific workspace pointer (R4 value when registering the
+;           handler)
+;     SVC32, interrupts disabled
+;
+; Handler output:
+;     Success: V clear, all registers preserved
+;     Failure: V set, R0 points to error block, all other registers preserved
+;
+; Serious/hardware errors (bit 31 of error number set) returned by a handler 
+; will cause the error to be reported immediately via OS_GenerateError. The
+; exception registers block (environment handler 13) will be filled in with the
+; original registers (as if a data abort error were generated), along with the
+; "last exception details" reported by OS_ReadSysInfo 7.
+;
+; Non-serious errors will cause the kernel to look for another handler for the
+; same region which can perform the required operation. If all handlers fail,
+; or there is no AbortTrap handler for a required region, the abort will be
+; passed to the data abort environment handler. There is no defined order in
+; which handlers will be called.
+;
+; Care must be taken to ensure that the handler returns a suitable error if it
+; is called with an unknown/unsupported reason code or flags.
+;
+; For reasons 0 & 1, bytes should be transferred in linear order (the kernel
+; will take care of any rotation required by pre-ARMv7 rotated loads). Memory
+; addresses have no size or alignment guarantees.
+;
+; For operations which cross multiple regions (e.g. multiple aborttrap regions
+; or directly-accessible memory regions), and where the overall result is a
+; failure:
+;  * Some AbortTrap read or write operations may have been performed
+;  * For write instructions, some directly-accessible memory may have been
+;    updated.
+; This behaviour is broadly consistent with the ARM abort model.
+;
+; Most load/store instructions will result in reason codes 0 & 1 being used.
+; SWP & SWPB instructions are treated as a read operation followed by a write
+; operation - however depending on the handler behaviour, the handler might
+; only receive one of these calls. E.g. if the read call causes the handler to
+; map in the page, the write operation might cause the kernel to perform a
+; direct memory access instead of calling the handler. On success, the kernel
+; will update the necessary registers and resume execution from the next
+; instruction.
+;
+; Reason 2 is generally only used for advanced instructions such as
+; LDREX/STREX, which can only work correctly if the CPU is able to execute the
+; instruction directly. The expectation is that the handler will map in the
+; indicated memory with (at minimum) the requested permissions. On success, the
+; kernel will roll back the PC, the base register (if the base-updated abort
+; model is in use), and re-execute the instruction.
+;
+; Note that the implementation doesn't attempt to deal with the StrongARM abort
+; handling errata, so care must be taken when using handlers on afflicted CPUs.
+;
+; For data aborts, only aborts from the ARM instruction set state are
+; supported. Data aborts from other states (e.g. Thumb) will be passed straight
+; to the environment handler.
+;
+; Code which registers AbortTrap handlers may also need to respond to
+; Service_ValidateAddress, in order for the OS & software to consider the
+; address range to be valid.
+;
+AbortTrapSWI ROUT
+        CMP     r0,#OSAbortTrap_Register
+        CMPNE   r0,#OSAbortTrap_Deregister
+        ADRNEL  r0,ErrorBlock_BadParameters
+        BNE     %FT90
+        Entry   "r0-r3"
+        ; Pass through to C
+        IMPORT  aborttrap_swi
+        Push    "r4" ; extra function arg
+        BL      aborttrap_swi
+        ADD     sp,sp,#4
+        CMP     r0,#0
+        STRNE   r0,[sp]
+        PullEnv
+        ORRNE   lr, lr, #V_bit
+        B       SLVK
+90
+      [ International
+        Push    "lr"
+        BL      TranslateError
+        Pull    "lr"
+      ]
+        B       SLVK_SetV
+                
 
 ; +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

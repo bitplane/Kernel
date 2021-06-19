@@ -40,11 +40,28 @@ PAbPreVeneer    ROUT
 
 DAbPreVeneer    ROUT
 
-        SUB     r13_abort, r13_abort, #17*4     ; we use stacks, dontcherknow
-        STMIA   r13_abort, {r0-r7}              ; save unbanked registers anyway
-        STR     lr_abort, [r13_abort, #15*4]    ; save old PC, ie instruction address
+        ; Produce a register dump containing everything important that could be
+        ; corrupted by a recursive abort, or hard to access from child routines:
+        ; R0-R14, SPSR, DFAR, DFSR, ADFSR
+        ; = 19 words
+        STR     lr, [sp, #-20]!           ; Save space for PSR, etc.
+        ADD     lr, sp, #20
+        Push    "r0-r12,lr"               ; R0-R13
+        ; Fill in SPSR & the available CP15 registers
+        LDR     r5, =ZeroPage+CPUFeatures+((CPUFeature_CP15_ADFSR:SHR:5):SHL:2)
+        LDR     r5, [r5]
+        MRS     r0, SPSR
+        ARM_read_FAR r1 ; DFAR
+        ARM_read_FSR r2 ; DFSR
+        TST     r5, #1:SHL:(CPUFeature_CP15_ADFSR:AND:31)
+        ARM_read_ADFSR r3,NE
+        STMDB   lr, {r0-r3}
 
         MyCLREX r0, r1                          ; Exclusive monitor is in unpredictable state "after taking a data abort", clear it here
+
+        ; The next couple of bits want LR, SPSR & DFAR
+        ADD     r8, sp, #14*4
+        LDMIA   r8, {r8-r10}                    ; LR, SPSR, DFAR
 
   [ MEMM_Type = "VMSAv6"
         ; Fixup code for MVA-based cache/TLB ops, which can abort on ARMv7 if the specified MVA doesn't have a mapping.
@@ -54,27 +71,11 @@ DAbPreVeneer    ROUT
         ; Note that some non-MVA ops also follow the above rules - at the moment we make no attempt to filter those false-positives out
         ; This code is also written from the perspective of running on an ARMv7 CPU - behaviour under ARMv6 hasn't been checked!
 
-        ; Also, as wrong as it seems, attempting to load the aborting instruction could trigger an abort (something wrong with the prefetch handler? or cache flushes not being done properly?)
-        ; So this code must protect DFAR, DFSR, spsr_abort, and lr_abort from being clobbered
-
-        ; We also need to be careful about how AMBControl will react to the abort:
-        ; If DFAR and lr_abort both point to the same page, when we try loading the instruction (and it triggers an abort), AMBControl will map in the page
-        ; So when control returns to us (and we determine that it wasn't an MVA op) AMBControl will be called again (for DFAR), see that the page is mapped in, and claim that it's a real abort instead of the lazy fixup that it really is
-        ; (The workaround for that issue probably makes the DFAR, DFSR, spsr_abort, lr_abort saving irrelevant, but it's better to be safe than sorry)
-
-        CMP     lr, #AplWorkMaxSize             ; Assume that MVA ops won't come from application space (cheap workaround for above-mentioned AMBControl issue)
+        CMP     r8, #AplWorkMaxSize             ; Assume that MVA ops won't come from application space (extra safety to avoid recursive aborts breaking things)
         BLO     %FT10
-        MRS     r1, SPSR
-        TST     r1, #T32_bit
+        TST     r9, #T32_bit
         BNE     %FT10                           ; We don't cope with Thumb ATM. Should really check for Jazelle too!
-        MOV     r2, lr                          ; LR is already saved on the stack, but we can't load from it because any recursive abort won't have a clue what address we're trying to access.
-        ; Protect DFAR, DFSR
-        ARM_read_FAR r3
-        ARM_read_FSR r4
-        LDR     r0, [r2, #-8]                   ; Get aborting instruction
-        MSR     SPSR_cxsf, r1                   ; un-clobber SPSR, FAR, FSR
-        ARM_write_FAR r3
-        ARM_write_FSR r4
+        LDR     r0, [r8, #-8]                   ; Get aborting instruction
         CMP     r0, #&F0000000
         BHS     %FT10                           ; Ignore cc=NV, which is MCR2 encoding
         BIC     r0, r0, #&F000000F              ; Mask out the uninteresting bits
@@ -84,53 +85,131 @@ DAbPreVeneer    ROUT
         CMP     r0,     #&00070000              ; CRn=c7?
         CMPNE   r0,     #&00080000              ; CRn=c8?
         BNE     %FT10                           ; It's not an MVA-based op
-        MOV     lr_abort, r2                    ; un-clobber LR (doesn't need un-clobbering if it wasn't an MVA op)
-        LDMIA   r13_abort, {r0-r4}              ; Restore the regs we intentionally clobbered
-        ADD     r13_abort, r13_abort, #17*4
-        SUBS    pc, lr_abort, #4                ; Resume execution at the next instruction
+        SUB     r8, r8, #4                      ; Resume execution at the next instruction
+        STR     r8, [sp, #14*4]
+        B       %FT70
 10
   ]
 
   [ AMB_LazyMapIn
-        ARM_read_FAR r0                         ; aborting address
+        MOV     r0, r10                         ; DFAR
         MOV     r2, #0
+        LDR     r6, [sp, #17*4]                 ; DFSR
         BL      AMB_LazyFixUp                   ; can trash r0-r7, returns NE status if claimed and fixed up
-        PageTableSyncNE
-        LDRNE   lr_abort, [r13_abort, #15*4]    ; restore lr_abort
-        LDMNEIA r13_abort, {r0-r7}              ; restore regs
-        ADDNE   r13_abort, r13_abort, #17*4     ; if fixed up, restore r13_abort
-        SUBNES  pc, lr_abort, #8                ; and restart aborting instruction
-        BL      AMB_MakeFullyHonest             ; DAbHan might not support recursive aborts
-        LDR     lr_abort, [r13_abort, #15*4]    ; restore lr_abort
+        BEQ     %FT45
+        PageTableSync
+        SUB     r8, r8, #8
+        STR     r8, [sp, #14*4]
+        B       %FT70
+45
   ]
 
-; Remember the details of this abort, for OS_ReadSysInfo 7
+        ; Try AbortTrap
+        MOV     r5, #0
+        BL      ValidateR13_svc
+        BVS     %FT50
+        MOV     r0, sp
+        IMPORT  aborttrap_dataabort_veneer
+        BL      aborttrap_dataabort_veneer
+        CMP     r0, #1
+        BLO     %FT70
+        LDRNE   r1, [r0]
+        TSTNE   r1, #&80000000                  ; Serious error?
+        MOVNE   r5, r0
+50
+        ADD     r8, sp, #14*4
+        LDMIA   r8, {r8-r10}                    ; LR, SPSR, DFAR
 
-        MRS     r1, SPSR                        ; r0 = PSR when we aborted
+        ; Remember the details of this abort, for OS_ReadSysInfo 7
 
         LDR     r4, =ZeroPage+Abort32_dumparea
-        ARM_read_FAR r3
-        MOV     r0, lr
-        STMIA   r4, {r0,r1,r3}                  ; dump 32-bit PC, 32-bit PSR, fault address
+        STMIA   r4, {r8-r10}                    ; dump 32-bit PC, 32-bit PSR, fault address
 
+        MOV     r2, #0                          ; we're going to call abort handler
+        STR     r2, [r4, #CDASemaphore-Abort32_dumparea] ; so allow recovery if we were in CDA
 
-; Call normal exception handler
+        ; Pass on to DAbHan (i.e. OS_ChangeEnvironment), or raise an error
+  [ AMB_LazyMapIn
+        BL      AMB_MakeFullyHonest             ; DAbHan might not support recursive aborts
+  ]
+        ; Is there an error to raise?
+        MOVS    r14, r5
+        BNE     %FT60
 
-        LDR     r0, =ZeroPage                           ; we're going to call abort handler
-      [ ZeroPage = 0
-        STR     r0, [r0, #CDASemaphore]                 ; so allow recovery if we were in CDA
-      |
-        MOV     r2, #0
-        STR     r2, [r0, #CDASemaphore]                 ; so allow recovery if we were in CDA
-      ]
+        ; Restore SPSR & CP15 registers
+        ADD     r0, sp, #19*4
+        LDMDB   r0, {r0-r3}
+        LDR     r5, =ZeroPage+CPUFeatures+((CPUFeature_CP15_DFAR_DFSR_writable:SHR:5):SHL:2)
+        LDMIA   r5, {r5,r6}
+        MSR     SPSR_cxsf, r0
+        TST     r5, #1:SHL:(CPUFeature_CP15_DFAR_DFSR_writable:AND:31)
+        ARM_write_FAR r1,NE ; DFAR
+        ARM_write_FSR r2,NE ; DFSR
+        ASSERT  (CPUFeature_CP15_DFAR_DFSR_writable:SHR:5)+1 = CPUFeature_CP15_ADFSR:SHR:5
+        TST     r6, #1:SHL:(CPUFeature_CP15_ADFSR:AND:31)
+        ARM_write_ADFSR r3,NE
 
-        LDR     r0, [r0, #DAbHan]                       ; get address of data abort handler
-        STR     r0, [r13_abort, #16*4]          ; save handler address at top of stack
-        LDR     lr_abort, [r13_abort, #15*4]    ; get abort address back in R14
+        LDR     lr, =ZeroPage+DAbHan
+        LDR     lr, [lr]
+        STR     lr, [sp, #15*4]
+        LDMIA   sp, {r0-r15}                    ; The recovered R13 should discard the everything else from the stack
 
-        LDMIA   r13_abort, {r0-r7}              ; reload r0-r7
-        ADD     r13_abort, r13_abort, #16*4     ; we use stacks, dontcherknow
+60
+        ; Raise error (in R14) using the same mechanism that ABORTD uses for
+        ; unhandled data aborts - i.e. call through to DumpyTheRegisters.
+        ; To do that, we must shuffle things around into a (part-filled)
+        ; standard 17 word register dump.
+        ADD     r2, sp, #19*4
+        LDR     r0, [sp, #14*4]    ; Grab PC
+        LDR     r1, [sp, #15*4]    ; Grab SPSR
+        STMFD   r2, {r0,r1}        ; Store at top of stack
+        LDMIA   sp, {r0-r12}       ; Load all the other regs
+        ADD     sp, sp, #19*4-17*4 ; Adjust SP to point at base of new dump
+        STMIA   sp, {r0-r7}        ; Fill in R0-R7
+        ADD     r0, sp, #8*4       ; R0 points to R8
+        LDR     r1, [sp, #16*4]    ; R1 is SPSR again
+        MOV     r4, #-1            ; R4 is magic value to stop error translation
+        B       DumpyTheRegisters
 
-        Pull    pc
+70
+        LDR     r4, [sp, #15*4]
+        MSR     SPSR_cxsf, r4
+        LDMIA   sp, {r0-r13,r15}^         ; The recovered R13 should discard the everything else from the stack
+
+; In: ABT32 mode
+; Out: R0-R3 corrupt
+;      VC if R13_svc is valid (at least up to next page boundary), VS if not
+ValidateR13_svc ROUT
+        Entry
+        SetMode SVC32_mode, r0
+        ; Check stack space against MB-aligned base addr
+        MOV     r0, r13, LSL #12
+        CMP     r0, #4096<<12
+        BLO     %FT90
+        ; Check SP alignment
+        TST     r13, #3
+        BNE     %FT90
+        ; Check the page tables to make sure it's pointing to suitable memory
+        SUB     r0, r13, #1
+        SetMode ABT32_mode,r1
+        MOV     r0, r0, LSR #Log2PageSize
+        MOV     r0, r0, LSL #Log2PageSize
+        PTOp    LoadAndDecodeL2Entry
+        ; Decode the permissions
+        CMP     r2, #-1
+        LDRNE   r1, =ZeroPage
+        LDRNE   r0, [r1, #MMU_PPLAccess]
+        ANDNE   r2, r2, #DynAreaFlags_APBits
+        LDRNE   r0, [r0, r2, LSL #2]
+        MOVEQ   r0, #0
+        ; Must have privileged read+write access
+        AND     r0, r0, #CMA_Partially_PrivR+CMA_Partially_PrivW
+        CMP     r0, #CMA_Partially_PrivR+CMA_Partially_PrivW
+        SETV    NE
+        EXIT
+90
+        SetMode ABT32_mode, r0
+        SETV
+        EXIT
 
         END

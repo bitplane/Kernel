@@ -533,6 +533,7 @@ RdArgs_SWICode ROUT
       Pull   "R4, R8, R9, lr"
       B      SLVK_SetV
 
+      EXPORT ErrorBlock_BadParameters
       MakeErrorBlock BadParameters
       MakeErrorBlock ArgRepeated
       ALIGN

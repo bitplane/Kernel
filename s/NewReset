@@ -116,6 +116,16 @@ Continue_after_HALInit
         STRNE   R3, [R0], #4
         BNE     %BT31
 
+ [ USE_SYNCLIB
+; Initialise synclib
+        IMPORT  synclib_init
+        BL      synclib_init
+ ]
+
+; AbortTrap
+        DebugTX "aborttrap_init"
+        IMPORT  aborttrap_init
+        BL      aborttrap_init
 
 ; OK, there is quite a bit of code poking below, to various addresses. We'll
 ; defer IMB consideration till the poking's done, then do a full IMB (full

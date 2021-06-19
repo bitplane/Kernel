@@ -415,7 +415,7 @@ pt      SETS ""
 ; entry: r0 = aborting address (data address for data abort, instruction address
 ;        for prefetch abort), r1-r7 trashable
 ;        r2 = 1 for prefetch abort, 0 for data abort
-;        FSR valid for data aborts, unpredictable for prefetch aborts
+;        r6 = FSR (iff data abort)
 ; exit:  r0 = non-zero (NE status) if abort was expected and fixed up, zero (EQ status) if not
 ;        FAR,FSR,SPSR_abt,lr_abt preserved
 ;
@@ -431,7 +431,6 @@ AMB_LazyFixUp ROUT
         LDR     r1,AMBMappedInNode
         CMP     r1,#0
         BEQ     %FT90                                    ;no current node
-        ARM_read_FSR r6
         TEQ     r2,#1                                    ;if data abort
         ANDNE   r3,r6,#&F
         TEQNE   r3,#7                                    ; and not a page translation fault
@@ -544,13 +543,12 @@ AMB_LazyFixUp ROUT
 ;
 ; Fix up consists of triggering recursive aborts in order to map in each missing page.
 ;
-; entry: r0-r7 trashable
+; entry: r0-r3, r12 trashable
 ;        FSR valid for data aborts, unpredictable for prefetch aborts
-; exit:  r0-r7 corrupt
-;        FAR,FSR,SPSR_abt,lr_abt preserved
+; exit:  r0-r3, r12 corrupt
+;        DFAR,DFSR,SPSR_abt,lr_abt corrupted
 ;
 AMB_MakeFullyHonest ROUT
-        MOV     r7,r12
         LDR     r12,=ZeroPage+AMBControl_ws
         LDR     r12,[r12]
         CMP     r12,#0
@@ -561,32 +559,24 @@ AMB_MakeFullyHonest ROUT
         LDR     r1,AMBMappedInNode
         CMP     r1,#0
         BEQ     %FT90                                    ;no current node
-        ARM_read_FSR r6                                  ;preserve FSR in case client abort handler wants to read it
         MOV     r1,#ApplicationStart                     ;good old page walk to provoke lazy fixups
         LDR     r2,AMBMappedInNode
         LDR     r2,[r2,#AMBNode_DANode+DANode_PMPSize]
         CMP     r2,#0
         BEQ     %FT90
-        MRS     r0,SPSR                                  ;preserve SPSR_abort for original abort details
-        MOV     r4,lr                                    ;preserve lr_abort so we can return properly (!)
-        ARM_read_FAR r5                                  ;preserve FAR in case client abort handler wants to read it
-                                                         ;preserve FSR (already in r6) similarly
+        MOV     r0,lr                                    ;preserve lr_abort so we can return properly (!)
 30
         LDR     r3,[r1]                                  ;bring that page in by the magic of aborts
         SUBS    r2,r2,#1
         ADD     r1,r1,#PageSize
         BNE     %BT30
-        MSR     SPSR_cxsf,r0                             ;SPSR for original abort
-        MOV     lr,r4                                    ;restore return address
-        ARM_write_FAR r5                                 ;restore FAR
-        ARM_write_FSR r6                                 ;restore FSR
+        MOV     lr,r0                                    ;restore return address
       [ MEMM_Type = "VMSAv6"
         myISB   ,r0 ; Not sure if this is necessary or not; do it just in case
       ]
 ;
 90
-        MOV     r12,r7
-        MOV     pc,lr                                    ;r0 is zero, EQ status
+        MOV     pc,lr
 
   ] ;AMB_LazyMapIn
 

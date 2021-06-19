@@ -1211,6 +1211,9 @@ ProcessorFlags           #  4    ; Processor flags (IMB, Arch4 etc)
  ! 0, "ProcessorType  at  ":CC::STR:(ProcessorType)
  ! 0, "ProcessorFlags at  ":CC::STR:(ProcessorFlags)
  ]
+        ; Allow use by C code
+        EXPORT  g_ProcessorFlags
+g_ProcessorFlags * ZeroPage+ProcessorFlags
 
                 AlignSpace
 

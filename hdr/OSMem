@@ -184,4 +184,22 @@ CMA_Partially_Abort    * 1<<13 ; partially abortable
 CMA_Partially_UserXN   * 1<<14 ; partially non-executable in user mode
 CMA_Partially_PrivXN   * 1<<15 ; partially non-executable in privileged modes
 
+; OS_AbortTrap reason codes
+OSAbortTrap_Register   * 0
+OSAbortTrap_Deregister * 1
+
+; AbortTrap / abortable DA handler reason codes
+AbortTrap_Reason_Store  * 0 ; Store to memory
+AbortTrap_Reason_Load   * 1 ; Load from memory
+AbortTrap_Reason_MemMap * 2 ; Map in memory with (at least) the indicated permissions
+AbortTrap_Reason_Mask   * &F
+AbortTrap_LoadStore_Privileged * &10 ; Indicates that Store or Load access is privileged
+AbortTrap_MemMap_UserX  * 1<<4 ; Executable in user mode
+AbortTrap_MemMap_UserW  * 1<<5 ; Writable in user mode
+AbortTrap_MemMap_UserR  * 1<<6 ; Readable in user mode
+AbortTrap_MemMap_PrivX  * 1<<7 ; Executable in privileged modes
+AbortTrap_MemMap_PrivW  * 1<<8 ; Writable in privileged modes
+AbortTrap_MemMap_PrivR  * 1<<9 ; Readable in privileged modes
+
+
         END

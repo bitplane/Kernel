@@ -43,6 +43,7 @@ TranslateError_VClear  ROUT
         CLRV
         Pull    "r4,PC"
 
+        EXPORT  TranslateError
 TranslateError  ROUT
         Push    "r4,LR"
         MOV     r4,#0

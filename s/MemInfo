@@ -1430,6 +1430,7 @@ MAI_RWData
 ;               bits 6+: reserved
 ;
 ;       Returns permission information for a given AP / enumerates all AP
+        EXPORT  MemoryAccessPrivileges
 MemoryAccessPrivileges ROUT
         CMP     r0, #17
         BNE     MemoryBadParameters
@@ -2109,6 +2110,7 @@ ChangeCompatibility ROUT
         DCD     0 ; Fill the rest with zero (typically, most of ZeroPage is zero)
 30
  ]
+        LTORG
 
 ;----------------------------------------------------------------------------------------
 ;
@@ -2232,8 +2234,6 @@ CMA_Completely_Inverted * CMA_Completely_UserXN + CMA_Completely_PrivXN
 
 CMA_CheckL2PT          * 1<<31 ; Pseudo flag used internally for checking sparse areas
 CMA_DecodeAP           * 1<<30 ; Used with CheckL2PT to indicate AP flags should be decoded from L2PT
-
-; AP_ equivalents
 
 CheckMemoryAccess ROUT
         Entry   "r0,r2-r10"
