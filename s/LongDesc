@@ -612,6 +612,13 @@ AccessPhysicalAddress_LongDesc ROUT
         GetPTE  a1, 2M, ip, a1, LongDesc
         ; Force XN (easier to do afterwards since PPL mapping is non-trivial)
         ORR     a2, a2, #LL_Page_HighAttr_XN
+ [ EmulateAP1
+        ; Don't allow AP1 emulation (usermode readonly); there's no XN+SW0
+        ; format defined in PPLTrans, so to ensure we can map from the page
+        ; table entry flags back to a valid AP number, we must clear SW0 and
+        ; lose the usermode access.
+        BIC     a2, a2, #LL_Page_HighAttr_SW0
+ ]
         MOV     lr, a4
         LDR     ip, =LL2PT + (PhysicalAccess:SHR:18)    ; ip -> L2PT entry
         LDRD    a3, [ip]                                ; Get old entry
@@ -713,6 +720,13 @@ RISCOS_MapInIO_LowAttr_LongDesc ; a1 bits 0-11 = low attributes, bits 20+ = our 
         ORR     a1, a1, v4, LSL #21
         MOV     a2, v4, LSR #11
         ORR     a2, a2, #LL_Page_HighAttr_XN            ; a1,a2 = first PT entry to match
+ [ EmulateAP1
+        ; Don't allow AP1 emulation (usermode readonly); there's no XN+SW0
+        ; format defined in PPLTrans, so to ensure we can map from the page
+        ; table entry flags back to a valid AP number, we must clear SW0 and
+        ; lose the usermode access.
+        BIC     a2, a2, #LL_Page_HighAttr_SW0
+ ]
         LDR     v7, [ip, #IOAllocPtr]
         MOV     v7, v7, LSR #18                         ; v7 = logical 2MB*8 that we're checking for a match
         LDR     v1, =LL2PT

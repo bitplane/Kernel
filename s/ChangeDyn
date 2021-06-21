@@ -154,7 +154,11 @@ IRQStack             DefAreaFlags None, PageFlags_Unavailable
 ABTStack             DefAreaFlags None, PageFlags_Unavailable
 UNDStack             DefAreaFlags None, PageFlags_Unavailable
 Kbuffs               DefAreaFlags Read, PageFlags_Unavailable
+  [ EmulateAP1
+DebuggerSpace        DefAreaFlags Full, PageFlags_Unavailable ; Downgrade from read-only to full access in usermode, to avoid LongDesc AP1 emulation causing it to become non-executable in usermode
+  |
 DebuggerSpace        DefAreaFlags Read, PageFlags_Unavailable
+  ]
 RWArea               DefAreaFlags None, PageFlags_Unavailable
 
   [ DA_Batman

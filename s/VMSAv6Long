@@ -265,36 +265,60 @@ TTBRCacheMunge
 ; XN, PXN, AP2, AP1 mean we theoretically have 16 permission levels. However
 ; some are redundant (e.g. setting both XN+PXN)
 
+ [ EmulateAP1
+; Because the long descriptor format doesn't support RISC OS AP 1 (user RX,
+; priv RWX), we instead map the memory as user None, priv RWX, (equivalent to
+; RISC OS AP 2). User mode read access is provided by the AbortTrap code; when
+; AbortTrap examines the page it will see the "correct" permissions, and so will
+; do a direct memcpy from the page, without needing any special code or needing
+; to invoke any AbortTrap handlers.
+;
+; Some parts of the OS (including AbortTrap) need to be able to decode page
+; table entries and map the flags back to the corresponding AP value. So for
+; the OS to correctly differentiate between AP 1 & AP 2, we now consider the
+; SW0 flag bit to be one of the permission bits.
+;
+; Note that we currently don't provide any support for executing usermode code
+; from AP 1 memory, and the advertised permissions reflect this.
+ ]
+
         ; Encode both high and low attributes in one word
         ASSERT  LL_HighAttr_Start >= LL_LowAttr_Start+LL_LowAttr_Size
         MACRO
-        LongPPL  $XN, $PXN, $AP2, $AP1
-        DCD     ($XN * LL_Page_HighAttr_XN) + ($PXN * LL_Page_HighAttr_PXN) + ($AP2 * LL_Page_LowAttr_AP2) + ($AP1 * LL_Page_LowAttr_AP1) + LL_Page_LowAttr_SH1 + LL_Page_LowAttr_SH0
+        LongPPL  $XN, $PXN, $AP2, $AP1, $SW0
+        DCD     ($XN * LL_Page_HighAttr_XN) + ($PXN * LL_Page_HighAttr_PXN) + ($AP2 * LL_Page_LowAttr_AP2) + ($AP1 * LL_Page_LowAttr_AP1) + LL_Page_LowAttr_SH1 + LL_Page_LowAttr_SH0 + ($SW0 * LL_Page_HighAttr_SW0)
         MEND
 
 ; AP2 = read-only
 ; AP1 = enable unprivileged access
 PPLTrans_LongDesc
-        ;       XN  PXN AP2 AP1   EL1 EL0
-        LongPPL 0,  0,  0,  1   ; RWX RWX
-        ! 0, "LongDescTODO Implement solution for PPL 1"
-        LongPPL 0,  0,  0,  1   ; RWX RWX *** downgraded from RWX R X
-        LongPPL 0,  0,  0,  0   ; RWX
-        LongPPL 0,  0,  1,  1   ; R X R X
-        LongPPL 0,  0,  1,  0   ; R X
-
-        LongPPL 1,  0,  0,  0   ; RW 
-        LongPPL 1,  0,  0,  1   ; RW  RW 
-        LongPPL 1,  0,  1,  0   ; R  
-        LongPPL 1,  0,  1,  1   ; R   R  
-
-        LongPPL 0,  1,  0,  1   ; RW  RWX 
-        LongPPL 0,  1,  1,  1   ; R   R X 
+        ;       XN  PXN AP2 AP1 SW0   EL1 EL0
+        LongPPL 0,  0,  0,  1,  0   ; RWX RWX
+      [ EmulateAP1
+        LongPPL 0,  0,  0,  0,  1   ; RWX R
+      |
+        LongPPL 0,  0,  0,  1,  0   ; RWX RWX
+      ]
+        LongPPL 0,  0,  0,  0,  0   ; RWX
+        LongPPL 0,  0,  1,  1,  0   ; R X R X
+        LongPPL 0,  0,  1,  0,  0   ; R X
+                                    
+        LongPPL 1,  0,  0,  0,  0   ; RW 
+        LongPPL 1,  0,  0,  1,  0   ; RW  RW 
+        LongPPL 1,  0,  1,  0,  0   ; R  
+        LongPPL 1,  0,  1,  1,  0   ; R   R  
+                                    
+        LongPPL 0,  1,  0,  1,  0   ; RW  RWX 
+        LongPPL 0,  1,  1,  1,  0   ; R   R X 
 
 PPLAccess_LongDesc   ; EL1EL0
                      ; RWXRWX
         GenPPLAccess 2_111111
-        GenPPLAccess 2_111111 ; *** downgraded from RWX R X
+      [ EmulateAP1
+        GenPPLAccess 2_111100
+      |
+        GenPPLAccess 2_111111
+      ]
         GenPPLAccess 2_111000
         GenPPLAccess 2_101101
         GenPPLAccess 2_101000
@@ -310,10 +334,10 @@ PPLAccess_LongDesc   ; EL1EL0
 
         LTORG
 
-; PPLTrans should contain XN + PXN + AP2 + AP1 + SH1 + SH0
+; PPLTrans should contain XN + PXN + AP2 + AP1 + SH1 + SH0 + SW0
 ; PCBTrans should contain AttrIndx
 
-LL_HighPPLBits * LL_Page_HighAttr_XN + LL_Page_HighAttr_PXN
+LL_HighPPLBits * LL_Page_HighAttr_XN + LL_Page_HighAttr_PXN + LL_Page_HighAttr_SW0
 LL_LowPPLBits * LL_Page_LowAttr_SH1 + LL_Page_LowAttr_SH0 + LL_Page_LowAttr_AP2 + LL_Page_LowAttr_AP1
 
 ; In:

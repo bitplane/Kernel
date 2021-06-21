@@ -2557,6 +2557,21 @@ CMA_AddRange2 ; r3 = start, r4 = end (excl.)
         ; Exit if the range starts after our end point
         CMP     r3, r2
         BHI     %FT10
+    [ EmulateAP1
+        Push    "r8-r9"
+      [ ShortDesc
+        PTWhich r8
+        BEQ     %FT03
+      ]
+        ; Detect AP1 areas and flag them as UserXN + Abort
+        LDR     r9, =CMA_Read :AND: :NOT: CMA_Partially_UserXN ; Might already be flagged as UserXN, depending on how the flags were fetched
+        BIC     r8, r5, #CMA_Partially_UserXN+CMA_Partially_Phys
+        TEQ     r8, r9
+        BICEQ   r5, r5, #CMA_Partially_UserXN
+        ORREQ   r5, r5, #CMA_Partially_Abort
+03
+        Pull    "r8-r9"
+    ]
         ; Process the range
         TST     r5, #CMA_CheckL2PT
         BNE     %FT20
@@ -2637,6 +2652,17 @@ CMA_Done
         LDR     r5, [r0, #MMU_PPLAccess]
         AND     lr, r2, #DynAreaFlags_APBits
         LDR     r5, [r5, lr, LSL #2]
+    [ EmulateAP1
+      [ ShortDesc
+        PTWhich r0
+        BEQ     %FT42
+      ]
+        ; Detect AP1 areas and them as UserXN + Abort
+        TEQ     lr, #OSAP_Read
+        BICEQ   r5, r5, #CMA_Partially_UserXN
+        ORREQ   r5, r5, #CMA_Partially_Abort
+42
+    ]
         Pull    "r0-r3"
         ORR     r10, r5, r10
         ORR     r0, r0, r5 ; Set new partial flags

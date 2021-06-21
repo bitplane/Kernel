@@ -198,6 +198,14 @@ CacheablePageTables SETL {TRUE}                 ; Use cacheable page tables wher
                 GBLL    SyncPageTables
 SyncPageTables  SETL    (MEMM_Type = "VMSAv6") :LOR: CacheablePageTables ; Any page table modification (specifically, overwriting faulting entries) requires synchronisation
 
+                ; Control over behaviour of memory access privilege 1 when
+                ; using long descriptor page tables:
+                ; Traditional permissions are user RX + privileged RWX
+                ; EmulateAP1 {TRUE} will provide user R + privileged RWX, by using AbortTrap to implement user read support
+                ; EmulateAP1 {FALSE} will provide user RWX + privileged RWX (weaker security since user code can now write to the memory)
+                GBLL    EmulateAP1
+EmulateAP1      SETL    LongDesc :LAND: {TRUE}
+
   [ :LNOT: :DEF: SMP
                 GBLL    SMP
 SMP             SETL    (MEMM_Type = "VMSAv6") :LAND: {TRUE} ; Enable SMP-related changes
