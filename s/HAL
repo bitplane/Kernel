@@ -2140,6 +2140,9 @@ Init_PCBTrans_$pt   ROUT
         MOV     pc, lr
 
       ]
+
+        LTORG
+
 ptcounter SETA ptcounter + 1
         WEND
 pt      SETS ""
