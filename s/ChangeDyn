@@ -724,7 +724,8 @@ DynArea_ReturnError
 ;                             not implemented yet, but declared in public API for Ursula
 ;               bits 12..14 => cache policy (if bits 4 or 5 set)
 ;               bit 15 = 1 => area requires DMA capable pages (is bit 12 in ROL's OS!)
-;               bits 16-19 used by ROL
+;               bit 16 = 1 => "abortable" DA which is integrated with the AbortTrap system
+;               bits 17-19 used by ROL
 ;               bit 20 = 1 => area is backed by physical memory pool
 ;               other bits reserved for future expansion + internal page flags (should be 0)
 ;
@@ -847,6 +848,14 @@ DynArea_ErrorTranslateAndExit
         BNE     DynArea_ErrorTranslateAndExit
 22
 
+; Abortable DAs must have a handler
+        TST     r4, #DynAreaFlags_Abortable
+        BEQ     %FT23
+        CMP     r6, #0
+        ADREQ   r0, ErrorBlock_BadDynamicAreaOptions
+        BEQ     DynArea_ErrorTranslateAndExit
+23        
+
 ; now validate maximum size of area
 
   [ DynArea_QuickHandles
@@ -941,12 +950,14 @@ DAC_roundup
         STR     r3, [r2, #DANode_Base]
   [ DA_Batman
         ;disallow some awkward flag options if SparseMap set (no error), and temporarily create as not sparse
-        ;also disallow a DA handler
+        ;also disallow a DA handler (unless it's an Abortable DA)
         TST     r4, #DynAreaFlags_SparseMap
         STREQ   r4, [r2, #DANode_Flags]
-        BICNE   r7, r4, #DynAreaFlags_DoublyMapped + DynAreaFlags_NeedsSpecificPages + DynAreaFlags_Shrinkable + DynAreaFlags_SparseMap
-        ORRNE   r7, r7, #DynAreaFlags_NotUserDraggable
-        STRNE   r7, [r2, #DANode_Flags]
+        BICNE   lr, r4, #DynAreaFlags_DoublyMapped + DynAreaFlags_NeedsSpecificPages + DynAreaFlags_Shrinkable + DynAreaFlags_SparseMap
+        ORRNE   lr, lr, #DynAreaFlags_NotUserDraggable
+        STRNE   lr, [r2, #DANode_Flags]
+        ANDNE   lr, r4, #DynAreaFlags_Abortable
+        TEQNE   lr, #DynAreaFlags_Abortable
         MOVNE   r6, #0
         MOVNE   r7, #0
   |
@@ -1187,6 +1198,34 @@ DAC_roundup
 80
   ] ;DynArea_QuickHandles
 
+; Register the AbortTrap handler for any abortable DA
+        LDR     r10, [r2, #DANode_Flags]
+        TST     r10, #DynAreaFlags_Abortable
+        BEQ     %FT85
+        Push    "r0-r4"
+        MOV     r4, r2
+        MOV     r0, #OSAbortTrap_Register
+        LDR     r1, [r2, #DANode_Base]
+        LDR     r2, [r2, #DANode_MaxSize]
+        TST     r10, #DynAreaFlags_DoublyMapped
+        SUBNE   r1, r1, r2
+        ADDNE   r2, r1, r2, LSL #1
+        ADDEQ   r2, r1, r2
+        ADRL    r3, DynArea_AbortTrapHandler
+        SWI     XOS_AbortTrap
+        Pull    "r0-r4",VC
+        BVC     %FT85
+        ; Yuck, something went wrong. Kill the area.
+        BIC     r10, r10, #DynAreaFlags_Abortable
+        STR     r10, [r2, #DANode_Flags]
+        STR     r0, [sp]
+        MOV     r0, #DAReason_Remove
+        LDR     r1, [sp, #4]
+        SWI     XOS_DynamicArea
+        Pull    "r0-r4"
+        PullEnv
+        B       DynArea_ReturnError
+85
 
 ; Now issue service to tell TaskManager about it
 
@@ -1292,6 +1331,29 @@ DynArea_Remove Entry
         BL      CheckAreaNumber         ; check that area is there
         BCC     UnknownDyn              ; [not found]
 
+        ; Deregister any AbortTrap handler first, to (hopefully) stop things
+        ; messing with the area while we're trying to remove it
+        LDR     r12, [r10, #DANode_Flags]
+        TST     r12, #DynAreaFlags_Abortable
+        BEQ     DAR_notabortable
+        Push    "r0-r4"
+        MOV     r4, r10
+        MOV     r0, #OSAbortTrap_Deregister
+        LDR     r1, [r10, #DANode_Base]
+        LDR     r2, [r10, #DANode_MaxSize]
+        TST     r12, #DynAreaFlags_DoublyMapped
+        SUBNE   r1, r1, r2
+        ADDNE   r2, r1, r2, LSL #1
+        ADDEQ   r2, r1, r2
+        ADRL    r3, DynArea_AbortTrapHandler
+        SWI     XOS_AbortTrap
+        STRVS   r0, [sp]
+        Pull    "r0-r4"
+        EXIT    VS
+        BIC     r12, r12, #DynAreaFlags_Abortable
+        STR     r12, [r10, #DANode_Flags]
+        
+DAR_notabortable
   [ DA_Batman
         LDR     lr,[r10,#DANode_Flags]
         TST     lr,#DynAreaFlags_SparseMap
@@ -6342,6 +6404,10 @@ CallPreShrink Entry "r0,r3,r4, r12"
         CMP     r0, #0                                  ; if none (V=0)
         EXIT    EQ                                      ; then exit
 
+        LDR     r4, [r11, #DANode_Flags]                ; Sparse DAs shouldn't
+        TST     r4, #DynAreaFlags_SparseMap             ; get grow/shrink calls
+        EXIT    NE
+
         MOV     r0, #DAHandler_PreShrink                ; r0 = reason code
         MOV     r3, r1                                  ; r3 = amount shrinking by
         LDR     r4, [r11, #DANode_Size]                 ; r4 = current size
@@ -6379,6 +6445,10 @@ CallPostShrink Entry "r0,r3,r4, r12"
         LDR     r0, [r11, #DANode_Handler]              ; check if no handler
         CMP     r0, #0                                  ; if none (V=0)
         EXIT    EQ                                      ; then exit
+
+        LDR     r4, [r11, #DANode_Flags]                ; Sparse DAs shouldn't
+        TST     r4, #DynAreaFlags_SparseMap             ; get grow/shrink calls
+        EXIT    NE
 
         MOV     r0, #DAHandler_PostShrink               ; r0 = reason code
         MOV     r3, r2                                  ; r3 = amount shrunk by
@@ -6420,6 +6490,11 @@ CallPreGrow ROUT
         LDR     r0, [r12, #DANode_Handler]              ; check if no handler
         CMP     r0, #0                                  ; if none (V=0)
         EXIT    EQ                                      ; then exit
+
+        LDR     r4, [r12, #DANode_Flags]                ; Sparse DAs shouldn't
+        TST     r4, #DynAreaFlags_SparseMap             ; get grow/shrink calls
+        MOVNE   r0, #0
+        EXIT    NE
 
         ; Initialise the (32bit) page block list if required
         TEQ     r1, #0
@@ -6546,6 +6621,10 @@ CallPostGrow ROUT
         CMP     r0, #0                                  ; if none (V=0)
         EXIT    EQ                                      ; then exit
 
+        LDR     r4, [r12, #DANode_Flags]                ; Sparse DAs shouldn't
+        TST     r4, #DynAreaFlags_SparseMap             ; get grow/shrink calls
+        EXIT    NE
+
         ; Pack list down into 32bit form
         MOVS    r4, r1
         BEQ     %FT30
@@ -6612,6 +6691,68 @@ CallTestShrink Entry "r0,r4,r5, r12"
         SETV
         EXIT
  ]
+
+; ***********************************************************************************
+;
+;       DynArea_AbortTrapHandler - Forward AbortTrap requests to dynamic areas
+;
+; in:   r0-r3 = AbortTrap args
+;       r12 -> DANode
+;
+; out:  If handler exits VC, then r3 = no. of bytes area can shrink by
+;       else r0 -> error block or 0 for generic error, and r3=0
+;
+DynArea_AbortTrapHandler ROUT
+        Entry   "r0-r6,r12"
+        ; Shuffle everything up so that the AbortTrap args are in R1-R4
+        MOV     r4, r3
+        MOV     r3, r2
+        MOV     r2, r1
+        MOV     r1, r0
+        ; Prepare the other arguments needed by the DA handler
+        LDR     r5, [r12, #DANode_Base]
+        LDR     lr, [r12, #DANode_Size]
+        ADD     r5, r5, lr
+        MOV     r0, #DAHandler_Abort
+        LDR     r6, [r12, #DANode_Handler]
+        LDR     r12, [r12, #DANode_Workspace]
+        ; Call the DA's handler
+        ;  In: R0 = DAHandler_Abort (5)
+        ;      R1-R4 as AbortTrap handler R0-R3
+        ;      R5 = current end of allocated portion of dynamic area
+        ;           (invalid for sparse or PMP areas)
+        ;      R12 = DA handler workspace
+        ; Out: R4 = amount of data processed (== entry R4 if all processed)
+        ;      On failure, V set with R0 pointing to error block
+        ;      All other regs preserived
+      [ NoARMv5
+        MOV     lr, pc
+        MOV     pc, r6
+      |
+        BLX     r6
+      ]
+        BVS     %FT90
+        ; Assume it's a failure if output R4 doesn't match the input length
+        FRAMLDR r3
+        TEQ     r3, r4
+        EXIT    EQ
+        MOV     r0, #0 ; Use the generic error
+90
+        ; Not mentioned in ROL's spec, but for consistency with other reason
+        ; codes, we'll allow VS with R0=0 to indicate that a default error
+        ; should be used.
+        TEQ     r0, #0
+        ADREQ   r0, ErrorBlock_AbortableDAFailure
+        SETV
+        FRAMSTR r0
+        EXIT
+
+        ; This error should never be visible outside the kernel, so no need
+        ; to worry about assigning it an error number, or internationalisation.
+ErrorBlock_AbortableDAFailure
+        DCD     0
+        =       "Abortable DA didn't handle AbortTrap request", 0
+        ALIGN
 
 ; ***********************************************************************************
 ;

@@ -81,7 +81,8 @@ DynAreaFlags_PiersBinding       *  1 :SHL: 11   ; whether area is bound to clien
 DynAreaFlags_CPBits             *  7 :SHL: 12   ; cache policy variant for NotBufferable and NotCacheable bits
 DynAreaFlags_CPShift            *          12   ; shift amount for the above
 DynAreaFlags_NeedsDMA           *  1 :SHL: 15   ; only allocate from DMAable memory
-; Bits 16-19 are used by RISCOS Ltd. We can reuse them for internal flags, but
+DynAreaFlags_Abortable          *  1 :SHL: 16   ; "Abortable" DA which is integrated with the AbortTrap system
+; Bits 17-19 are used by RISCOS Ltd. We can reuse them for internal flags, but
 ; should probably avoid allocating any public flags.
 DynAreaFlags_PMP                *  1 :SHL: 20   ; DA is backed by PMP/page is member of PMP
 
