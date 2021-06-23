@@ -21,28 +21,131 @@
 ;  Instruction fetch abort pre-veneer
 ;
 PAbPreVeneer    ROUT
-        Push    "r0-r7, lr"               ; wahey, we have an abort stack
+        ; Produce a register dump containing everything important that could be
+        ; corrupted by a recursive abort, or hard to access from child routines:
+        ; R0-R14, SPSR, IFAR, IFSR, AIFSR
+        ; = 19 words
+        STR     lr, [sp, #-20]!           ; Save space for PSR, etc.
+        ADD     lr, sp, #20
+        Push    "r0-r12,lr"               ; R0-R13
+        ; Fill in SPSR & the available CP15 registers
+        LDR     r4, =ZeroPage+CPUFeatures+((CPUFeature_CP15_IFAR:SHR:5):SHL:2)
+        LDR     r4, [r4]
+        MRS     r0, SPSR
+        LDR     r8, [sp, #14*4]
+        TST     r4, #1:SHL:(CPUFeature_CP15_IFAR:AND:31)
+        ARM_read_IFAR r9,NE
+        SUBEQ   r9, r8, #4      ; generate fake IFAR from LR (should be OK for everything except Jazelle)
+        ASSERT  CPUFeature_CP15_IFAR:SHR:5 = CPUFeature_CP15_IFSR:SHR:5
+        TST     r4, #1:SHL:(CPUFeature_CP15_IFSR:AND:31)
+        ARM_read_IFSR r10,NE
+        ASSERT  CPUFeature_CP15_IFAR:SHR:5 = CPUFeature_CP15_AIFSR:SHR:5
+        TST     r4, #1:SHL:(CPUFeature_CP15_AIFSR:AND:31)
+        ARM_read_AIFSR r11,NE
+        STMDB   lr, {r0,r9-r11}
+
  [ AMB_LazyMapIn
-        SUB     r0, lr_abort, #4          ; aborting address
+        MOV     r0, r9                    ; aborting address
         MOV     r2, #1
         BL      AMB_LazyFixUp             ; can trash r0-r7, returns NE status if claimed and fixed up
-        PageTableSyncNE
-        Pull    "r0-r7, lr", NE           ; restore regs and
-        SUBNES  pc, lr_abort, #4          ; restart aborting instruction if fixed up
-        BL      AMB_MakeFullyHonest       ; PAbHan might not support recursive aborts
-        LDR     lr, [sp, #8*4]            ; (not a lazy abort) restore lr
+        BEQ     %FT45
+        PageTableSync
+        SUB     r8, r8, #4
+        STR     r8, [sp, #14*4]
+        B       %FT60
+45
  ]
-        ; Remember the details of this abort, for OS_ReadSysInfo 7
-        LDR     r4, =ZeroPage+Abort32_dumparea
-        MSR     SPSR_cxsf, r1
-        STR     lr, [r4]                  ; dump 32-bit PC
-        STR     r1, [r4, #4]              ; dump 32-bit PSR
-        STR     lr, [r4, #2*4]            ; fault address is PC (yes, PC, not PC-4)
 
-        LDR     r0, =ZeroPage+PAbHan      ; we want to jump to PAb handler, in abort mode
-        LDR     r0, [r0]
-        STR     r0, [sp, #8*4]
-        Pull    "r0-r7, pc"
+        ; Try an AbortTrap memmap request
+        ; extern _kernel_oserror *aborttrap_mem_access(void *buf,uint32_t addr,int len,int flags);
+        IMPORT  aborttrap_mem_access
+        MOV     r5, #0
+        ; Validate the SVC stack
+        BL      ValidateR13_svc
+        BVS     %FT48
+        ; Drop into SVC mode
+        LDR     r3, [sp, #15*4]
+        SetMode SVC32_mode,r1
+        ; Preserve registers
+        MRS     r10, SPSR
+        MOV     r11, r14
+        ; Set up for the AbortTrap call
+        MOV     r1, r9
+        MOV     r2, #1
+        ; Work out the necessary permissions
+        TST     r3, #&F
+        LDRNE   r3, =((AbortTrap_MemMap_PrivX+AbortTrap_MemMap_PrivR)<<4)+AbortTrap_Reason_MemMap
+        LDREQ   r3, =((AbortTrap_MemMap_UserX+AbortTrap_MemMap_UserR)<<4)+AbortTrap_Reason_MemMap
+        ; Note that the buffer pointer (R0) is irrelevant for memmap requests
+        BL      aborttrap_mem_access
+        ; Restore registers
+        MOV     r14, r11
+        MSR     SPSR_cxsf, r10
+        ; Back to abort
+        SetMode ABT32_mode, v1
+        CMP     r0, #1
+        SUBLO   r8, r8, #4
+        STRLO   r8, [sp, #14*4]
+        BLO     %FT60
+        LDRNE   r1, [r0]
+        TSTNE   r1, #&80000000                  ; Serious error?
+        MOVNE   r5, r0
+
+48
+        ; Pass on to PAbHan (i.e. OS_ChangeEnvironment), or raise an error
+ [ AMB_LazyMapIn
+        BL      AMB_MakeFullyHonest       ; PAbHan might not support recursive aborts
+ ]
+
+        ; Remember the details of this abort, for OS_ReadSysInfo 7
+        ADD     r0, sp, #19*4
+        LDMDB   r0, {r0-r4}                    ; LR, SPSR, IFAR, IFSR, AIFSR
+        LDR     r6, =ZeroPage+Abort32_dumparea
+        ADD     r7, r2, #4
+        STMIA   r6, {r0-r1,r7}                 ; dump 32-bit PC, 32-bit PSR, IFAR+4
+
+        ; Is there an error to raise?
+        MOVS    r14, r5
+        BNE     %FT70
+
+        ; Restore SPSR & CP15 registers
+        LDR     r5, =ZeroPage+CPUFeatures+((CPUFeature_CP15_IFAR:SHR:5):SHL:2)
+        LDR     r5, [r5]
+        MSR     SPSR_cxsf, r1
+        TST     r5, #1:SHL:(CPUFeature_CP15_IFAR:AND:31)
+        ARM_write_IFAR r2,NE
+        ASSERT  CPUFeature_CP15_IFAR:SHR:5 = CPUFeature_CP15_IFSR:SHR:5
+        TST     r5, #1:SHL:(CPUFeature_CP15_IFSR:AND:31)
+        ARM_write_IFSR r3,NE
+        ASSERT  CPUFeature_CP15_IFAR:SHR:5 = CPUFeature_CP15_AIFSR:SHR:5
+        TST     r5, #1:SHL:(CPUFeature_CP15_AIFSR:AND:31)
+        ARM_write_AIFSR r4,NE
+
+        LDR     lr, =ZeroPage+PAbHan
+        LDR     lr, [lr]
+        STR     lr, [sp, #15*4]
+        LDMIA   sp, {r0-r15}              ; The recovered R13 should discard the everything else from the stack
+60
+        LDR     r4, [sp, #15*4]
+        MSR     SPSR_cxsf, r4
+        LDMIA   sp, {r0-r13,r15}^         ; The recovered R13 should discard the everything else from the stack
+
+70
+        ; Raise error (in R14) using the same mechanism that ABORTP uses for
+        ; unhandled prefetch aborts - i.e. call through to DumpyTheRegisters.
+        ; To do that, we must shuffle things around into a (part-filled)
+        ; standard 17 word register dump.
+        ADD     r2, sp, #19*4
+        LDR     r0, [sp, #14*4]    ; Grab PC
+        LDR     r1, [sp, #15*4]    ; Grab SPSR
+        STMFD   r2, {r0,r1}        ; Store at top of stack
+        LDMIA   sp, {r0-r12}       ; Load all the other regs
+        ADD     sp, sp, #19*4-17*4 ; Adjust SP to point at base of new dump
+        STMIA   sp, {r0-r7}        ; Fill in R0-R7
+        ADD     r0, sp, #8*4       ; R0 points to R8
+        LDR     r1, [sp, #16*4]    ; R1 is SPSR again
+        MOV     r4, #-1            ; R4 is magic value to stop error translation
+        B       DumpyTheRegisters
 
 
 DAbPreVeneer    ROUT

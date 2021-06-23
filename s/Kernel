@@ -1621,7 +1621,9 @@ GenErrorSWI * SLVK_SetV
 ; instruction directly. The expectation is that the handler will map in the
 ; indicated memory with (at minimum) the requested permissions. On success, the
 ; kernel will roll back the PC, the base register (if the base-updated abort
-; model is in use), and re-execute the instruction.
+; model is in use), and re-execute the instruction. Prefetch aborts will also
+; result in reason code 2 being used (requesting the necessary read + execute
+; permission), allowing for on-demand mapping of code regions.
 ;
 ; Note that the implementation doesn't attempt to deal with the StrongARM abort
 ; handling errata, so care must be taken when using handlers on afflicted CPUs.
