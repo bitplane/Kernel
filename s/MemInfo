@@ -2345,6 +2345,8 @@ CheckMemoryAccess ROUT
         LDR     r5, [r10, #MMU_PPLAccess]
         AND     lr, r6, #DynAreaFlags_APBits
         LDR     r5, [r5, lr, LSL #2]
+        TST     r6, #DynAreaFlags_Abortable
+        ORRNE   r5, r5, #CMA_Partially_Abort
         TST     r6, #DynAreaFlags_PMP
         ORRNE   r5, r5, #CMA_DecodeAP
         TSTEQ   r6, #DynAreaFlags_SparseMap
@@ -2354,7 +2356,34 @@ CheckMemoryAccess ROUT
         ADDEQ   r4, r3, lr
         TST     r6, #DynAreaFlags_DoublyMapped ; Currently impossible for Sparse/PMP areas - so use of lr safe
         SUBNE   r3, r3, lr
+        TSTNE   r6, #DynAreaFlags_Abortable
+        BEQ     %FT23
+        ; Doubly-mapped abortable DA; make sure the unallocated area between
+        ; MaxSize and Size is marked as abortable
+        MOV     r12, r5
+        MOV     r5, #CMA_Partially_Abort
+        MOV     r10, r4
+        LDR     r4, [r9, #DANode_MaxSize]
+        SUB     r4, r4, lr ; MaxSize-Size
+        SUB     r3, r3, r4
+        BL      CMA_AddRange
+        MOV     r3, r4
+        MOV     r4, r10
+        MOV     r5, r12
+23
+        ; Map the allocated part of the DA
         BL      CMA_AddRange2
+        TST     r6, #DynAreaFlags_Abortable
+        BEQ     %FT24
+        ; Abortable DA; make sure the unallocated area between R4 and
+        ; Base+MaxSize is marked as abortable
+        MOV     r5, #CMA_Partially_Abort
+        MOV     r3, r4
+        LDR     r4, [r9, #DANode_Base]
+        LDR     lr, [r9, #DANode_MaxSize]
+        ADD     r4, r4, lr
+        BL      CMA_AddRange2
+24
         LDR     r9, [r9, #DANode_Link]
         TEQ     r9, #0
         BNE     %BT22
@@ -2541,7 +2570,7 @@ CheckMemoryAccess ROUT
         B       MemoryBadParameters
 
         ; Add range r3..r4 to attributes in r0
-        ; Corrupts r8
+        ; Corrupts r8, exits with r4 = end addr
 CMA_AddRange ROUT ; r3 = start, r4 = length
         ADD     r4, r3, r4
 CMA_AddRange2 ; r3 = start, r4 = end (excl.)
@@ -2576,7 +2605,6 @@ CMA_AddRange2 ; r3 = start, r4 = end (excl.)
         TST     r5, #CMA_CheckL2PT
         BNE     %FT20
         CMP     r3, r4 ; Don't apply any flags for zero-length ranges
-04      ; Note L2PT check code relies on NE condition here
         ORR     r8, r5, r8
         ORRNE   r0, r0, r5 ; Set new partial flags
         ANDNE   r0, r0, r8, ROR #4 ; Discard completion flags which aren't for this range
@@ -2626,21 +2654,28 @@ CMA_Done
         ORRCS   r10, r10, #2
         CMP     r4, r2
         BNE     %BT30
+        Pull    "r2,r4,r5,r8"
         CMP     r10, #2
         ; 01 -> entirely mapped
         ; 10 -> entirely unmapped
         ; 11 -> partially mapped
-        Pull    "r2,r4,r5,r8,r9,r10,lr"
-        BICHS   r0, r0, r8 ; Not fully mapped, clear completion flags
-        BNE     %BT04 ; Partially/entirely mapped
-        B       %BT05 ; Completely unmapped
+        MOVNE   r9, r5
+        ANDEQ   r9, r5, #CMA_Partially_Abort ; Completely unmapped, only flag as abortable
+        ANDHI   r10, r5, #CMA_Partially_Abort ; Partially mapped, retain the
+        ORRHI   r8, r8, r10                   ; abortable completion flag
+        ORR     r8, r9, r8
+        ORR     r0, r0, r9 ; Set new partial flags
+        AND     r0, r0, r8, ROR #4 ; Discard completion flags which aren't for this range
+        Pull    "r9,r10,lr"
+        B       %BT05
 
 35
         ; Check L2PT, with AP decoding on a per-page basis
+        AND     r10, r5, #CMA_Partially_Abort
 40
-        LDR     r10, =&0F0F0F0F
         PTOp    logical_to_physical
-        BICCS   r0, r0, r10 ; Not fully mapped, clear completion flags
+        LDR     r8, =&0F0F0F0F
+        MOVCS   r5, r10 ; Unmapped page, only take the abortable flag
         BCS     %FT45
         ; Get the L2PT entry and decode the flags
         Push    "r0-r3"
@@ -2652,6 +2687,7 @@ CMA_Done
         LDR     r5, [r0, #MMU_PPLAccess]
         AND     lr, r2, #DynAreaFlags_APBits
         LDR     r5, [r5, lr, LSL #2]
+        ORR     r5, r5, r10 ; Merge in any abortability flag from the caller
     [ EmulateAP1
       [ ShortDesc
         PTWhich r0
@@ -2664,10 +2700,10 @@ CMA_Done
 42
     ]
         Pull    "r0-r3"
-        ORR     r10, r5, r10
-        ORR     r0, r0, r5 ; Set new partial flags
-        AND     r0, r0, r10, ROR #4 ; Discard completion flags which aren't for this range
 45
+        ORR     r8, r5, r8
+        ORR     r0, r0, r5 ; Set new partial flags
+        AND     r0, r0, r8, ROR #4 ; Discard completion flags which aren't for this range
         ADD     r4, r4, #4096
         CMP     r4, r2
         BNE     %BT40
