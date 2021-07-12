@@ -107,6 +107,10 @@ endif
 
 ABORTTRAP_ACTIONS = ${ABORTTRAP_ACTIONS_ARM}
 
+# Have decgen use a pre-warmed cache file to speed up decoder generation. Please
+# remember to submit the files if they change!
+ABORTTRAP_CACHE = $(subst $(subst x,,x x),_,$(strip ${ABORTTRAP_ACTIONS_ARM}))
+
 CFLAGS += $(addprefix -DABORTTRAP_,${ABORTTRAP_ACTIONS})
 
 include StdTools
@@ -133,7 +137,7 @@ clean ::
 ABORTTRAP_ARM_DEPS = $(addprefix aborttrap.actions.,${ABORTTRAP_ACTIONS_ARM})
 
 aborttrap.c.atarm: $(ABORTTRAP_ARM_DEPS) aborttrap.c.atpre $(ABORTTRAP_ENCODINGS_ARM)
-        $(DECGEN) -bits=32 -e "-DCDP={ne(coproc,1)}" "-DLDC_STC={ne(coproc,1)}{ne(coproc,2)}" "-DMRC_MCR={ne(coproc,1)}" -DVFP1=(cond:4) "-DVFP2={ne(cond,15)}" -DAS1(X)=1111001[X] -DAS2=11110100 -DAS3=(cond:4)1110 "-DAS4={ne(cond,15)}" "-DCC={ne(cond,15)}" $(ABORTTRAP_ENCODINGS_ARM) -valid -a $(addprefix aborttrap/actions/,${ABORTTRAP_ACTIONS_ARM}) -default=DEFAULT -o aborttrap/atarm.c -name=aborttrap_arm -pre aborttrap/atpre.c
+        $(DECGEN) -bits=32 -e "-DCDP={ne(coproc,1)}" "-DLDC_STC={ne(coproc,1)}{ne(coproc,2)}" "-DMRC_MCR={ne(coproc,1)}" -DVFP1=(cond:4) "-DVFP2={ne(cond,15)}" -DAS1(X)=1111001[X] -DAS2=11110100 -DAS3=(cond:4)1110 "-DAS4={ne(cond,15)}" "-DCC={ne(cond,15)}" $(ABORTTRAP_ENCODINGS_ARM) -valid -a $(addprefix aborttrap/actions/,${ABORTTRAP_ACTIONS_ARM}) -default=DEFAULT -o aborttrap/atarm.c -name=aborttrap_arm -pre aborttrap/atpre.c -updatecache aborttrap/cache/${ABORTTRAP_CACHE}
 
 o.atarm: aborttrap.c.atarm
 	${CC} ${CFLAGS} -o $@ aborttrap.c.atarm
