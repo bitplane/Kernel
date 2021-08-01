@@ -210,6 +210,7 @@ static inline _kernel_oserror *mem_access_internal(uint8_t *buf,uint32_t addr,in
 		/* Check for direct memory access */
 		bool have_permission;
 		_kernel_oserror *e;
+		int flags2 = flags;
 #ifndef KERNEL
 		uint32_t access;
 		e = _swix(OS_Memory,_INR(0,2)|_OUT(1),OSMemReason_CheckMemoryAccess,addr,addr+chunk,&access);
@@ -230,6 +231,17 @@ static inline _kernel_oserror *mem_access_internal(uint8_t *buf,uint32_t addr,in
 		{
 			uint32_t permissions = AP_To_Permissions(pageflags & 0xF);
 			have_permission = (permissions & mempermission_flags) == mempermission_flags;
+			/* Special handling for AP1 MemMap requests: If usermode read access is being requested, and AP1 is being emulated, and the page is already mapped as AP1, add in usermode execute access to the requested permissions.
+			   This is necessary to stop us getting stuck in an infinite abort loop, due to the OS looking at the emulated permissions and thinking everything's fine, causing it to skip calling any AbortTrap handlers and try re-executing the instruction without making any changes.
+			   By asking for execute permission, we should also ensure that any well-written AbortTrap handler will avoid mapping the memory as AP1 (e.g. anything that uses OS_Memory 18 won't select the emulated AP1) */
+			if (have_permission /* We think everything's fine */
+			 && ((pageflags & 0xF) == 1) /* But it's AP1 */
+			 && (permissions == (MemPermission_UserR+MemPermission_PrivX+MemPermission_PrivW+MemPermission_PrivR)) /* With AP1 emulation */
+			 && ((flags2 & (AbortTrap_Reason_Mask | AbortTrap_MemMap_UserR)) == (AbortTrap_Reason_MemMap | AbortTrap_MemMap_UserR))) /* And MemMap is asking for user read permission */
+			{
+				have_permission = false; /* Then we don't have the permissions */
+				flags2 |= AbortTrap_MemMap_UserX; /* And we should ask for execute permission (for this page) */
+			}
 		}
 #endif
 
@@ -252,7 +264,7 @@ static inline _kernel_oserror *mem_access_internal(uint8_t *buf,uint32_t addr,in
 		else
 		{
 			/* Check aborttrap */
-			e = mem_access_via_aborttrap(flags,buf,addr,chunk);
+			e = mem_access_via_aborttrap(flags2,buf,addr,chunk);
 			if (e)
 				return e;
 		}
