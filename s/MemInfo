@@ -1213,7 +1213,7 @@ ReleasePhysAddr
 ;                               15=Scratch space
 ;                               16=Compatibility page
 ;                               17=RW data section
-;                       18-31   reserved (set to 0)
+;                       16-31   reserved (set to 0)
 ;
 ;       Out:    r1 = base of area
 ;               r2 = address space allocated for area (whole number of pages)

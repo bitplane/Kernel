@@ -1560,7 +1560,7 @@ GenErrorSWI * SLVK_SetV
 ;            3+ reserved
 ;          Reasons 0 & 1 use bit 4 to indicate if the memory access is
 ;            privileged (1) or unprivileged (0).
-;          Reason 3 uses bits 4-9 to indicate the required permissions:
+;          Reason 2 uses bits 4-9 to indicate the required permissions:
 ;            Bit 4 = executable in user mode
 ;            Bit 5 = writable in user mode
 ;            Bit 6 = readable in user mode
