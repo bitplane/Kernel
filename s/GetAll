@@ -119,6 +119,7 @@
         GET     s.MemInfo
         GET     s.CPUFeatures
         GET     s.MemMap2
+        GET     s.TaskControl
         ! 0, "Main kernel size = &" :CC: :STR: (.-KernelBase)
 StartOfVduDriver
         GET     s.vdu.VduDecl

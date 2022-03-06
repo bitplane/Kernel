@@ -663,7 +663,7 @@ JTABLE  & SWIWriteC
 ; End of unavailable SWIs.
         & NVMemorySWI
         & NoSuchSWI
-        & NoSuchSWI
+        & TaskControlSWI
         & NoSuchSWI
         & HardwareSWI
         & IICOpSWI
