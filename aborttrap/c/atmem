@@ -32,7 +32,7 @@
 #endif
 
 #include "kernel.h"
-#ifndef KERNEL
+#ifndef RISCOS_KERNEL
 #include "swis.h"
 #endif
 
@@ -151,7 +151,7 @@ static inline _kernel_oserror *mem_access_via_aborttrap(int flags,uint8_t *buf,u
 
 static inline _kernel_oserror *mem_access_internal(uint8_t *buf,uint32_t addr,int len,int flags)
 {
-#ifndef KERNEL
+#ifndef RISCOS_KERNEL
 	int mem24_flags=0;
 	if ((flags & AbortTrap_Reason_Mask) == AbortTrap_Reason_MemMap)
 	{
@@ -195,7 +195,7 @@ static inline _kernel_oserror *mem_access_internal(uint8_t *buf,uint32_t addr,in
 #endif
 	while (len > 0)
 	{
-#ifndef KERNEL
+#ifndef RISCOS_KERNEL
 		if(addr < 512<<20)
 		{
 			/* Application space, skip to avoid fighting against lazy task swapping */
@@ -211,7 +211,7 @@ static inline _kernel_oserror *mem_access_internal(uint8_t *buf,uint32_t addr,in
 		bool have_permission;
 		_kernel_oserror *e;
 		int flags2 = flags;
-#ifndef KERNEL
+#ifndef RISCOS_KERNEL
 		uint32_t access;
 		e = _swix(OS_Memory,_INR(0,2)|_OUT(1),OSMemReason_CheckMemoryAccess,addr,addr+chunk,&access);
 		if (e)

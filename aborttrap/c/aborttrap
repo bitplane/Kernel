@@ -52,7 +52,7 @@
 edfsr_type dfsr_type;
 bool loadwritepc_interworking;
 
-#ifndef KERNEL
+#ifndef RISCOS_KERNEL
 #include "swis.h"
 
 uint32_t g_ProcessorFlags;
@@ -88,7 +88,7 @@ static inline bool get_loadwritepc_interworking(void)
 void aborttrap_init(void)
 {
 	dfsr_type = get_dfsr_type();
-#ifndef KERNEL
+#ifndef RISCOS_KERNEL
 	_swix(OS_PlatformFeatures,_IN(0)|_OUT(0),OSPlatformFeatures_ReadCodeFeatures,&g_ProcessorFlags);
 #endif
 	loadwritepc_interworking = get_loadwritepc_interworking();
