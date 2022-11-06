@@ -483,16 +483,11 @@ IntervalTimer # 5               ; Up Counter synchronous with TIME.
 ; Event generated when Zero is reached
 ; bottom byte aligned to word boundary
 
-SecondsTime # 1 ; the soft copy (centi-)seconds of the RTC
-CentiTime   # 1 ; """"""""""""""""""""""""""""""""""""""""
+           # 2 ; SPARE
 
 FlashState # 1 ; which flash colours are we using
 
-SecondsDirty # 1                ; the dirty flag for start up!
-
-MinTick # 1                     ; the minutes odd/even state
-
-DCDDSRCopy # 1                  ; copy of ACIA bits to check for change
+           # 3 ; SPARE
 
 TVVertical # 1                  ; *TV first parameter
 
