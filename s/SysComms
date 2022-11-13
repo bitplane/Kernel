@@ -458,7 +458,8 @@ GOEX    SUB    R1, R4, #1
         SWI    XOS_FSControl
         Pull  "R7, PC", VS
 
-        LDR    sp_svc, =SVCSTK ; remove supervisor stuff
+        BL     TaskControl_ResetStacks     ; R0-R3 corrupt, R13 reset
+
         WritePSRc 0, R14       ; in to user mode
         MOV    PC, R7
 
