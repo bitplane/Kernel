@@ -834,8 +834,9 @@ ErrHandler ROUT
         Pull    "r0-r2"
         LDR     r11, [r10, #ErrBuf]     ; Get pointer to error buffer
 
-        LDR     sp_svc, =SVCSTK-4*4     ; Just below top of stack
-        Pull    r14
+        LDR     r10, =SVCSTK-4*4        ; Just below top of stack
+
+        LDR     r14, [r10], #4
         STR     r14, [r11], #4          ; Return PC for error
 
         LDR     r14, [r0], #4           ; Copy error number
@@ -851,6 +852,12 @@ ErrHandler ROUT
         TEQ     r14, #0
         BNE     %BT10
 
+        LDMIA   r10, {r10-r12}          ; Try and recover foreground R10-R12
+
+        BL      TaskControl_ResetStacks ; R0-R3 corrupt, R13 reset
+
+        Push    "r10-r12"               ; Save these again
+        LDR     r10, =ZeroPage
         LDR     r14, [r10, #ErrHan]     ; And go to error handler
         STR     r14, [r10, #Curr_Active_Object]
         LDR     r0,  [r10, #ErrHan_ws]  ; r0 is his wp
