@@ -282,7 +282,8 @@ SBRKPT ROUT
         NOP
   ]
 
-10      LDR     stack, =SVCSTK
+10
+        BL      TaskControl_ResetStacks ; R0-R3 corrupt, R13 reset
         LDR     r12, =ZeroPage+BrkAd_ws
         LDMIA   r12, {r12, pc}          ; call breakpoint handler
 
