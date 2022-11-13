@@ -675,13 +675,27 @@ UNDEF1
         MOV     R10, #SeriousErrorV
         BL      CallVector
 
+        ; Unwind & flatten all the stacks.
+        ; This does leave the register dump floating somewhere in the abort
+        ; stack, but with all interrupts turned off it should be safe enough,
+        ; especially as we copy it away immediately afterwards.
+        ADD     R10, R0, #8*4
+        BL      TaskControl_ResetStacks ; R0-R3 corrupt, R13 reset
+
         MSR     CPSR_c, #I32_bit+F32_bit+SVC32_mode ; into SVC mode
-        LDR     sp, =SVCSTK             ; Flatten superstack
+
+        ; Copy the register dump from its unsafe location on the abort stack,
+        ; to a temp location on the SVC stack
+        LDMIA   R10, {R0-R6, R8-R9}     ; R8-R15, PSR
+        Push    "R0-R6, R8-R9"
+        LDMDB   R10, {R0-R6, R8}        ; R0-R7
+        Push    "R0-R6, R8"
+
+        MSR     CPSR_c, #SVC32_mode+I32_bit ; Restore FIQs, we don't need them to be blocked now that the register dump is safe
 
         ; Check that ExceptionDump is safe to use
         Push    "R7"                    ; Preserve error ptr
         LDR     R5, =ZeroPage
-        MOV     R3, R0
         LDR     R1, [R5, #ExceptionDump]
         MOV     R0, #24
         ADD     R2, R1, #17*4
@@ -701,11 +715,11 @@ UNDEF1
 05
         Pull    "R14"                   ; Restore error ptr
 
-        ; Copy the dump from the stack to ExceptionDump
+        ; Now move the dump from the SVC stack to ExceptionDump
         LDR     R0, [R5, #ExceptionDump]
-        LDMIA   R3!, {R1-R2,R5-R10}     ; R0-R7
+        Pull    "R1-R2,R5-R10"          ; R0-R7
         STMIA   R0!, {R1-R2,R5-R10}
-        LDMIA   R3, {R1-R2,R5-R11}      ; R8-R15, PSR
+        Pull    "R1-R2,R5-R11"          ; R8-R15, PSR
         STMIA   R0, {R1-R2,R5-R11}
 
         SUB     R0, R0, #8*4
@@ -789,31 +803,6 @@ UNDEF1
       |
         LDR     R0, =GeneralMOSBuffer+128
       ]
-
-        ; Flatten UND and ABT stacks, jic
-        ; Also a convenient way of getting rid of the temp exception dump
-        MRS     R2, CPSR
-        BIC     R2, R2, #F32_bit + &1F
-        ORR     R3, R2, #ABT32_mode
-        MSR     CPSR_c, R3                      ; FIQs back on
-        LDR     r13_abort, =ABTSTK
-        ORR     R3, R2, #UND32_mode
-        MSR     CPSR_c, R3
-        LDR     r13_undef, =UNDSTK
-        ORR     R3, R2, #IRQ32_mode
-        MSR     CPSR_c, R3
-        LDR     R1, =ZeroPage
-      [ ZeroPage = 0
-        STR     R1, [R1, #IRQsema]
-      |
-        MOV     R3, #0
-        STR     R3, [R1, #IRQsema]
-      ]
-        LDR     r13_irq, =IRQSTK
-
-        ; Trigger exception dump processing
-        ORR     R3, R2, #SVC32_mode
-        MSR     CPSR_c, R3
 
         ; Let everyone know that the stacks have been reset
         MOV     R2, #SeriousErrorV_Recover
