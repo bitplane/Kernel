@@ -282,7 +282,7 @@ _kernel_oserror *aborttrap_mem_access(void *buf,uint32_t addr,int len,int flags)
 #endif
 	_kernel_oserror *e = mem_access_internal((uint8_t *) buf,addr,len,flags);
 #ifdef USE_SYNCLIB
-	spinrw_read_unlock(&lock);
+	spinrw_read_unlock_noyield(&lock);
 #endif
 	return e;
 }
@@ -304,7 +304,7 @@ _kernel_oserror *aborttrap_swi(int reason,uint32_t base,uint32_t limit,uint32_t 
 #endif
 		count = num_handlers;
 #ifdef USE_SYNCLIB
-		spinrw_read_unlock(&lock);
+		spinrw_read_unlock_noyield(&lock);
 #endif
 		if (reason == OSAbortTrap_Register)
 		{
@@ -345,7 +345,7 @@ _kernel_oserror *aborttrap_swi(int reason,uint32_t base,uint32_t limit,uint32_t 
 			if (new_handlers) free(new_handlers);
 			/* Go round again */
 #ifdef USE_SYNCLIB
-			spinrw_write_unlock(&lock);
+			spinrw_write_unlock_noyield(&lock);
 #else
 			if (!old_irqs)
 				_kernel_irqs_on();
@@ -377,7 +377,7 @@ _kernel_oserror *aborttrap_swi(int reason,uint32_t base,uint32_t limit,uint32_t 
 		if (idx == count)
 		{
 #ifdef USE_SYNCLIB
-			spinrw_write_unlock(&lock);
+			spinrw_write_unlock_noyield(&lock);
 #else
 			if (!old_irqs)
 				_kernel_irqs_on();
@@ -422,7 +422,7 @@ _kernel_oserror *aborttrap_swi(int reason,uint32_t base,uint32_t limit,uint32_t 
 	handlers = new_handlers;
 	num_handlers = new_count;
 #ifdef USE_SYNCLIB
-	spinrw_write_unlock(&lock);
+	spinrw_write_unlock_noyield(&lock);
 #else
 	if (!old_irqs)
 		_kernel_irqs_on();
@@ -446,7 +446,7 @@ void aborttrap_list_handlers(void)
 		printf("%08x %08x %08x %08x %08x\n",h->base,h->limit,h->routine,h->r12,h->limit_hwm);
 	}
 #ifdef USE_SYNCLIB
-	spinrw_read_unlock(&lock);
+	spinrw_read_unlock_noyield(&lock);
 #endif
 }
 #endif

@@ -25,9 +25,7 @@ C_EXP_HDR       = <cexport$dir>.Global.h
 endif
 
 # Keep SyncLib out of the kernel for now:
-# 1. We're cheating a bit by using an app build of SyncLib, which means the few
-#    C bits will be performing stack limit checking & extension
-# 2. We don't have a way of unlocking mutexes/spinlocks when recovering from
+# 1. We don't have a way of unlocking mutexes/spinlocks when recovering from
 #    aborts
 USE_SYNCLIB    ?= FALSE
 
@@ -70,7 +68,7 @@ EXPORTS         = ${EXP_HDR}.AMBControl \
                   ${C_EXP_HDR}.VIDCList
 ifeq (${USE_SYNCLIB},TRUE)
 CFLAGS	       += -DUSE_SYNCLIB
-LIBS            = ${SYNCLIB}
+LIBS            = ${SYNCLIB}k
 endif
 
 #
