@@ -818,7 +818,8 @@ EnterIt
        SWI      XOS_FSControl
        BVS      CantGoIntoModule
 
-       LDR      stack, =SVCSTK
+       BL       TaskControl_ResetStacks     ; R0-R3 corrupt, R13 reset
+
        MOV      R0, R10
        WritePSRc 0, R14
        MOV      r0, r0                      ; NOP because we've changed mode
