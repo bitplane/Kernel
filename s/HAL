@@ -783,6 +783,8 @@ RISCOS_Start_$pt
         LDR     ip, [a3, #HALDesc_NumEntries]           ; plus 1 word per entry
         CMP     ip, #KnownHALEntries
         MOVLO   ip, #KnownHALEntries
+        ADD     ip, ip, #1                              ; round up so that HAL workspace is doubleword aligned
+        BIC     ip, ip, #1
         ADD     lr, lr, ip, LSL #2
         MOV     a3, lr, LSR #12                         ; round workspace up to whole
         MOV     a3, a3, LSL #12                         ; number of pages
