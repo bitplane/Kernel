@@ -9,12 +9,12 @@
                         GBLS    Module_ApplicationDate
                         GBLS    Module_HelpVersion
                         GBLS    Module_ComponentName
-Module_MajorVersion     SETS    "6.60"
-Module_Version          SETA    660
+Module_MajorVersion     SETS    "6.61"
+Module_Version          SETA    661
 Module_MinorVersion     SETS    ""
-Module_Date             SETS    "01 Jun 2022"
-Module_ApplicationDate  SETS    "01-Jun-22"
+Module_Date             SETS    "05 Jan 2023"
+Module_ApplicationDate  SETS    "05-Jan-23"
 Module_ComponentName    SETS    "Kernel"
-Module_FullVersion      SETS    "6.60"
-Module_HelpVersion      SETS    "6.60 (01 Jun 2022)"
+Module_FullVersion      SETS    "6.61"
+Module_HelpVersion      SETS    "6.61 (05 Jan 2023)"
                         END

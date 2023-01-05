@@ -153,7 +153,9 @@ SWIClass SETS   RISCOS_Kernel_1SWI_Name
         AddSWI  EnterUSR26              ; &74 first used in Ursula
         AddSWI  VIDCDivider             ; &75
         AddSWI  NVMemory                ; &76
-        ^       OS_NVMemory + 4
+        ^       OS_NVMemory + 2
+        AddSWI  TaskControl             ; &78
+        ^       OS_TaskControl + 2
         AddSWI  Hardware                ; &7A
         AddSWI  IICOp                   ; &7B
         AddSWI  LeaveOS                 ; &7C
@@ -162,6 +164,9 @@ SWIClass SETS   RISCOS_Kernel_1SWI_Name
         AddSWI  HeapSort32              ; &7F
 
 NCORESWIS  *    OS_HeapSort32 + 1       ; There are this many kernel SWIs, 0..NCORESWIS-1
+
+        ; Steer clear of SWI &AB:
+        ; It is used for semi-hosting debug in Thumb mode in profile A/R before ARMv7VE
 
         ASSERT  @ <= &C0
 
