@@ -32,11 +32,26 @@ AMBDAHandler ROUT
         DebugReg R1
       ]
         MOV     R2, R12
-        CMP     R1, #0
         LDR     LR, [R2, #AMBNode_DANode+DANode_PMPSize]
-        LDR     R12, =ZeroPage+AMBControl_ws
-        ADD     R1, R1, LR
-        LDR     R12, [R12]
+        MOV     R12, R1
+        ADDS    R1, R1, LR
+        ; Unsigned saturate to clamp to zero
+        ; This will also force numbers >= 2^31 to 2^32-1, but we don't care
+        ; about that because the max appslot size will be much lower than
+        ; 2^31 pages.
+        MVNMI   R1, R12, ASR #31 ; 0 if shrinking, &FFFFFFFF if growing
+        ; Now clamp to max appslot size
+        LDR     R12, =ZeroPage
+        LDR     R12, [R12, #SoftAplWorkMaxSize]
+        SUB     R12, R12, #ApplicationStart
+        CMP     R1, R12, LSR #Log2PageSize
+        MOVHI   R1, R12, LSR #Log2PageSize
+      [ AMB_Debug
+        DebugReg R1, "Changing size to "
+      ]
+        CMP     R1, LR
+        LDR     R12, =ZeroPage
+        LDR     R12, [R12, #AMBControl_ws]
         ADR     R14, %FT10
         BGT     growpages
         BLT     shrinkpages
