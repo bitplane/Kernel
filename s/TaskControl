@@ -72,4 +72,6 @@ TaskControl_ResetStacks
         MSR     CPSR_c, r0
         MOV     pc, lr
 
+        LTORG
+
         END
