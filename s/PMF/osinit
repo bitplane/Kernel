@@ -96,7 +96,9 @@ BuffPtrInitLoop
         MOV     R0, #4_3330             ; Assume VGA during osinit
         STRB    R0, [R1, #MonitorLeadType]
 
+      [ :LNOT: Headless
         BL      ReadUniqueID
+      ]
 
         Push    "r9,r12"
         AddressHAL
@@ -116,8 +118,10 @@ secs0070 *      (86400*(365*70+18))     ; from time() in risc_oslib.c.armsys
         BL      Store5ByteInRealTime
 
 ; insert soft key 10
+      [ :LNOT: Headless
         MOV     R2, #&CA
         BL      RDCHS
+      ]
         Pull    PC
 
         LTORG

@@ -424,8 +424,10 @@ clearmswis
         DebugTX "Debug terminal on"
  ]
 
+      [ :LNOT: Headless
         BL      InitialiseMode          ; select correct screen mode, in case any
                                         ; module prints anything in initialisation
+      ]
 
         DebugTX "HAL_InitDevices"
         AddressHAL
@@ -467,6 +469,9 @@ clearmswis
         ADD     r3, r3, #300            ; timeout (cs)
 02
         CMP     r5, #-1                 ; HAL gave no KbdScan details
+      [ Headless
+        B       %FT04
+      ]
         BEQ     %FT04
 
         TST     r4, #KbdFlag_Present
@@ -514,6 +519,9 @@ clearmswis
         MOV     r6, r0
         CMP     r6, #-1
         BNE     %BT02                   ; the show's not over until the RAM clear is done
+      [ Headless
+        B       %FT05
+      ]
 
         CMP     r5, #-1
         BEQ     %FT05                   ; HAL gave no KbdScan details
@@ -658,6 +666,7 @@ init_other_modules
         MOV     R0, #FSControl_SelectFS ; set configured filing system
         SWI     XOS_FSControl
 
+      [ :LNOT: Headless
         ; Update territory in case it changed after ModuleInitForKbdScan
         MOV     R0, #ReadCMOS
         MOV     R1, #TerritoryCMOS
@@ -667,6 +676,7 @@ init_other_modules
 
         ; Update RTC now all the modules are running
         SWI     XOS_ResyncTime
+      ]
 
   [ DebugROMInit
         SWI     XOS_WriteS
@@ -683,6 +693,9 @@ init_other_modules
   ]
         SWI     XOS_LeaveOS
         SWI     XOS_EnterOS             ; switch back to SVC mode (IRQs, FIQs enabled)
+      [ Headless
+        B       DoStartSuper
+      ]
 
       [ International                   ; Open the kernel messages file.
         LDR     r0, =ZeroPage+KernelMessagesBlock+4
@@ -722,7 +735,9 @@ init_other_modules
         SWI     XOS_Memory
       ]
 
+      [ :LNOT: Headless
         BL      InitialiseMode
+      ]
         LDR     R0, =ZeroPage
         LDRB    R14, [R0, #MentionCMOSReset]
         TEQ     R14, #0
@@ -980,12 +995,22 @@ Hortoculture_Kicking
         CMP     R2, #0
         ADDNE   R1, R3, R2
 DoStartSuper
+      [ :DEF: StartupModule
+        ADRL    R1, StartupModuleTitle
+      |
         ADREQL  R1, UtilModTitle        ; ALWAYS enter via SWI: sets CAO etc.
+      ]
         MOV     R0, #ModHandReason_Enter
         ADRL    R2, crstring            ; no environment
         SWI     XOS_Module
         CMP     r0, r0                  ; set EQ if failed to enter config.lang
         B       DoStartSuper            ; -> force Super entry
+
+      [ :DEF: StartupModule
+StartupModuleTitle
+        =       "$StartupModule", 0
+        ALIGN
+      ]
 
 
 str_booterror   DCB     "Boot$$Error",0

@@ -35,6 +35,10 @@ endif
 #    aborts
 USE_SYNCLIB    ?= FALSE
 
+ifneq (${STARTUP_MODULE},)
+ASFLAGS        += -PD "StartupModule SETS \"${STARTUP_MODULE}\""
+endif
+
 TOKHELPSRC      = ${TOKENSOURCE}
 HELPSRC         = HelpStrs
 OBJS            = GetAll
