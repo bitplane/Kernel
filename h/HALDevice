@@ -13,6 +13,7 @@
  * limitations under the License.
  */
 #ifndef GLOBAL_HALDEVICE_H
+#define GLOBAL_HALDEVICE_H
 
 #include <stdbool.h>
 #include <stdint.h>
