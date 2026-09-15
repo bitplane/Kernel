@@ -35,12 +35,19 @@ endif
 #    aborts
 USE_SYNCLIB    ?= FALSE
 
+ifeq (GNU,${TOOLCHAIN})
+TOKENSOURCE     = s/TokHelpSrc
+endif
 TOKHELPSRC      = ${TOKENSOURCE}
 HELPSRC         = HelpStrs
 OBJS            = GetAll
 KERNEL_MODULE   = bin${SEP}${COMPONENT}
 ASFLAGS        += -PD "FreezeDevRel SETL {${FREEZE_DEV_REL}}" -PD "USE_SYNCLIB SETL {${USE_SYNCLIB}}" -PD "RISCOS_KERNEL SETL {TRUE}"
+ifeq (GNU,${TOOLCHAIN})
+CFLAGS         += -DRISCOS_KERNEL -mno-apcs-stack-check
+else
 CFLAGS         += -ff -APCS 3/32bit/nofp/noswst -DRISCOS_KERNEL
+endif
 CUSTOMROM       = custom
 CUSTOMSA        = custom
 ifeq (${USE_SYNCLIB},TRUE)
@@ -51,10 +58,19 @@ endif
 #
 # AbortTrap:
 #
+ifeq (GNU,${TOOLCHAIN})
+VPATH += aborttrap/c aborttrap/s aborttrap
+CINCLUDES += -Iaborttrap/h
+else
 VPATH += aborttrap
+endif
 OBJS += aborttrap atarm atcontext atinstr aterrors atmem
 
+ifeq (GNU,${TOOLCHAIN})
+DECGEN = decgen
+else
 DECGEN = <Tools$Dir>.Misc.decgen.decgen
+endif
 
 # Work out which instructions to include support for; this is just to reduce
 # code size, and doesn't affect the handling of the instructions
@@ -63,11 +79,17 @@ ABORTTRAP_ACTIONS_ARM = ARMv3 ARMv4 ARMv5TE ARMv6 ARMv6K ARMv6T2 ARMv8 VFP ASIMD
 
 TOOLSDIR ?= <Tool$Dir>
 
-ABORTTRAP_ENCODINGS_ARM = ${TOOLSDIR}${SEP}decgen${SEP}encodings${SEP}ARMv7 \
-                          ${TOOLSDIR}${SEP}decgen${SEP}encodings${SEP}ARMv7_ASIMD \
-                          ${TOOLSDIR}${SEP}decgen${SEP}encodings${SEP}ARMv7_VFP \
-                          ${TOOLSDIR}${SEP}decgen${SEP}encodings${SEP}ARMv8_AArch32 \
-                          ${TOOLSDIR}${SEP}decgen${SEP}encodings${SEP}FPA
+ifeq (GNU,${TOOLCHAIN})
+DECGEN_DATA = ${TOOLSDIR}${SEP}Misc${SEP}decgen
+else
+DECGEN_DATA = ${TOOLSDIR}${SEP}decgen
+endif
+
+ABORTTRAP_ENCODINGS_ARM = ${DECGEN_DATA}${SEP}encodings${SEP}ARMv7 \
+                          ${DECGEN_DATA}${SEP}encodings${SEP}ARMv7_ASIMD \
+                          ${DECGEN_DATA}${SEP}encodings${SEP}ARMv7_VFP \
+                          ${DECGEN_DATA}${SEP}encodings${SEP}ARMv8_AArch32 \
+                          ${DECGEN_DATA}${SEP}encodings${SEP}FPA
 
 ifneq (,$(findstring $(MACHINE),IOMD))
 ABORTTRAP_ACTIONS_ARM = ARMv3 ARMv4 FPA
@@ -130,13 +152,46 @@ EXPORTS =                                        \
     ${C_EXP_HDR}${SEP}VduExt${SUFFIX_HEADER}     \
     ${C_EXP_HDR}${SEP}VIDCList${SUFFIX_HEADER}   \
 
-SOURCES_TO_SYMLINK = $(wildcard s/AMBControl/*) $(wildcard s/PMF/*) $(wildcard s/vdu/*)
+ifeq (GNU,${TOOLCHAIN})
+SOURCES_TO_SYMLINK = HelpStrs Version
+GNU_ABORTTRAP_C = aborttrap aterrors atinstr atmem
+GNU_ABORTTRAP_H = aborttrap atcontext aterrors atinstr atsupport
+SYMLINK_DEPEND += objs/s objs/hdr objs/h \
+                  $(addprefix objs/aborttrap/c/,$(addsuffix .c,${GNU_ABORTTRAP_C})) \
+                  $(addprefix objs/aborttrap/h/,$(addsuffix .h,${GNU_ABORTTRAP_H})) \
+                  objs/aborttrap/psr.h objs/aborttrap/kerneliface.h \
+                  objs/aborttrap/s/atcontext.s objs/aborttrap/c/atarm.c
+else
+SOURCES_TO_SYMLINK = HelpStrs Version $(wildcard s/AMBControl/*) $(wildcard s/PMF/*) $(wildcard s/vdu/*)
 SYMLINK_EXT_FIRST = yes
+endif
 
 include AAsmModule
 include StdRules
 ifeq (${USE_SYNCLIB},TRUE)
 include AppLibs
+endif
+
+ifeq (GNU,${TOOLCHAIN})
+$(addprefix objs/aborttrap/c/,$(addsuffix .c,${GNU_ABORTTRAP_C})):
+	${MKDIR} objs/aborttrap/c
+	ln -s "${CURDIR}/aborttrap/c/$(basename $(notdir $@))" $@
+
+$(addprefix objs/aborttrap/h/,$(addsuffix .h,${GNU_ABORTTRAP_H})):
+	${MKDIR} objs/aborttrap/h
+	ln -s "${CURDIR}/aborttrap/h/$(basename $(notdir $@))" $@
+
+objs/aborttrap/psr.h objs/aborttrap/kerneliface.h:
+	${MKDIR} objs/aborttrap
+	ln -s "${CURDIR}/h/$(basename $(notdir $@))" $@
+
+objs/aborttrap/s/atcontext.s:
+	${MKDIR} objs/aborttrap/s
+	ln -s "${CURDIR}/aborttrap/s/atcontext" $@
+
+objs/s objs/hdr objs/h:
+	${MKDIR} $@
+	cp -as "${CURDIR}/$(notdir $@)/." $@/
 endif
 
 # Override this to "TRUE" in the components file if
@@ -153,7 +208,15 @@ ROM_OBJECTS = $(addsuffix .o,${OBJS})
 clean ::
 	@IfThere aborttrap.c.atarm     Then delete aborttrap.c.atarm
 
+ifeq (GNU,${TOOLCHAIN})
+ABORTTRAP_ARM_DEPS = $(addprefix aborttrap/actions/,${ABORTTRAP_ACTIONS_ARM})
+
+objs/aborttrap/c/atarm.c: ${ABORTTRAP_ARM_DEPS} aborttrap/c/atpre ${ABORTTRAP_ENCODINGS_ARM}
+	${MKDIR} objs/aborttrap/c
+	${DECGEN} -bits=32 -e "-DCDP={ne(coproc,1)}" "-DLDC_STC={ne(coproc,1)}{ne(coproc,2)}" "-DMRC_MCR={ne(coproc,1)}" "-DVFP1=(cond:4)" "-DVFP2={ne(cond,15)}" "-DAS1(X)=1111001[X]" -DAS2=11110100 "-DAS3=(cond:4)1110" "-DAS4={ne(cond,15)}" "-DCC={ne(cond,15)}" ${ABORTTRAP_ENCODINGS_ARM} -valid -a ${ABORTTRAP_ARM_DEPS} -default=DEFAULT -o $@ -name=aborttrap_arm -pre aborttrap/c/atpre -updatecache aborttrap/cache/${ABORTTRAP_CACHE}
+else
 ABORTTRAP_ARM_DEPS = $(addprefix aborttrap.actions.,${ABORTTRAP_ACTIONS_ARM})
+endif
 
 aborttrap.c.atarm: $(ABORTTRAP_ARM_DEPS) aborttrap.c.atpre $(ABORTTRAP_ENCODINGS_ARM)
 	$(DECGEN) -bits=32 -e "-DCDP={ne(coproc,1)}" "-DLDC_STC={ne(coproc,1)}{ne(coproc,2)}" "-DMRC_MCR={ne(coproc,1)}" -DVFP1=(cond:4) "-DVFP2={ne(cond,15)}" -DAS1(X)=1111001[X] -DAS2=11110100 -DAS3=(cond:4)1110 "-DAS4={ne(cond,15)}" "-DCC={ne(cond,15)}" $(ABORTTRAP_ENCODINGS_ARM) -valid -a $(addprefix aborttrap/actions/,${ABORTTRAP_ACTIONS_ARM}) -default=DEFAULT -o aborttrap/atarm.c -name=aborttrap_arm -pre aborttrap/atpre.c -updatecache aborttrap/cache/${ABORTTRAP_CACHE}
@@ -167,13 +230,25 @@ od.atarm: aborttrap.c.atarm
 #
 # Custom ROM:
 #
+ifneq (objs,$(notdir ${CURDIR}))
+
+rom install_rom: links
+
+else
+
 rom: ${KERNEL_MODULE}
 	@${ECHO} ${COMPONENT}: rom module built
 
 install_rom: ${KERNEL_MODULE}
 	${CP} ${KERNEL_MODULE} ${INSTDIR}${SEP}${TARGET} ${CPFLAGS}
+ifneq (GNU,${TOOLCHAIN})
 	${CP} ${KERNEL_MODULE}_gpa ${INSTDIR}${SEP}${TARGET}_gpa ${CPFLAGS}
+endif
 	@${ECHO} ${COMPONENT}: rom module installed
+
+ifeq (GNU,${TOOLCHAIN})
+rom_custom install_rom_custom: ${KERNEL_MODULE}
+endif
 
 inst_dirs:
 	${MKDIR} ${EXP_HDR}
@@ -182,14 +257,28 @@ inst_dirs:
 install: ${EXPORTS} inst_dirs
 	@${ECHO} ${COMPONENT}: header files installed
 
+ifeq (GNU,${TOOLCHAIN})
+${KERNEL_MODULE}: ${ROM_OBJECTS} ${DIRS} ${LIBS}
+	${MKDIR} bin
+	${GNUTOOLPREFIX}ld --defsym=KERNEL_ADDRESS=${KERNEL_ADDRESS} -T ../kernel.ld -o ${KERNEL_MODULE}.elf ${ROM_OBJECTS} ${LIBS}
+	${LDBIN} ${KERNEL_MODULE} ${KERNEL_MODULE}.elf
+else
 ${KERNEL_MODULE}: ${ROM_OBJECTS} ${DIRS} ${LIBS} kstrip
 	${MKDIR} bin
 	SetEval KernelBase "4" + STR ( 227858432 + ( HALSize LEFT ( LEN HALSize - 1 ) ) * 1024 )
 	Do ${LD} -aif -base <KernelBase> -RW-base 0xff000000 -bin -d -o ${KERNEL_MODULE}_aif ${ROM_OBJECTS} ${LIBS}
 	Do kstrip ${KERNEL_MODULE}_aif ${KERNEL_MODULE}
 	${TOGPA} -s ${KERNEL_MODULE}_aif ${KERNEL_MODULE}_gpa
+endif
 
 GetAll.o: ${TOKHELPSRC}
+
+ifeq (GNU,${TOOLCHAIN})
+${TOKENSOURCE}: ${HELPSRC}
+	${CP} $< $@
+endif
+
+endif
 
 #
 # Custom exports:

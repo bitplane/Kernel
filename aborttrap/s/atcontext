@@ -320,7 +320,7 @@ aborttrap_vfp_s_read ROUT
         NOP
 count   SETA    0
         WHILE   count < 32
-        vfpop   FSTS,S,count,",[a3]"
+        DCI     &ED820A00 + (count :AND: 1)*&400000 + (count/2)*&1000
         MOV     pc,lr
 count   SETA    count+1
         WEND        
@@ -336,7 +336,7 @@ aborttrap_vfp_s_write ROUT
         NOP
 count   SETA    0
         WHILE   count < 32
-        vfpop   FMSR,S,count,",a3"
+        DCI     &EE002A10 + (count :AND: 1)*&80 + (count/2)*&10000
         MOV     pc,lr
 count   SETA    count+1
         WEND        
@@ -358,7 +358,7 @@ aborttrap_vfp_d_read
         NOP
 count   SETA    0
         WHILE   count < MaxDRegs
-        vfpop   FSTD,D,count,",[a3]"
+        DCI     &ED820B00 + (count :AND: 15)*&1000 + (count/16)*&400000
         MOV     pc,lr
 count   SETA    count+1
         WEND        
@@ -374,7 +374,7 @@ aborttrap_vfp_d_write
         NOP
 count   SETA    0
         WHILE   count < MaxDRegs
-        vfpop   FMDRR,D,count,",a3,a4"
+        DCI     &EC432B10 + (count :AND: 15) + (count/16)*&20
         MOV     pc,lr
 count   SETA    count+1
         WEND        

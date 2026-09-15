@@ -56,7 +56,22 @@ typedef struct {
 	uint32_t size;
 } log2phys_result;
 
+#ifdef __GNUC__
+static inline log2phys_result RISCOS_LogToPhys(const void *log)
+{
+	register uint32_t r0 __asm("r0") = (uint32_t)log;
+	register uint32_t r1 __asm("r1");
+	register uint32_t r2 __asm("r2");
+	register uint32_t r3 __asm("r3");
+	__asm volatile ("bl RISCOS_LogToPhys"
+		: "+r" (r0), "=r" (r1), "=r" (r2), "=r" (r3)
+		:
+		: "r12", "lr", "cc", "memory");
+	return (log2phys_result) { ((uint64_t)r1 << 32) | r0, r2, r3 };
+}
+#else
 extern __value_in_regs log2phys_result RISCOS_LogToPhys(const void *log);
+#endif
 
 typedef struct {
 	uint32_t flags;
@@ -64,7 +79,21 @@ typedef struct {
 	uint32_t permissions;
 } MemoryAccessPrivileges_result;
 
+#ifdef __GNUC__
+static inline MemoryAccessPrivileges_result MemoryAccessPrivileges(uint32_t seventeen,int32_t ap)
+{
+	register uint32_t r0 __asm("r0") = seventeen;
+	register uint32_t r1 __asm("r1") = ap;
+	register uint32_t r2 __asm("r2");
+	__asm volatile ("bl MemoryAccessPrivileges"
+		: "+r" (r0), "+r" (r1), "=r" (r2)
+		:
+		: "r3", "r12", "lr", "cc", "memory");
+	return (MemoryAccessPrivileges_result) { r0, r1, r2 };
+}
+#else
 extern __value_in_regs MemoryAccessPrivileges_result MemoryAccessPrivileges(uint32_t seventeen,int32_t ap);
+#endif
 
 static inline uint32_t AP_To_Permissions(int32_t ap)
 {

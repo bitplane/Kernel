@@ -63,10 +63,14 @@ static inline edfsr_type get_dfsr_type(void)
 {
 	uint32_t id;
 	/* Check the main ID register */
+#ifdef __GNUC__
+	__asm volatile ("mrc p15,0,%0,c0,c0,0" : "=r" (id));
+#else
 	__asm
 	{
 	mrc p15,0,id,c0,c0,0
 	}
+#endif
 	if ((id & 0xf0000) > 0x70000)
 		return dfsr_v6;
 	if ((id & ~0x8ff) == 0x69052400)
@@ -78,10 +82,14 @@ static inline bool get_loadwritepc_interworking(void)
 {
 	uint32_t id;
 	/* Check the main ID register */
+#ifdef __GNUC__
+	__asm volatile ("mrc p15,0,%0,c0,c0,0" : "=r" (id));
+#else
 	__asm
 	{
 	mrc p15,0,id,c0,c0,0
 	}
+#endif
 	return (id & 0xf0000) >= 0x50000;
 }
 
