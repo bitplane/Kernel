@@ -154,6 +154,9 @@ ModuleInitForKbdScan Entry "r0-r12"
         BL      CompareTitleWithCSV
         BNE     %FT40                                   ; if your name's not on the list you can't come in
 30
+      [ Headless
+        MOV     r11, #0
+      |
         ADR     r11, UnplugCMOSTable
         SUBS    r14, r10, #FirstUnpluggableModule       ; subtract number of first module that has an unplug bit
         MOVCS   r1, r14, LSR #3                         ; get byte number
@@ -164,6 +167,7 @@ ModuleInitForKbdScan Entry "r0-r12"
         MOVCS   r12, #1
         ORRCS   r11, r11, r12, LSL r14                  ; merge with bit mask
         MOVCC   r11, #0                                 ; otherwise zero
+      ]
 
         BL      AddROMModuleNode
         BVS     %FT50                                   ; if failed then can't add any more ROMs!
