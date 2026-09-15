@@ -94,10 +94,7 @@ static _kernel_oserror *MemU_read_with_flags(abtcontext_t *ctx,void *buf,uint32_
 	{
 		uint32_t temp = *((uint32_t *)buf);
 		rotate = rotate<<3;
-		__asm
-		{
-			MOV temp,temp,ROR rotate
-		}
+		temp = shift(temp, SHIFT_ROR, rotate, false);
 		*((uint32_t *)buf) = temp;
 	}
 	return e;
@@ -776,10 +773,7 @@ ABORTTRAP_IMPL _kernel_oserror *aborttrap_SWP(abtcontext_t *ctx,uint32_t t,uint3
 	if (size != 1)
 	{
 		int rotate = (addr & 3)<<3;
-		__asm
-		{
-			MOV data,data,ROR rotate
-		}
+		data = shift(data, SHIFT_ROR, rotate, false);
 	}
 	aborttrap_reg_write_current(ctx,t,data);
 	bttf(ctx);

@@ -1082,13 +1082,8 @@ DoubleMulDivSquareRoot ROUT
         ADC     R8, R8, R14, LSR #16            ; R8 = upper 32 bits of a.b
     |
         ; Use UMULL
-      [ NoARMv6
-        ; Rn can't be RdLo/RdHi in ARMv5 and below
         MOV     R2, R3
         UMULL   R3, R8, R2, R8
-      |
-        UMULL   R3, R8, R3, R8
-      ]
     ]
 ; now do divide of a.b by c
 ; we know that a.b < 2^61, so no problem with top bit of a.b

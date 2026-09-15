@@ -129,6 +129,23 @@ static inline void decodeimmshift(uint32_t type,uint32_t imm5,eshift *srtype,uin
 
 static inline uint32_t shift(uint32_t val,eshift type,uint32_t amt,bool c)
 {
+#ifdef __GNUC__
+	switch(type)
+	{
+	case SHIFT_LSL:
+		return amt >= 32 ? 0 : val << amt;
+	case SHIFT_LSR:
+		return amt >= 32 ? 0 : val >> amt;
+	case SHIFT_ASR:
+		return amt >= 32 ? (uint32_t)((int32_t)val >> 31) : (uint32_t)((int32_t)val >> amt);
+	case SHIFT_ROR:
+		amt &= 31;
+		return amt ? (val >> amt) | (val << (32 - amt)) : val;
+	case SHIFT_RRX:
+	default:
+		return (val >> 1) | (c ? 0x80000000u : 0);
+	}
+#else
 	switch(type)
 	{
 	case SHIFT_LSL:
@@ -165,6 +182,7 @@ static inline uint32_t shift(uint32_t val,eshift type,uint32_t amt,bool c)
 		break;
 	}
 	return val;
+#endif
 }
 
 #endif
